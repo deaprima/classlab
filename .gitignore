@@ -1,0 +1,40 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Go build & binaries
+api/bin/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+profile.pprof
+
+# Node & Frontend
+node_modules/
+.pnpm-store/
+dist/
+dist-ssr/
+*.local
+.turbo/
+.cache/
+
+# IDE & Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Database & Upload storage (local volume)
+data/
+uploads/
+tmp/
+scratch/

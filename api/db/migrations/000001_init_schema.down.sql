@@ -1,0 +1,20 @@
+DROP TRIGGER IF EXISTS report_events_immutable ON report_events;
+DROP TABLE IF EXISTS report_events CASCADE;
+DROP TABLE IF EXISTS damage_reports CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TRIGGER IF EXISTS booking_events_immutable ON booking_events;
+DROP FUNCTION IF EXISTS forbid_mutation CASCADE;
+DROP TABLE IF EXISTS booking_events CASCADE;
+DROP TABLE IF EXISTS bookings CASCADE;
+DROP TABLE IF EXISTS room_schedules CASCADE;
+DROP TABLE IF EXISTS rooms CASCADE;
+DROP TABLE IF EXISTS refresh_tokens CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS org_units CASCADE;
+
+DROP TYPE IF EXISTS report_status;
+DROP TYPE IF EXISTS booking_status;
+DROP TYPE IF EXISTS schedule_source;
+DROP TYPE IF EXISTS org_unit_type;
+DROP TYPE IF EXISTS room_type;
+DROP TYPE IF EXISTS user_role;

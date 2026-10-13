@@ -1,0 +1,59 @@
+package httpx
+
+import (
+	"log/slog"
+	"net/http"
+	"time"
+
+	"classlab/api/internal/platform/logger"
+
+	"github.com/google/uuid"
+)
+
+// RequestID middleware generates or preserves a unique X-Request-Id header.
+func RequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := r.Header.Get("X-Request-Id")
+		if reqID == "" {
+			reqID = "req_" + uuid.New().String()
+		}
+
+		w.Header().Set("X-Request-Id", reqID)
+		ctx := logger.WithRequestID(r.Context(), reqID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.statusCode = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// RequestLogger logs HTTP requests using log/slog without leaking sensitive data.
+func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			rec := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+
+			next.ServeHTTP(rec, r)
+
+			duration := time.Since(start)
+			reqID := logger.RequestIDFromContext(r.Context())
+
+			log.InfoContext(r.Context(), "http_request",
+				slog.String("request_id", reqID),
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.String("remote_addr", r.RemoteAddr),
+				slog.Int("status", rec.statusCode),
+				slog.Duration("duration", duration),
+			)
+		})
+	}
+}

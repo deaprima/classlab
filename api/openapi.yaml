@@ -1,0 +1,910 @@
+openapi: 3.1.0
+info:
+  title: ClassLab.io API
+  version: 1.0.0
+  description: Sistem Web Peminjaman Ruang Kelas dan Laboratorium Kampus (MVP Rumpun TI).
+servers:
+  - url: /api/v1
+    description: Base API v1 endpoint
+paths:
+  /health:
+    get:
+      summary: Liveness & Database Health Check
+      responses:
+        '200':
+          description: Service sehat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: healthy }
+                  database: { type: string, example: ok }
+                  version: { type: string, example: 0.1.0 }
+                  time: { type: string, format: date-time }
+
+  /auth/login:
+    post:
+      summary: Login pengguna
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: NIM atau NIP }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login sukses (refresh token diset via cookie httpOnly)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  expires_in: { type: integer, example: 900 }
+                  user: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      summary: Rotasi refresh token dan dapatkan access token baru
+      responses:
+        '200':
+          description: Token berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  expires_in: { type: integer, example: 900 }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/logout:
+    post:
+      summary: Logout dan cabut refresh token
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Berhasil logout
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/me:
+    get:
+      summary: Dapatkan profil pengguna saat ini
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Data profil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /users:
+    get:
+      summary: Daftar pengguna (Kaprodi)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/UserRole' }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: is_active
+          in: query
+          schema: { type: boolean }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+    post:
+      summary: Buat pengguna baru (Kaprodi)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [org_unit_id, identifier, name, email, password, role]
+              properties:
+                org_unit_id: { type: string, format: uuid }
+                identifier: { type: string }
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string }
+                role: { $ref: '#/components/schemas/UserRole' }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+
+  /users/{id}:
+    patch:
+      summary: Perbarui data/peran/status/password pengguna (Kaprodi)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/UserRole' }
+                is_active: { type: boolean }
+                password: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /rooms:
+    get:
+      summary: Daftar ruang
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/RoomType' }
+        - name: capacity_min
+          in: query
+          schema: { type: integer }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: is_active
+          in: query
+          schema: { type: boolean }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Room' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      summary: Tambah ruang baru (TU_KALAB, KAPRODI)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [org_unit_id, code, name, type, capacity]
+              properties:
+                org_unit_id: { type: string, format: uuid }
+                code: { type: string }
+                name: { type: string }
+                type: { $ref: '#/components/schemas/RoomType' }
+                capacity: { type: integer, minimum: 1 }
+                facilities:
+                  type: array
+                  items: { type: string }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+
+  /rooms/{id}:
+    get:
+      summary: Detail ruang
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    patch:
+      summary: Ubah data ruang (TU_KALAB, KAPRODI)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                type: { $ref: '#/components/schemas/RoomType' }
+                capacity: { type: integer, minimum: 1 }
+                facilities: { type: array, items: { type: string } }
+                is_active: { type: boolean }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      summary: Soft delete ruang (TU_KALAB, KAPRODI)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Ruang berhasil dinonaktifkan/dihapus }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /rooms/{id}/schedule:
+    get:
+      summary: Timeline gabungan jadwal akademik + booking disetujui (overlay)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TimelineItem' }
+
+  /schedules:
+    post:
+      summary: Buat jadwal akademik manual / berulang
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [room_id, title, start_at, end_at]
+              properties:
+                room_id: { type: string, format: uuid }
+                title: { type: string }
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time }
+                repeat:
+                  type: object
+                  properties:
+                    freq: { type: string, enum: [WEEKLY] }
+                    until: { type: string, format: date }
+      responses:
+        '201': { description: Jadwal berhasil dibuat }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /schedules/{id}:
+    patch:
+      summary: Ubah jadwal akademik
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time }
+      responses:
+        '200': { description: Jadwal diperbarui }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      summary: Hapus jadwal akademik
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Jadwal dihapus }
+
+  /availability:
+    get:
+      summary: Status ketersediaan per ruang pada rentang waktu
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_at
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: end_at
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/RoomType' }
+        - name: capacity_min
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AvailabilityRoom' }
+
+  /bookings:
+    get:
+      summary: Daftar pengajuan booking
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+        - name: room_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: mine
+          in: query
+          schema: { type: boolean }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Booking' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      summary: Ajukan booking baru (MAHASISWA)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [room_id, start_at, end_at, purpose]
+              properties:
+                room_id: { type: string, format: uuid }
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time }
+                purpose: { type: string }
+                participants: { type: integer, minimum: 1 }
+                notes: { type: string }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /bookings/{id}:
+    get:
+      summary: Detail pengajuan booking
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /bookings/{id}/events:
+    get:
+      summary: Jejak riwayat audit status booking
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/BookingEvent' }
+
+  /bookings/{id}/approve:
+    post:
+      summary: Setujui peminjaman ruang (TU_KALAB)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /bookings/{id}/reject:
+    post:
+      summary: Tolak peminjaman ruang (TU_KALAB)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /bookings/{id}/cancel:
+    post:
+      summary: Batalkan booking (Pemilik atau TU_KALAB)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /notifications:
+    get:
+      summary: Daftar notifikasi pengguna
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: unread
+          in: query
+          schema: { type: boolean }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /notifications/{id}/read:
+    post:
+      summary: Tandai satu notifikasi sebagai telah dibaca
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Notifikasi ditandai dibaca }
+
+  /notifications/read-all:
+    post:
+      summary: Tandai seluruh notifikasi sebagai telah dibaca
+      security:
+        - BearerAuth: []
+      responses:
+        '200': { description: Semua notifikasi ditandai dibaca }
+
+  /notifications/stream:
+    get:
+      summary: Server-Sent Events stream untuk pembaruan notifikasi
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /reports:
+    get:
+      summary: Daftar laporan kerusakan
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ReportStatus' }
+        - name: room_id
+          in: query
+          schema: { type: string, format: uuid }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/DamageReport' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      summary: Buat laporan kerusakan baru (multipart/form-data)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [room_id, description]
+              properties:
+                room_id: { type: string, format: uuid }
+                description: { type: string }
+                photo: { type: string, format: binary }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DamageReport' }
+
+  /reports/{id}:
+    get:
+      summary: Detail laporan kerusakan beserta riwayat event
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/DamageReport' }
+                  - type: object
+                    properties:
+                      events:
+                        type: array
+                        items: { $ref: '#/components/schemas/ReportEvent' }
+
+  /reports/{id}/status:
+    patch:
+      summary: Perbarui status laporan kerusakan (TU_KALAB)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/ReportStatus' }
+                note: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DamageReport' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageQuery:
+      name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    PerPageQuery:
+      name: per_page
+      in: query
+      schema: { type: integer, default: 20, maximum: 100 }
+
+  responses:
+    ErrorResponse:
+      description: Respons error terstandar ClassLab
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message, details, request_id]
+                properties:
+                  code: { type: string, example: BOOKING_CONFLICT }
+                  message: { type: string, example: Ruang sudah terpakai pada rentang waktu tersebut. }
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field: { type: string }
+                        message: { type: string }
+                  request_id: { type: string, example: req_123456 }
+
+  schemas:
+    UserRole:
+      type: string
+      enum: [MAHASISWA, TU_KALAB, OB, KAPRODI]
+
+    RoomType:
+      type: string
+      enum: [KELAS, LAB]
+
+    BookingStatus:
+      type: string
+      enum: [MENUNGGU, DISETUJUI, DITOLAK, DIBATALKAN]
+
+    ReportStatus:
+      type: string
+      enum: [BARU, DITERIMA, DIPROSES, SELESAI]
+
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        org_unit_id: { type: string, format: uuid }
+        identifier: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/UserRole' }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    Room:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        org_unit_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/RoomType' }
+        capacity: { type: integer }
+        facilities: { type: array, items: { type: string } }
+        is_active: { type: boolean }
+
+    TimelineItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [SCHEDULE, BOOKING] }
+        title: { type: string }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+
+    AvailabilityRoom:
+      type: object
+      properties:
+        room: { $ref: '#/components/schemas/Room' }
+        status: { type: string, enum: [TERSEDIA, DIGUNAKAN, DIAJUKAN] }
+        conflicts:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string }
+              title: { type: string }
+              start_at: { type: string, format: date-time }
+              end_at: { type: string, format: date-time }
+
+    Booking:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        room_id: { type: string, format: uuid }
+        room: { $ref: '#/components/schemas/Room' }
+        requester_id: { type: string, format: uuid }
+        requester: { $ref: '#/components/schemas/User' }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        purpose: { type: string }
+        participants: { type: integer }
+        notes: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        decided_by: { type: string, format: uuid }
+        decided_at: { type: string, format: date-time }
+        decision_reason: { type: string }
+        created_at: { type: string, format: date-time }
+
+    BookingEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        booking_id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid }
+        from_status: { $ref: '#/components/schemas/BookingStatus' }
+        to_status: { $ref: '#/components/schemas/BookingStatus' }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        title: { type: string }
+        body: { type: string }
+        ref_type: { type: string }
+        ref_id: { type: string, format: uuid }
+        read_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    DamageReport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        room_id: { type: string, format: uuid }
+        reporter_id: { type: string, format: uuid }
+        description: { type: string }
+        photo_path: { type: string }
+        status: { $ref: '#/components/schemas/ReportStatus' }
+        handled_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    ReportEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        report_id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid }
+        from_status: { $ref: '#/components/schemas/ReportStatus' }
+        to_status: { $ref: '#/components/schemas/ReportStatus' }
+        note: { type: string }
+        created_at: { type: string, format: date-time }
