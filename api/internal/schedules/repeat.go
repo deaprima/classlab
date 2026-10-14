@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/overlap"
 	"classlab/api/internal/platform/clock"
 )
 
@@ -14,10 +15,7 @@ const MaxOccurrences = 26
 const dateLayout = "2006-01-02"
 
 // Window is one concrete session, as UTC instants.
-type Window struct {
-	Start time.Time
-	End   time.Time
-}
+type Window = overlap.Window
 
 // Occurrences expands a weekly repeat. The first session is the given start/end; each next one is
 // seven calendar days later in WIB, and the last is the latest one that starts on or before `until`

@@ -9,7 +9,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] **Phase 0: Scaffold Monorepo & Fondasi Dev** (Selesai)
 - [x] **Phase 1: Autentikasi, Manajemen Pengguna & RBAC** (Selesai)
 - [x] **Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan** (Selesai)
-- [ ] **Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail**
+- [x] **Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail**
 - [ ] **Phase 4: Notifikasi In-App & Pelaporan Kerusakan**
 - [ ] **Phase 5: Antarmuka Frontend (UI, Routing & Form)**
 - [ ] **Phase 6: Hardening Produksi, Caddy, Backup & Dokumentasi**
@@ -77,13 +77,13 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ---
 
 ### Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail
-- [ ] Handler & Service `POST /bookings` dengan validasi BR-01 & Idempotency-Key
-- [ ] Concurrency Lock: `SELECT ... FOR UPDATE` pada tabel rooms dalam satu transaksi
-- [ ] Verifikasi exclusion constraint database `bookings_no_overlap`
-- [ ] Workflow Approval: Approve, Reject (alasan >= 5 huruf), Cancel
-- [ ] Append-only `booking_events` terlindungi trigger database
-- [ ] Notifikasi atomik dibuat dalam transaksi perubahan status
-- [ ] Concurrency test: 20 request paralel hanya 1 berhasil dan 19 mendapat 409
+- [x] Handler & Service `POST /bookings` dengan validasi BR-01 & Idempotency-Key
+- [x] Concurrency Lock: `SELECT ... FOR UPDATE` pada tabel rooms dalam satu transaksi
+- [x] Verifikasi exclusion constraint database `bookings_no_overlap`
+- [x] Workflow Approval: Approve, Reject (alasan >= 5 huruf), Cancel
+- [x] Append-only `booking_events` terlindungi trigger database
+- [x] Notifikasi atomik dibuat dalam transaksi perubahan status
+- [x] Concurrency test: 20 request paralel hanya 1 berhasil dan 19 mendapat 409
 
 ---
 

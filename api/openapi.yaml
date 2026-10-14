@@ -557,11 +557,15 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data, meta]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Booking' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
       summary: Ajukan booking baru (MAHASISWA)
       security:
@@ -586,10 +590,19 @@ paths:
                 notes: { type: string }
       responses:
         '201':
-          description: Berhasil dibuat
+          description: >-
+            Berhasil dibuat. Bila `Idempotency-Key` sama dengan permintaan identik sebelumnya, booking
+            yang sudah ada dikembalikan dengan status yang sama dan header `Idempotency-Replayed: true`.
+          headers:
+            Idempotency-Replayed:
+              description: '`true` bila respons ini adalah pengulangan dari permintaan sebelumnya'
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
@@ -609,6 +622,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/events:
@@ -628,10 +643,14 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/BookingEvent' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/approve:
     post:
@@ -649,6 +668,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/reject:
@@ -676,7 +698,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/cancel:
     post:
@@ -701,7 +728,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /notifications:
     get:
@@ -1001,14 +1033,23 @@ components:
               start_at: { type: string, format: date-time }
               end_at: { type: string, format: date-time }
 
+    BookingRequester:
+      type: object
+      required: [id, identifier, name]
+      properties:
+        id: { type: string, format: uuid }
+        identifier: { type: string, description: NIM atau NIP }
+        name: { type: string }
+
     Booking:
       type: object
+      required: [id, room_id, room, requester_id, requester, start_at, end_at, purpose, status, created_at]
       properties:
         id: { type: string, format: uuid }
         room_id: { type: string, format: uuid }
         room: { $ref: '#/components/schemas/Room' }
         requester_id: { type: string, format: uuid }
-        requester: { $ref: '#/components/schemas/User' }
+        requester: { $ref: '#/components/schemas/BookingRequester' }
         start_at: { type: string, format: date-time }
         end_at: { type: string, format: date-time }
         purpose: { type: string }
@@ -1022,6 +1063,7 @@ components:
 
     BookingEvent:
       type: object
+      required: [id, booking_id, actor_id, to_status, created_at]
       properties:
         id: { type: string, format: uuid }
         booking_id: { type: string, format: uuid }

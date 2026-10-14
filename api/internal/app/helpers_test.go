@@ -59,6 +59,13 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		Argon2Iterations:   1,
 		Argon2Parallelism:  1,
 		CORSAllowedOrigins: []string{"http://localhost:5173"},
+
+		// BR-01 defaults, as in .env.example.
+		OperatingHoursStart:       "07:00",
+		OperatingHoursEnd:         "21:00",
+		BookingMinDurationMinutes: 30,
+		BookingMaxDurationHours:   8,
+		BookingMaxFutureDays:      30,
 	}
 	for _, fn := range mutate {
 		fn(cfg)
@@ -74,7 +81,11 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		logOut = os.Stderr
 	}
 	log := slog.New(slog.NewTextHandler(logOut, nil))
-	return &env{t: t, pool: pool, clock: clk, cfg: cfg, router: app.NewRouter(cfg, pool, log, clk)}
+	router, err := app.NewRouter(cfg, pool, log, clk)
+	if err != nil {
+		t.Fatalf("building router: %v", err)
+	}
+	return &env{t: t, pool: pool, clock: clk, cfg: cfg, router: router}
 }
 
 type reqOpt func(*http.Request)
@@ -180,4 +191,23 @@ func (e *env) login(identifier string, opts ...reqOpt) session {
 	id, _ := user["id"].(string)
 	token, _ := body["access_token"].(string)
 	return session{accessToken: token, refresh: c.Value, userID: id}
+}
+
+// doUnchecked sends a request without validating the response against openapi.yaml. It is for tests
+// that provoke a 500, which the contract deliberately does not describe.
+func (e *env) doUnchecked(method, path string, body any, opts ...reqOpt) response {
+	e.t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		e.t.Fatalf("marshalling request body: %v", err)
+	}
+	req := httptest.NewRequest(method, path, bytes.NewReader(raw))
+	req.RemoteAddr = "192.0.2.10:50000"
+	req.Header.Set("Content-Type", "application/json")
+	for _, o := range opts {
+		o(req)
+	}
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return response{rec}
 }

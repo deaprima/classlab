@@ -49,9 +49,15 @@ func main() {
 		}
 	}
 
+	router, err := app.NewRouter(cfg, pool, appLogger, clock.NewRealClock())
+	if err != nil {
+		appLogger.Error("failed to build router", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      app.NewRouter(cfg, pool, appLogger, clock.NewRealClock()),
+		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

@@ -4,12 +4,14 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"classlab/api/internal/auth"
 	"classlab/api/internal/availability"
+	"classlab/api/internal/bookings"
 	"classlab/api/internal/config"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/platform/clock"
@@ -28,7 +30,13 @@ const (
 	loginWindow      = 15 * time.Minute
 )
 
-func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Clock) http.Handler {
+// NewRouter fails only on an invalid booking configuration; config.Load already rejects that at start.
+func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Clock) (http.Handler, error) {
+	rules, err := cfg.BookingRules()
+	if err != nil {
+		return nil, fmt.Errorf("booking configuration: %w", err)
+	}
+
 	hasher := password.NewHasher(cfg.Argon2MemoryKiB, cfg.Argon2Iterations, cfg.Argon2Parallelism)
 
 	usersSvc := users.NewService(pool, hasher, clk)
@@ -41,6 +49,7 @@ func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Cl
 	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk))
 	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk))
 	availabilityHandler := availability.NewHandler(availability.NewService(pool))
+	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, rules))
 
 	r := chi.NewRouter()
 	r.Use(httpx.RequestID)
@@ -73,11 +82,12 @@ func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Cl
 				r.Get("/{id}/schedule", availabilityHandler.Timeline)
 			})
 			r.Route("/schedules", schedulesHandler.Register)
+			r.Route("/bookings", bookingsHandler.Register)
 			r.Get("/availability", availabilityHandler.Check)
 		})
 	})
 
-	return r
+	return r, nil
 }
 
 func health(pool *db.Pool, clk clock.Clock) http.HandlerFunc {
