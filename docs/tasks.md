@@ -101,9 +101,9 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] Konfigurasi Axios client & refresh token interceptor (refresh diserialisasi, dev proxy Vite)
 - [x] Route tree TanStack Router & RBAC navigation guards (halaman fitur masih placeholder)
 - [x] Halaman login `/sign-in`
-- [ ] Halaman utama `/` (ketersediaan ruang interaktif)
-- [ ] Halaman timeline `/rooms/$id` (visual CSS grid)
-- [ ] Halaman pengajuan booking `/bookings/new` (React Hook Form + Zod)
+- [x] Halaman utama `/` (ketersediaan ruang interaktif)
+- [x] Halaman timeline `/rooms/$id` (visual CSS grid)
+- [x] Halaman pengajuan booking `/bookings/new` (React Hook Form + Zod)
 - [ ] Halaman riwayat booking `/bookings`
 - [ ] Halaman approval `/approvals` (antrean & dialog penolakan)
 - [ ] Halaman pelaporan kerusakan `/reports`

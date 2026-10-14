@@ -1,6 +1,17 @@
+import { z } from 'zod'
 import { createFileRoute } from '@tanstack/react-router'
-import { PendingPage } from '@/components/layout/page'
+import { dateParam, positiveIntParam, timeParam } from '@/lib/search-params'
+import { Availability } from '@/features/availability'
+
+const searchSchema = z.object({
+  date: dateParam,
+  start: timeParam,
+  end: timeParam,
+  type: z.enum(['KELAS', 'LAB']).optional().catch(undefined),
+  capacity_min: positiveIntParam,
+})
 
 export const Route = createFileRoute('/_authenticated/')({
-  component: () => <PendingPage title='Ketersediaan Ruang' />,
+  validateSearch: searchSchema,
+  component: Availability,
 })
