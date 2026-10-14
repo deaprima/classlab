@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
 const maxJSONBodyBytes = 1 << 20
@@ -46,4 +48,22 @@ func ParsePage(r *http.Request) (page, perPage int, err error) {
 		}
 	}
 	return page, perPage, nil
+}
+
+// ParseTimeParam reads an RFC 3339 timestamp from a query string.
+// A literal "+" in a URL decodes to a space, so "…T08:00:00+07:00" typed unescaped (as in the API
+// examples) arrives as "…T08:00:00 07:00"; restore it rather than rejecting a reasonable request.
+func ParseTimeParam(r *http.Request, name string) (time.Time, error) {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return time.Time{}, ValidationError(ErrorDetail{Field: name, Message: name + " wajib diisi."})
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339, strings.Replace(raw, " ", "+", 1))
+	}
+	if err != nil {
+		return time.Time{}, ValidationError(ErrorDetail{Field: name, Message: name + " harus berformat ISO 8601 dengan offset, mis. 2026-10-20T08:00:00+07:00."})
+	}
+	return t.UTC(), nil
 }

@@ -49,6 +49,77 @@ func TestRBACMatrix(t *testing.T) {
 			body: func(*env) any { return map[string]any{"name": "Diubah RBAC"} },
 			want: expect{401, 403, 403, 403, 200},
 		},
+		{
+			name: "GET /rooms", method: "GET",
+			path: func(*env) string { return "/api/v1/rooms" },
+			want: expect{401, 200, 200, 200, 200},
+		},
+		{
+			name: "GET /rooms/{id}", method: "GET",
+			path: func(e *env) string { return "/api/v1/rooms/" + e.roomIDByCode("LAB-1") },
+			want: expect{401, 200, 200, 200, 200},
+		},
+		{
+			name: "POST /rooms", method: "POST",
+			path: func(*env) string { return "/api/v1/rooms" },
+			body: func(e *env) any { seq++; return e.newRoomBody("RBAC-" + strconv.Itoa(seq)) },
+			want: expect{401, 403, 201, 403, 201},
+		},
+		{
+			name: "PATCH /rooms/{id}", method: "PATCH",
+			path: func(e *env) string { return "/api/v1/rooms/" + e.roomIDByCode("LAB-3") },
+			body: func(*env) any { return map[string]any{"capacity": 36} },
+			want: expect{401, 403, 200, 403, 200},
+		},
+		{
+			name: "DELETE /rooms/{id}", method: "DELETE",
+			path: func(e *env) string {
+				seq++
+				return "/api/v1/rooms/" + e.insertRoom("DEL-"+strconv.Itoa(seq), "KELAS", 10)
+			},
+			want: expect{401, 403, 204, 403, 204},
+		},
+		{
+			name: "GET /rooms/{id}/schedule", method: "GET",
+			path: func(e *env) string {
+				return timelinePath(e.roomIDByCode("LAB-1"), at(mon, "00:00"), at(tue, "00:00"))
+			},
+			want: expect{401, 200, 200, 200, 200},
+		},
+		{
+			name: "GET /availability", method: "GET",
+			path: func(*env) string { return availabilityPath(at(tue, "08:00"), at(tue, "10:00"), "") },
+			want: expect{401, 200, 200, 200, 200},
+		},
+		{
+			name: "POST /schedules", method: "POST",
+			path: func(*env) string { return "/api/v1/schedules" },
+			body: func(e *env) any {
+				seq++
+				room := e.insertRoom("SCH-"+strconv.Itoa(seq), "KELAS", 10)
+				return map[string]any{"room_id": room, "title": "RBAC", "start_at": at(tue, "08:00"), "end_at": at(tue, "09:00")}
+			},
+			want: expect{401, 403, 201, 403, 201},
+		},
+		{
+			name: "PATCH /schedules/{id}", method: "PATCH",
+			path: func(e *env) string {
+				seq++
+				room := e.insertRoom("PSC-"+strconv.Itoa(seq), "KELAS", 10)
+				return "/api/v1/schedules/" + e.insertSchedule(room, "Awal", at(tue, "08:00"), at(tue, "09:00"))
+			},
+			body: func(*env) any { return map[string]any{"title": "Diubah"} },
+			want: expect{401, 403, 200, 403, 200},
+		},
+		{
+			name: "DELETE /schedules/{id}", method: "DELETE",
+			path: func(e *env) string {
+				seq++
+				room := e.insertRoom("DSC-"+strconv.Itoa(seq), "KELAS", 10)
+				return "/api/v1/schedules/" + e.insertSchedule(room, "Hapus", at(tue, "08:00"), at(tue, "09:00"))
+			},
+			want: expect{401, 403, 204, 403, 204},
+		},
 	}
 
 	roles := []struct {

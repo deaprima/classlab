@@ -1,4 +1,4 @@
-.PHONY: up down migrate migrate-down gen lint test seed dev-api dev-web
+.PHONY: up down migrate migrate-down migrate-force gen lint test seed dev-api dev-web
 
 up:
 	docker compose up -d
@@ -6,11 +6,18 @@ up:
 down:
 	docker compose down
 
+# golang-migrate runs in Docker, sharing the Postgres container's network, and tracks versions in schema_migrations.
+MIGRATE = docker run --rm --network container:classlab-postgres -v "$(CURDIR)/api/db/migrations:/migrations" migrate/migrate:v4.18.3 -path=/migrations -database "postgres://classlab:classlab_secret@localhost:5432/classlab?sslmode=disable"
+
 migrate:
-	docker compose exec -T postgres psql -U classlab -d classlab -f - < api/db/migrations/000001_init_schema.up.sql
+	$(MIGRATE) up
 
 migrate-down:
-	docker compose exec -T postgres psql -U classlab -d classlab -f - < api/db/migrations/000001_init_schema.down.sql
+	$(MIGRATE) down 1
+
+# One-time, for a database created by the old psql-based target: make migrate-force V=1
+migrate-force:
+	$(MIGRATE) force $(V)
 
 gen:
 	docker run --rm -v "$(CURDIR)/api:/src" -w /src sqlc/sqlc:1.30.0 generate

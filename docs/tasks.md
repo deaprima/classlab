@@ -8,7 +8,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 
 - [x] **Phase 0: Scaffold Monorepo & Fondasi Dev** (Selesai)
 - [x] **Phase 1: Autentikasi, Manajemen Pengguna & RBAC** (Selesai)
-- [ ] **Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan**
+- [x] **Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan** (Selesai)
 - [ ] **Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail**
 - [ ] **Phase 4: Notifikasi In-App & Pelaporan Kerusakan**
 - [ ] **Phase 5: Antarmuka Frontend (UI, Routing & Form)**
@@ -66,13 +66,13 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ---
 
 ### Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan
-- [ ] CRUD Ruang (`GET /rooms`, `GET /rooms/{id}`, `POST /rooms`, `PATCH /rooms/{id}`, `DELETE /rooms/{id}`)
-- [ ] Soft delete ruang dengan validasi BR-07
-- [ ] CRUD Jadwal Akademik (`/schedules`) dengan generator repeat mingguan (BR-09)
-- [ ] Database exclusion constraints untuk pencegahan overlap jadwal
-- [ ] Endpoint `GET /availability` (kalkulasi dinamis status TERSEDIA, DIGUNAKAN, DIAJUKAN)
-- [ ] Endpoint `GET /rooms/{id}/schedule` (timeline gabungan jadwal + booking disetujui)
-- [ ] Automated tests: Penanganan bentrok interval setengah-terbuka `[)`
+- [x] CRUD Ruang (`GET /rooms`, `GET /rooms/{id}`, `POST /rooms`, `PATCH /rooms/{id}`, `DELETE /rooms/{id}`)
+- [x] Soft delete ruang dengan validasi BR-07
+- [x] CRUD Jadwal Akademik (`/schedules`) dengan generator repeat mingguan (BR-09)
+- [x] Database exclusion constraints untuk pencegahan overlap jadwal
+- [x] Endpoint `GET /availability` (kalkulasi dinamis status TERSEDIA, DIGUNAKAN, DIAJUKAN)
+- [x] Endpoint `GET /rooms/{id}/schedule` (timeline gabungan jadwal + booking disetujui)
+- [x] Automated tests: Penanganan bentrok interval setengah-terbuka `[)`
 
 ---
 

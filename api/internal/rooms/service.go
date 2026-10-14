@@ -1,0 +1,327 @@
+package rooms
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+	"unicode/utf8"
+
+	"classlab/api/internal/httpx"
+	"classlab/api/internal/platform/clock"
+	"classlab/api/internal/platform/db"
+	"classlab/api/internal/platform/db/dbgen"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+const (
+	pgUniqueViolation     = "23505"
+	pgForeignKeyViolation = "23503"
+
+	maxFacilities     = 30
+	maxFacilityLength = 60
+	maxCapacity       = 10000
+)
+
+var codePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$`)
+
+type Service struct {
+	pool  *db.Pool
+	q     *dbgen.Queries
+	clock clock.Clock
+}
+
+func NewService(pool *db.Pool, clk clock.Clock) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk}
+}
+
+type ListFilter struct {
+	Type        *string
+	CapacityMin *int
+	IsActive    *bool
+	Query       string
+	Page        int
+	PerPage     int
+}
+
+type CreateInput struct {
+	OrgUnitID  uuid.UUID
+	Code       string
+	Name       string
+	Type       string
+	Capacity   int
+	Facilities []string
+}
+
+// UpdateInput holds only the fields the caller sent; nil means "leave unchanged".
+// The code is immutable: schedules and reports refer to rooms by what people read on the door.
+type UpdateInput struct {
+	Name       *string
+	Type       *string
+	Capacity   *int
+	Facilities *[]string
+	IsActive   *bool
+}
+
+func (in UpdateInput) empty() bool {
+	return in.Name == nil && in.Type == nil && in.Capacity == nil && in.Facilities == nil && in.IsActive == nil
+}
+
+// canManage reports whether the actor may change room data (brief section 3).
+func canManage(actor httpx.Principal) bool {
+	return actor.HasRole(httpx.RoleTUKalab, httpx.RoleKaprodi)
+}
+
+func (s *Service) Get(ctx context.Context, id uuid.UUID) (Room, error) {
+	row, err := s.q.GetRoom(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Room{}, httpx.ErrNotFound
+	}
+	if err != nil {
+		return Room{}, fmt.Errorf("getting room: %w", err)
+	}
+	return FromRow(row), nil
+}
+
+func (s *Service) List(ctx context.Context, f ListFilter) ([]Room, int64, error) {
+	var typ dbgen.NullRoomType
+	if f.Type != nil {
+		typ = dbgen.NullRoomType{RoomType: dbgen.RoomType(*f.Type), Valid: true}
+	}
+	var capMin pgtype.Int4
+	if f.CapacityMin != nil {
+		capMin = pgtype.Int4{Int32: int32(*f.CapacityMin), Valid: true}
+	}
+	var active pgtype.Bool
+	if f.IsActive != nil {
+		active = pgtype.Bool{Bool: *f.IsActive, Valid: true}
+	}
+	var q pgtype.Text
+	if term := strings.TrimSpace(f.Query); term != "" {
+		q = pgtype.Text{String: escapeLike(term), Valid: true}
+	}
+
+	total, err := s.q.CountRooms(ctx, dbgen.CountRoomsParams{Type: typ, CapacityMin: capMin, IsActive: active, Q: q})
+	if err != nil {
+		return nil, 0, fmt.Errorf("counting rooms: %w", err)
+	}
+	rows, err := s.q.ListRooms(ctx, dbgen.ListRoomsParams{
+		Type: typ, CapacityMin: capMin, IsActive: active, Q: q,
+		PageLimit:  int32(f.PerPage),
+		PageOffset: int32((f.Page - 1) * f.PerPage),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("listing rooms: %w", err)
+	}
+
+	out := make([]Room, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, FromRow(r))
+	}
+	return out, total, nil
+}
+
+func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateInput) (Room, error) {
+	if !canManage(actor) {
+		return Room{}, httpx.ErrForbidden
+	}
+
+	in.Code = strings.ToUpper(strings.TrimSpace(in.Code))
+	in.Name = strings.TrimSpace(in.Name)
+
+	var problems []httpx.ErrorDetail
+	if in.OrgUnitID == uuid.Nil {
+		problems = append(problems, httpx.ErrorDetail{Field: "org_unit_id", Message: "org_unit_id wajib diisi."})
+	}
+	problems = append(problems, validateCode(in.Code)...)
+	problems = append(problems, validateName(in.Name)...)
+	problems = append(problems, validateType(in.Type)...)
+	problems = append(problems, validateCapacity(in.Capacity)...)
+	facilities, facilityProblems := normalizeFacilities(in.Facilities)
+	problems = append(problems, facilityProblems...)
+	if len(problems) > 0 {
+		return Room{}, httpx.ValidationError(problems...)
+	}
+
+	row, err := s.q.CreateRoom(ctx, dbgen.CreateRoomParams{
+		OrgUnitID:  in.OrgUnitID,
+		Code:       in.Code,
+		Name:       in.Name,
+		Type:       dbgen.RoomType(in.Type),
+		Capacity:   int32(in.Capacity),
+		Facilities: facilities,
+		CreatedAt:  s.clock.Now(),
+	})
+	if err != nil {
+		if d, ok := constraintDetail(err); ok {
+			return Room{}, httpx.ValidationError(d)
+		}
+		return Room{}, fmt.Errorf("creating room: %w", err)
+	}
+	return FromRow(row), nil
+}
+
+func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUID, in UpdateInput) (Room, error) {
+	if !canManage(actor) {
+		return Room{}, httpx.ErrForbidden
+	}
+	if in.empty() {
+		return Room{}, httpx.ValidationError(httpx.ErrorDetail{Message: "Tidak ada field yang diubah."})
+	}
+
+	var problems []httpx.ErrorDetail
+	params := dbgen.UpdateRoomParams{ID: id, UpdatedAt: s.clock.Now()}
+
+	if in.Name != nil {
+		name := strings.TrimSpace(*in.Name)
+		problems = append(problems, validateName(name)...)
+		params.Name = pgtype.Text{String: name, Valid: true}
+	}
+	if in.Type != nil {
+		problems = append(problems, validateType(*in.Type)...)
+		params.Type = dbgen.NullRoomType{RoomType: dbgen.RoomType(*in.Type), Valid: true}
+	}
+	if in.Capacity != nil {
+		problems = append(problems, validateCapacity(*in.Capacity)...)
+		params.Capacity = pgtype.Int4{Int32: int32(*in.Capacity), Valid: true}
+	}
+	if in.Facilities != nil {
+		facilities, p := normalizeFacilities(*in.Facilities)
+		problems = append(problems, p...)
+		params.Facilities = facilities
+	}
+	if in.IsActive != nil {
+		params.IsActive = pgtype.Bool{Bool: *in.IsActive, Valid: true}
+	}
+	if len(problems) > 0 {
+		return Room{}, httpx.ValidationError(problems...)
+	}
+
+	// Same lock as bookings and schedules take, so a change cannot interleave with them.
+	var updated Room
+	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if _, err := q.LockRoom(ctx, id); err != nil {
+			return err
+		}
+		row, err := q.UpdateRoom(ctx, params)
+		if err != nil {
+			return err
+		}
+		updated = FromRow(row)
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Room{}, httpx.ErrNotFound
+	}
+	if err != nil {
+		return Room{}, fmt.Errorf("updating room: %w", err)
+	}
+	return updated, nil
+}
+
+// Delete soft-deletes a room (BR-07). Schedules and past bookings stay as history.
+func (s *Service) Delete(ctx context.Context, actor httpx.Principal, id uuid.UUID) error {
+	if !canManage(actor) {
+		return httpx.ErrForbidden
+	}
+
+	now := s.clock.Now()
+	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		// Locking first means a booking being created right now either commits before this check
+		// (and blocks the delete) or waits for the delete and is refused as ROOM_INACTIVE/not found.
+		if _, err := q.LockRoom(ctx, id); err != nil {
+			return err
+		}
+		live, err := q.CountLiveBookingsForRoom(ctx, dbgen.CountLiveBookingsForRoomParams{RoomID: id, EndAt: now})
+		if err != nil {
+			return fmt.Errorf("counting live bookings: %w", err)
+		}
+		if live > 0 {
+			return httpx.ErrRoomHasActiveBookings
+		}
+		return q.SoftDeleteRoom(ctx, dbgen.SoftDeleteRoomParams{ID: id, DeletedAt: pgtype.Timestamptz{Time: now, Valid: true}})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return httpx.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("deleting room: %w", err)
+	}
+	return nil
+}
+
+func validateCode(v string) []httpx.ErrorDetail {
+	if !codePattern.MatchString(v) {
+		return []httpx.ErrorDetail{{Field: "code", Message: "Kode harus 1-32 karakter (huruf, angka, titik, garis) dan diawali huruf atau angka."}}
+	}
+	return nil
+}
+
+func validateName(v string) []httpx.ErrorDetail {
+	if n := utf8.RuneCountInString(v); n < 1 || n > 120 {
+		return []httpx.ErrorDetail{{Field: "name", Message: "Nama wajib diisi (maksimal 120 karakter)."}}
+	}
+	return nil
+}
+
+func validateType(v string) []httpx.ErrorDetail {
+	if v != string(dbgen.RoomTypeKELAS) && v != string(dbgen.RoomTypeLAB) {
+		return []httpx.ErrorDetail{{Field: "type", Message: "Tipe ruang harus KELAS atau LAB."}}
+	}
+	return nil
+}
+
+func validateCapacity(v int) []httpx.ErrorDetail {
+	if v < 1 || v > maxCapacity {
+		return []httpx.ErrorDetail{{Field: "capacity", Message: fmt.Sprintf("Kapasitas harus antara 1 dan %d.", maxCapacity)}}
+	}
+	return nil
+}
+
+// normalizeFacilities trims entries, drops duplicates (case-insensitively) and always returns a
+// non-nil slice, so "[]" clears the column instead of being read as "not provided".
+func normalizeFacilities(in []string) ([]string, []httpx.ErrorDetail) {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]bool, len(in))
+	for _, f := range in {
+		f = strings.TrimSpace(f)
+		if f == "" || utf8.RuneCountInString(f) > maxFacilityLength {
+			return nil, []httpx.ErrorDetail{{Field: "facilities", Message: fmt.Sprintf("Setiap fasilitas harus 1-%d karakter.", maxFacilityLength)}}
+		}
+		if key := strings.ToLower(f); !seen[key] {
+			seen[key] = true
+			out = append(out, f)
+		}
+	}
+	if len(out) > maxFacilities {
+		return nil, []httpx.ErrorDetail{{Field: "facilities", Message: fmt.Sprintf("Maksimal %d fasilitas.", maxFacilities)}}
+	}
+	return out, nil
+}
+
+// constraintDetail maps unique/foreign-key violations to a field error instead of a 500.
+func constraintDetail(err error) (httpx.ErrorDetail, bool) {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return httpx.ErrorDetail{}, false
+	}
+	switch {
+	case pgErr.Code == pgUniqueViolation && pgErr.ConstraintName == "rooms_org_unit_code_active_key":
+		return httpx.ErrorDetail{Field: "code", Message: "Kode ruang sudah digunakan."}, true
+	case pgErr.Code == pgForeignKeyViolation && pgErr.ConstraintName == "rooms_org_unit_id_fkey":
+		return httpx.ErrorDetail{Field: "org_unit_id", Message: "Unit organisasi tidak ditemukan."}, true
+	}
+	return httpx.ErrorDetail{}, false
+}
+
+// escapeLike neutralises LIKE wildcards so user input is matched literally.
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}

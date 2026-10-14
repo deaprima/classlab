@@ -49,12 +49,12 @@ func TestSeedIsIdempotentAndGuardsProduction(t *testing.T) {
 	e := newEnv(t) // newEnv already seeded once
 	hasher := password.NewHasher(8, 1, 1)
 
-	created, err := seed.Run(t.Context(), e.pool, hasher, e.clock)
+	res, err := seed.Run(t.Context(), e.pool, hasher, e.clock)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created != 0 {
-		t.Errorf("second seed run created %d accounts; want 0", created)
+	if res != (seed.Result{}) {
+		t.Errorf("second seed run inserted %+v; want nothing", res)
 	}
 	var users, units int
 	if err := e.pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM org_units)").Scan(&users, &units); err != nil {
@@ -62,6 +62,19 @@ func TestSeedIsIdempotentAndGuardsProduction(t *testing.T) {
 	}
 	if users != 8 || units != 1 {
 		t.Errorf("after two runs: %d users, %d org units; want 8 and 1", users, units)
+	}
+
+	// Six rooms (3 KELAS, 3 LAB) and a 12-class weekly timetable over 16 weeks, owned by TU/Kalab.
+	var kelas, lab, schedules, byOthers int
+	if err := e.pool.QueryRow(t.Context(), `SELECT
+		(SELECT count(*) FROM rooms WHERE type = 'KELAS'),
+		(SELECT count(*) FROM rooms WHERE type = 'LAB'),
+		(SELECT count(*) FROM room_schedules WHERE source = 'AKADEMIK'),
+		(SELECT count(*) FROM room_schedules WHERE created_by <> $1)`, e.userIDOf(tuKalabID)).Scan(&kelas, &lab, &schedules, &byOthers); err != nil {
+		t.Fatal(err)
+	}
+	if kelas != 3 || lab != 3 || schedules != 12*16 || byOthers != 0 {
+		t.Errorf("rooms: %d KELAS, %d LAB; schedules: %d (others' %d); want 3, 3, 192, 0", kelas, lab, schedules, byOthers)
 	}
 
 	// One account per role plus five students, as specified.

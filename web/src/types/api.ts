@@ -385,12 +385,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Daftar ruang */
+        /**
+         * Daftar ruang
+         * @description Ruang yang sudah dihapus (soft delete) tidak pernah muncul. Urut berdasarkan kode.
+         */
         get: {
             parameters: {
                 query?: {
                     type?: components["schemas"]["RoomType"];
                     capacity_min?: number;
+                    /** @description Cari pada kode dan nama (tanpa membedakan huruf besar/kecil) */
                     q?: string;
                     is_active?: boolean;
                     page?: components["parameters"]["PageQuery"];
@@ -409,15 +413,20 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["Room"][];
-                            meta?: components["schemas"]["PaginationMeta"];
+                            data: components["schemas"]["Room"][];
+                            meta: components["schemas"]["PaginationMeta"];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
-        /** Tambah ruang baru (TU_KALAB, KAPRODI) */
+        /**
+         * Tambah ruang baru (TU_KALAB, KAPRODI)
+         * @description Kode disimpan dalam huruf besar dan harus unik di antara ruang yang belum dihapus dalam satu unit.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -448,7 +457,10 @@ export interface paths {
                         "application/json": components["schemas"]["Room"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
                 403: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -485,12 +497,16 @@ export interface paths {
                         "application/json": components["schemas"]["Room"];
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
         post?: never;
-        /** Soft delete ruang (TU_KALAB, KAPRODI) */
+        /**
+         * Soft delete ruang (TU_KALAB, KAPRODI)
+         * @description Ditolak dengan `ROOM_HAS_ACTIVE_BOOKINGS` bila masih ada booking MENUNGGU/DISETUJUI yang belum berakhir (BR-07). Jadwal dan riwayat booking tetap tersimpan.
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -502,19 +518,25 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Ruang berhasil dinonaktifkan/dihapus */
+                /** @description Ruang berhasil dihapus */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
             };
         };
         options?: never;
         head?: never;
-        /** Ubah data ruang (TU_KALAB, KAPRODI) */
+        /**
+         * Ubah data ruang (TU_KALAB, KAPRODI)
+         * @description Kode ruang tidak dapat diubah. Mengirim `facilities` menggantikan seluruh daftar (`[]` mengosongkan).
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -524,7 +546,7 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: {
+            requestBody: {
                 content: {
                     "application/json": {
                         name?: string;
@@ -545,7 +567,11 @@ export interface paths {
                         "application/json": components["schemas"]["Room"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
                 403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         trace?: never;
@@ -557,7 +583,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Timeline gabungan jadwal akademik + booking disetujui (overlay) */
+        /**
+         * Timeline gabungan jadwal akademik + booking disetujui (overlay)
+         * @description Berisi jadwal (`SCHEDULE`) dan booking berstatus DISETUJUI (`BOOKING`) yang beririsan dengan [from, to), urut waktu mulai. Booking MENUNGGU tidak ditampilkan. Rentang maksimal 31 hari.
+         */
         get: {
             parameters: {
                 query: {
@@ -579,10 +608,13 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["TimelineItem"][];
+                            data: components["schemas"]["TimelineItem"][];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -602,7 +634,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Buat jadwal akademik manual / berulang */
+        /**
+         * Buat jadwal manual / akademik, opsional berulang mingguan (TU_KALAB, KAPRODI)
+         * @description Dengan `repeat`, dibuat satu sesi per minggu dari `start_at` sampai `repeat.until` (tanggal WIB, inklusif), maksimal 26 sesi. Semua atau tidak sama sekali: bila satu sesi bentrok, tidak ada yang dibuat dan `details` memuat seluruh bentrokan. Jadwal harus berada pada satu hari WIB. `source` default `MANUAL`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -620,24 +655,33 @@ export interface paths {
                         start_at: string;
                         /** Format: date-time */
                         end_at: string;
+                        source?: components["schemas"]["ScheduleSource"];
                         repeat?: {
                             /** @enum {string} */
-                            freq?: "WEEKLY";
+                            freq: "WEEKLY";
                             /** Format: date */
-                            until?: string;
+                            until: string;
                         };
                     };
                 };
             };
             responses: {
-                /** @description Jadwal berhasil dibuat */
+                /** @description Jadwal berhasil dibuat (satu elemen, atau satu per minggu bila berulang) */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Schedule"][];
+                        };
+                    };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -656,7 +700,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Hapus jadwal akademik */
+        /** Hapus jadwal (TU_KALAB, KAPRODI) */
         delete: {
             parameters: {
                 query?: never;
@@ -675,11 +719,17 @@ export interface paths {
                     };
                     content?: never;
                 };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
             };
         };
         options?: never;
         head?: never;
-        /** Ubah jadwal akademik */
+        /**
+         * Ubah jadwal (TU_KALAB, KAPRODI)
+         * @description Ruang tidak dapat dipindah. Pengecekan bentrok mengabaikan jadwal itu sendiri.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -689,7 +739,7 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: {
+            requestBody: {
                 content: {
                     "application/json": {
                         title?: string;
@@ -706,9 +756,16 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Schedule"];
+                    };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         trace?: never;
@@ -720,7 +777,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Status ketersediaan per ruang pada rentang waktu */
+        /**
+         * Status ketersediaan per ruang pada rentang waktu
+         * @description Hanya ruang aktif yang belum dihapus. Prioritas status: DIGUNAKAN (jadwal atau booking DISETUJUI) > DIAJUKAN (booking MENUNGGU) > TERSEDIA. Interval setengah-terbuka [start_at, end_at), jadi 08:00-10:00 dan 10:00-12:00 tidak bentrok. Rentang maksimal 31 hari. Respons tidak dipaginasi.
+         */
         get: {
             parameters: {
                 query: {
@@ -742,10 +802,12 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["AvailabilityRoom"][];
+                            data: components["schemas"]["AvailabilityRoom"][];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -1411,38 +1473,61 @@ export interface components {
         };
         Room: {
             /** Format: uuid */
-            id?: string;
+            id: string;
             /** Format: uuid */
-            org_unit_id?: string;
-            code?: string;
-            name?: string;
-            type?: components["schemas"]["RoomType"];
-            capacity?: number;
-            facilities?: string[];
-            is_active?: boolean;
+            org_unit_id: string;
+            code: string;
+            name: string;
+            type: components["schemas"]["RoomType"];
+            capacity: number;
+            facilities: string[];
+            is_active: boolean;
+        };
+        /** @enum {string} */
+        ScheduleSource: "AKADEMIK" | "MANUAL";
+        Schedule: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            room_id: string;
+            title: string;
+            /** Format: date-time */
+            start_at: string;
+            /** Format: date-time */
+            end_at: string;
+            source: components["schemas"]["ScheduleSource"];
+            /** Format: uuid */
+            created_by: string;
         };
         TimelineItem: {
             /** Format: uuid */
-            id?: string;
+            id: string;
             /** @enum {string} */
-            kind?: "SCHEDULE" | "BOOKING";
-            title?: string;
+            kind: "SCHEDULE" | "BOOKING";
+            /** @description Judul jadwal, atau tujuan (purpose) untuk booking */
+            title: string;
             /** Format: date-time */
-            start_at?: string;
+            start_at: string;
             /** Format: date-time */
-            end_at?: string;
+            end_at: string;
         };
         AvailabilityRoom: {
-            room?: components["schemas"]["Room"];
+            room: components["schemas"]["Room"];
             /** @enum {string} */
-            status?: "TERSEDIA" | "DIGUNAKAN" | "DIAJUKAN";
-            conflicts?: {
-                kind?: string;
-                title?: string;
+            status: "TERSEDIA" | "DIGUNAKAN" | "DIAJUKAN";
+            conflicts: {
+                /** @enum {string} */
+                kind: "SCHEDULE" | "BOOKING";
+                title: string;
+                /**
+                 * @description Hanya untuk kind BOOKING
+                 * @enum {string}
+                 */
+                status?: "MENUNGGU" | "DISETUJUI";
                 /** Format: date-time */
-                start_at?: string;
+                start_at: string;
                 /** Format: date-time */
-                end_at?: string;
+                end_at: string;
             }[];
         };
         Booking: {

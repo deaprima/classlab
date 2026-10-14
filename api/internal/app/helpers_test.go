@@ -69,7 +69,11 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		t.Fatalf("seeding: %v", err)
 	}
 
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	var logOut io.Writer = io.Discard
+	if os.Getenv("TEST_LOG") != "" { // set TEST_LOG=1 to see server logs while debugging a failing test
+		logOut = os.Stderr
+	}
+	log := slog.New(slog.NewTextHandler(logOut, nil))
 	return &env{t: t, pool: pool, clock: clk, cfg: cfg, router: app.NewRouter(cfg, pool, log, clk)}
 }
 
