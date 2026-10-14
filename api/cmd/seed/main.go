@@ -29,7 +29,7 @@ func run() error {
 	}
 
 	ctx := context.Background()
-	pool, err := db.New(ctx, cfg.DatabaseURL)
+	pool, err := db.New(ctx, cfg.DatabaseURL, cfg.DBLockTimeout)
 	if err != nil {
 		return err
 	}

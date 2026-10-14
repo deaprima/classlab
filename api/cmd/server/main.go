@@ -13,6 +13,7 @@ import (
 
 	"classlab/api/internal/app"
 	"classlab/api/internal/config"
+	"classlab/api/internal/maintenance"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/logger"
@@ -33,7 +34,7 @@ func main() {
 	defer cancel()
 
 	appLogger.Info("connecting to postgresql database...")
-	pool, err := db.New(ctx, cfg.DatabaseURL)
+	pool, err := db.New(ctx, cfg.DatabaseURL, cfg.DBLockTimeout)
 	if err != nil {
 		appLogger.Error("failed to connect to database", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -49,6 +50,8 @@ func main() {
 		}
 	}
 
+	go maintenance.Run(ctx, pool, clock.NewRealClock(), appLogger, time.Hour)
+
 	router, err := app.NewRouter(ctx, cfg, pool, appLogger, clock.NewRealClock())
 	if err != nil {
 		appLogger.Error("failed to build router", slog.String("error", err.Error()))
@@ -56,11 +59,15 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:    ":" + cfg.Port,
+		Handler: router,
+		// ReadTimeout covers the whole request body, and a report photo is up to 5 MB, so it is generous;
+		// ReadHeaderTimeout is the tight one against slow-header attacks. The notification stream lifts the
+		// write deadline for its own connection.
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	shutdownChan := make(chan os.Signal, 1)

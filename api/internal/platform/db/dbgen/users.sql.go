@@ -13,6 +13,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveKaprodi = `-- name: CountActiveKaprodi :one
+SELECT count(*) FROM users WHERE role = 'KAPRODI' AND is_active
+`
+
+func (q *Queries) CountActiveKaprodi(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveKaprodi)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countActiveUsersByIdentifiers = `-- name: CountActiveUsersByIdentifiers :one
 SELECT count(*) FROM users WHERE identifier = ANY($1::text[]) AND is_active
 `
@@ -232,6 +243,17 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockKaprodiGuard = `-- name: LockKaprodiGuard :exec
+SELECT pg_advisory_xact_lock(hashtextextended('kaprodi-guard', 0))
+`
+
+// Taken before an account change that could remove the last Kaprodi, so two such changes made at
+// the same moment cannot each see "the other one is still there".
+func (q *Queries) LockKaprodiGuard(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockKaprodiGuard)
+	return err
 }
 
 const seedUser = `-- name: SeedUser :execrows

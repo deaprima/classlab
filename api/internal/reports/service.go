@@ -92,6 +92,13 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		case !ok:
 			problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: "Foto harus berformat JPG, PNG, atau WebP."})
 		default:
+			// Metadata (notably the GPS position in EXIF) is removed before anything is stored.
+			clean, err := stripMetadata(kind, in.Photo)
+			if err != nil {
+				problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: "Foto rusak atau tidak dapat dibaca."})
+				break
+			}
+			in.Photo = clean
 			photoName = uuid.NewString() + kind.ext
 		}
 	}

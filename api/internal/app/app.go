@@ -30,6 +30,9 @@ import (
 const (
 	loginMaxAttempts = 5
 	loginWindow      = 15 * time.Minute
+
+	// maxStreamsPerUser is how many notification streams one user may hold open (tabs, devices).
+	maxStreamsPerUser = 5
 )
 
 // NewRouter fails only on an invalid booking configuration; config.Load already rejects that at start.
@@ -59,7 +62,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 		notifications.NewService(pool, clk),
 		notifications.NewHub(ctx, pool.Config().ConnString(), log),
 		// A stream ends before the access token it was opened with expires.
-		notifications.StreamOptions{Heartbeat: cfg.SSEHeartbeat, MaxLifetime: cfg.JWTAccessExpiry},
+		notifications.StreamOptions{Heartbeat: cfg.SSEHeartbeat, MaxLifetime: cfg.JWTAccessExpiry, MaxPerUser: maxStreamsPerUser},
 		log,
 	)
 	reportsHandler := reports.NewHandler(
@@ -89,6 +92,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 	r.Get("/health", health(pool, clk))
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(httpx.NoStore)
 		r.Mount("/auth", auth.NewHandler(authSvc, cfg.CookieSecure).Routes(authenticate))
 		r.With(authenticate).Mount("/users", users.NewHandler(usersSvc).Routes())
 		r.Group(func(r chi.Router) {

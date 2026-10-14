@@ -16,6 +16,16 @@ func testHub() *Hub {
 	return h
 }
 
+// subscribe opens a stream without a cap.
+func subscribe(t *testing.T, h *Hub, user uuid.UUID) *Subscription {
+	t.Helper()
+	s, ok := h.Subscribe(user, 0)
+	if !ok {
+		t.Fatal("subscription refused without a cap")
+	}
+	return s
+}
+
 func TestParsePayload(t *testing.T) {
 	user, id := uuid.New(), uuid.New()
 	gotUser, gotID, ok := parsePayload(user.String() + ":" + id.String())
@@ -32,7 +42,7 @@ func TestParsePayload(t *testing.T) {
 func TestDeliverReachesOnlyTheNamedUser(t *testing.T) {
 	h := testHub()
 	alice, bob := uuid.New(), uuid.New()
-	a1, a2, b1 := h.Subscribe(alice), h.Subscribe(alice), h.Subscribe(bob)
+	a1, a2, b1 := subscribe(t, h, alice), subscribe(t, h, alice), subscribe(t, h, bob)
 	defer a1.Close()
 	defer a2.Close()
 	defer b1.Close()
@@ -61,7 +71,7 @@ func TestDeliverReachesOnlyTheNamedUser(t *testing.T) {
 func TestSlowSubscriberIsDroppedWithoutBlockingOthers(t *testing.T) {
 	h := testHub()
 	user := uuid.New()
-	slow, fast := h.Subscribe(user), h.Subscribe(user)
+	slow, fast := subscribe(t, h, user), subscribe(t, h, user)
 	defer fast.Close()
 
 	for range subscriberBuffer {
@@ -85,7 +95,7 @@ func TestSlowSubscriberIsDroppedWithoutBlockingOthers(t *testing.T) {
 
 func TestBroadcastReachesEveryone(t *testing.T) {
 	h := testHub()
-	subs := []*Subscription{h.Subscribe(uuid.New()), h.Subscribe(uuid.New())}
+	subs := []*Subscription{subscribe(t, h, uuid.New()), subscribe(t, h, uuid.New())}
 	h.broadcast(Resync)
 	for i, s := range subs {
 		select {
@@ -100,5 +110,33 @@ func TestBroadcastReachesEveryone(t *testing.T) {
 	}
 	if len(h.subs) != 0 {
 		t.Errorf("%d users still registered after every subscription closed", len(h.subs))
+	}
+}
+
+func TestSubscribeEnforcesThePerUserCap(t *testing.T) {
+	h := testHub()
+	user, other := uuid.New(), uuid.New()
+
+	var open []*Subscription
+	for range 3 {
+		s, ok := h.Subscribe(user, 3)
+		if !ok {
+			t.Fatal("refused below the cap")
+		}
+		open = append(open, s)
+	}
+	if _, ok := h.Subscribe(user, 3); ok {
+		t.Error("a fourth stream was accepted with a cap of 3")
+	}
+	if _, ok := h.Subscribe(other, 3); !ok {
+		t.Error("another user was refused because of this user's streams")
+	}
+
+	open[0].Close()
+	if _, ok := h.Subscribe(user, 3); !ok {
+		t.Error("closing a stream did not free a slot")
+	}
+	if len(h.subs[user]) != 3 {
+		t.Errorf("%d streams registered; want 3", len(h.subs[user]))
 	}
 }

@@ -861,7 +861,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Ajukan booking baru (MAHASISWA) */
+        /**
+         * Ajukan booking baru (MAHASISWA)
+         * @description Satu mahasiswa maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu `MENUNGGU` atau `DISETUJUI` yang belum berakhir. Melebihi batas dijawab 422 tanpa `field`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1271,7 +1274,7 @@ export interface paths {
         };
         /**
          * Server-Sent Events stream untuk pembaruan notifikasi
-         * @description Dibaca dengan `fetch` (EventSource tidak bisa mengirim header Authorization). Event: `ready` (`{"unread": N}`, dikirim sekali setelah stream aktif), `notification` (objek Notification; field `id:` berisi UUID-nya), `resync` (server kehilangan event; ambil ulang `GET /notifications`), dan `reconnect` (server menutup stream; buka stream baru). Baris komentar `: keep-alive` dikirim berkala. Stream ditutup sebelum access token yang dipakai membukanya kedaluwarsa. Event tidak diputar ulang: setelah (re)connect, ambil ulang daftar notifikasi.
+         * @description Dibaca dengan `fetch` (EventSource tidak bisa mengirim header Authorization). Event: `ready` (`{"unread": N}`, dikirim sekali setelah stream aktif), `notification` (objek Notification; field `id:` berisi UUID-nya), `resync` (server kehilangan event; ambil ulang `GET /notifications`), dan `reconnect` (server menutup stream; buka stream baru). Baris komentar `: keep-alive` dikirim berkala. Stream ditutup sebelum access token yang dipakai membukanya kedaluwarsa. Event tidak diputar ulang: setelah (re)connect, ambil ulang daftar notifikasi. Satu pengguna maksimal membuka 5 stream sekaligus; yang ke-6 dijawab 429.
          */
         get: {
             parameters: {
@@ -1292,6 +1295,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                429: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;

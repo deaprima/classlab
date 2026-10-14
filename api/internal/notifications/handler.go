@@ -23,6 +23,8 @@ type StreamOptions struct {
 	// MaxLifetime ends a stream so that it never outlives the access token it was opened with. The
 	// client then reconnects with a fresh token, which also re-checks that the account is still active.
 	MaxLifetime time.Duration
+	// MaxPerUser caps the streams one user may keep open at once (a few tabs and devices are normal).
+	MaxPerUser int
 }
 
 type Handler struct {
@@ -116,7 +118,13 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Subscribe before counting, so a notification created in between is not missed by both.
-	sub := h.hub.Subscribe(actor.UserID)
+	sub, ok := h.hub.Subscribe(actor.UserID, h.opts.MaxPerUser)
+	if !ok {
+		w.Header().Set("Retry-After", "30")
+		httpx.WriteError(w, r, httpx.NewCustomError(http.StatusTooManyRequests, "RATE_LIMITED",
+			"Terlalu banyak koneksi notifikasi yang terbuka. Tutup tab atau perangkat lain, lalu coba lagi.", nil, httpx.ErrRateLimited))
+		return
+	}
 	defer sub.Close()
 
 	select {

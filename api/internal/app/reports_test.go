@@ -2,6 +2,10 @@ package app_test
 
 import (
 	"bytes"
+	"encoding/binary"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -24,21 +28,42 @@ type photoPart struct {
 	data        []byte
 }
 
+// The photo fixtures are structurally valid files, because uploads are parsed and stripped of metadata.
+
+// jpegBytes is a real JPEG padded with trailing zeros up to size. Bytes after the end marker are kept,
+// which lets the size-limit tests hit an exact length.
 func jpegBytes(size int) []byte {
-	return pad([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 'J', 'F', 'I', 'F'}, size)
-}
-
-func pngBytes(size int) []byte { return pad([]byte("\x89PNG\r\n\x1a\n"), size) }
-
-func webpBytes(size int) []byte {
-	return pad([]byte{'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'}, size)
-}
-
-func pad(head []byte, size int) []byte {
-	if size < len(head) {
-		size = len(head)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, image.NewGray(image.Rect(0, 0, 8, 8)), nil); err != nil {
+		panic(err)
 	}
-	return append(head, make([]byte, size-len(head))...)
+	return pad(buf.Bytes(), size)
+}
+
+// pngBytes is a real PNG. size is ignored because anything after the end chunk is discarded.
+func pngBytes(size int) []byte {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}
+
+// webpBytes is a well-framed RIFF/WebP container of about size bytes. Its image data is filler, which
+// is enough because the server checks and strips the framing but never decodes the picture.
+func webpBytes(size int) []byte {
+	payload := make([]byte, max(size-20, 10)&^1) // even length, so no padding byte is needed
+	out := []byte("RIFF\x00\x00\x00\x00WEBPVP8L\x00\x00\x00\x00")
+	binary.LittleEndian.PutUint32(out[4:], uint32(4+8+len(payload)))
+	binary.LittleEndian.PutUint32(out[16:], uint32(len(payload)))
+	return append(out, payload...)
+}
+
+func pad(data []byte, size int) []byte {
+	if size <= len(data) {
+		return data
+	}
+	return append(data, make([]byte, size-len(data))...)
 }
 
 func (e *env) multipartReport(token string, fields map[string]string, photo *photoPart) (*http.Request, []byte, *httptest.ResponseRecorder) {
@@ -723,4 +748,68 @@ func TestReportIsNotCreatedWhenThePhotoCannotBeStored(t *testing.T) {
 	}
 	// Reports without a photo do not touch the disk and still work.
 	mustStatus(t, e.postReport(tok, room, "Tanpa foto", nil), http.StatusCreated)
+}
+
+// Phones put the GPS position of a photo into its EXIF block; it must not be stored or served.
+func TestReportPhotoMetadataIsStripped(t *testing.T) {
+	e := newEnv(t)
+	tok := e.login(mahasiswaA).accessToken
+	const secret = "GPS-LAT-6.2088-LON-106.8456"
+
+	// EXIF: big-endian TIFF, one Orientation entry (6 = rotated), the "GPS data" after it.
+	tiff := []byte{'M', 'M', 0, 42, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0}
+	payload := append(append([]byte("Exif\x00\x00"), tiff...), secret...)
+	segment := append([]byte{0xFF, 0xE1, byte((len(payload) + 2) >> 8), byte(len(payload) + 2)}, payload...)
+	plain := jpegBytes(0)
+	withGPS := append(append(append([]byte{}, plain[:2]...), segment...), plain[2:]...)
+
+	res := e.postReport(tok, e.freshRoom(), "Rusak", &photoPart{"IMG_0001.jpg", "image/jpeg", withGPS})
+	mustStatus(t, res, http.StatusCreated)
+	id := idOf(res)
+
+	served := e.do("GET", "/api/v1/reports/"+id+"/photo", nil, bearer(tok))
+	mustStatus(t, served, http.StatusOK)
+	if bytes.Contains(served.Body.Bytes(), []byte(secret)) {
+		t.Error("the served photo still carries the GPS data")
+	}
+	for _, f := range e.uploadedFiles() {
+		raw, err := os.ReadFile(filepath.Join(e.cfg.UploadDir, "reports", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(raw, []byte(secret)) {
+			t.Errorf("the stored file %s still carries the GPS data", f)
+		}
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(served.Body.Bytes())); err != nil {
+		t.Errorf("the served photo no longer decodes: %v", err)
+	}
+	// The orientation survives, so a portrait photo is not shown on its side.
+	if !bytes.Contains(served.Body.Bytes(), []byte("Exif\x00\x00MM\x00\x2a")) || !bytes.Contains(served.Body.Bytes(), []byte{0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0, 6}) {
+		t.Error("the orientation tag was lost")
+	}
+	if served.Body.Len() >= len(withGPS) {
+		t.Errorf("served %d bytes from %d uploaded; stripping should shrink it", served.Body.Len(), len(withGPS))
+	}
+}
+
+func TestReportPhotoWithBrokenStructureIsRefused(t *testing.T) {
+	e := newEnv(t)
+	tok := e.login(mahasiswaA).accessToken
+	good := jpegBytes(0)
+
+	for name, photo := range map[string]*photoPart{
+		"jpeg cut before the scan":      {"a.jpg", "image/jpeg", good[:12]},
+		"jpeg with garbage after start": {"a.jpg", "image/jpeg", []byte{0xFF, 0xD8, 0xFF, 0x12, 0x34, 0x56, 0x78}},
+		"png cut in half":               {"a.png", "image/png", pngBytes(0)[:20]},
+		"webp claiming a larger size":   {"a.webp", "image/webp", append([]byte("RIFF\xFF\x00\x00\x00WEBP"), 'V', 'P', '8', 'L', 4, 0, 0, 0, 1, 2, 3, 4)},
+	} {
+		res := e.postReport(tok, e.freshRoom(), "Rusak", photo)
+		if res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)["photo"] {
+			t.Errorf("%s: %d %s; want 422 naming photo", name, res.Code, res.Body.String())
+		}
+	}
+	if files := e.uploadedFiles(); len(files) != 0 {
+		t.Errorf("refused uploads left files: %v", files)
+	}
 }

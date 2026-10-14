@@ -62,19 +62,24 @@ func NewHub(ctx context.Context, connString string, log *slog.Logger) *Hub {
 	}
 }
 
-// Subscribe registers for a user's notifications and starts the listener on first use.
-func (h *Hub) Subscribe(user uuid.UUID) *Subscription {
+// Subscribe registers for a user's notifications and starts the listener on first use. limit caps how
+// many streams one user may hold open (0 means no cap); ok is false when the cap is reached.
+func (h *Hub) Subscribe(user uuid.UUID, limit int) (sub *Subscription, ok bool) {
 	h.startOnce.Do(func() { go h.run() })
 
 	c := make(chan uuid.UUID, subscriberBuffer)
 	s := &Subscription{C: c, c: c, user: user, hub: h}
 	h.mu.Lock()
+	if limit > 0 && len(h.subs[user]) >= limit {
+		h.mu.Unlock()
+		return nil, false
+	}
 	if h.subs[user] == nil {
 		h.subs[user] = make(map[*Subscription]struct{})
 	}
 	h.subs[user][s] = struct{}{}
 	h.mu.Unlock()
-	return s
+	return s, true
 }
 
 // Ready is closed once the hub is listening. A subscriber that must not miss anything waits on it

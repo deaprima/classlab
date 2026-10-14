@@ -2,10 +2,13 @@ package httpx_test
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
 	"classlab/api/internal/httpx"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestMapError(t *testing.T) {
@@ -99,5 +102,16 @@ func TestMapError(t *testing.T) {
 				t.Fatalf("expected request ID %s, got %s", reqID, env.Error.RequestID)
 			}
 		})
+	}
+}
+
+func TestMapErrorLockTimeoutIsServiceUnavailable(t *testing.T) {
+	err := fmt.Errorf("locking room: %w", &pgconn.PgError{Code: httpx.PGLockNotAvailable, Message: "canceling statement due to lock timeout"})
+	status, env := httpx.MapError(err, "req_1")
+	if status != http.StatusServiceUnavailable || env.Error.Code != "SERVICE_BUSY" {
+		t.Fatalf("got %d %s; want 503 SERVICE_BUSY", status, env.Error.Code)
+	}
+	if env.Error.Message == "" || env.Error.Details == nil || env.Error.RequestID != "req_1" {
+		t.Errorf("incomplete envelope: %+v", env.Error)
 	}
 }

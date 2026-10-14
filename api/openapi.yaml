@@ -568,6 +568,9 @@ paths:
         '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
       summary: Ajukan booking baru (MAHASISWA)
+      description: >-
+        Satu mahasiswa maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu
+        `MENUNGGU` atau `DISETUJUI` yang belum berakhir. Melebihi batas dijawab 422 tanpa `field`.
       security:
         - BearerAuth: []
       parameters:
@@ -808,6 +811,7 @@ paths:
         dan `reconnect` (server menutup stream; buka stream baru). Baris komentar `: keep-alive` dikirim
         berkala. Stream ditutup sebelum access token yang dipakai membukanya kedaluwarsa. Event tidak
         diputar ulang: setelah (re)connect, ambil ulang daftar notifikasi.
+        Satu pengguna maksimal membuka 5 stream sekaligus; yang ke-6 dijawab 429.
       security:
         - BearerAuth: []
       responses:
@@ -817,6 +821,7 @@ paths:
             text/event-stream:
               schema: { type: string }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '429': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports:
     get:
@@ -968,11 +973,11 @@ components:
     PageQuery:
       name: page
       in: query
-      schema: { type: integer, default: 1 }
+      schema: { type: integer, default: 1, minimum: 1, maximum: 10000 }
     PerPageQuery:
       name: per_page
       in: query
-      schema: { type: integer, default: 20, maximum: 100 }
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
 
   responses:
     ErrorResponse:

@@ -122,6 +122,12 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	err = s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 
+		// The student lock comes first and is held to commit, so two requests of one student for different
+		// rooms are counted one after the other. Locks are always taken student, then room.
+		if err := q.LockRequesterQuota(ctx, actor.UserID.String()); err != nil {
+			return fmt.Errorf("locking booking quota: %w", err)
+		}
+
 		room, err := q.LockRoom(ctx, in.RoomID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -133,6 +139,13 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		if b, ok, err := s.findReplay(ctx, q, actor, in); err != nil || ok {
 			created, replayed = b, ok
 			return err
+		}
+		active, err := q.CountActiveBookingsForRequester(ctx, dbgen.CountActiveBookingsForRequesterParams{RequesterID: actor.UserID, EndAt: now})
+		if err != nil {
+			return fmt.Errorf("counting active bookings: %w", err)
+		}
+		if active >= int64(s.rules.MaxActivePerUser) {
+			return quotaExceeded(s.rules.MaxActivePerUser)
 		}
 		if !room.IsActive {
 			return httpx.ErrRoomInactive
@@ -600,4 +613,11 @@ func optionalReason(v string) (string, error) {
 		return "", httpx.ValidationError(httpx.ErrorDetail{Field: "reason", Message: fmt.Sprintf("Alasan maksimal %d karakter.", maxReasonRunes)})
 	}
 	return v, nil
+}
+
+// quotaExceeded is a 422 with no field: the request is well-formed, the student just holds too many.
+func quotaExceeded(limit int) error {
+	return httpx.ValidationError(httpx.ErrorDetail{
+		Message: fmt.Sprintf("Anda sudah memiliki %d pengajuan aktif (menunggu atau disetujui). Batalkan salah satunya atau tunggu hingga selesai sebelum mengajukan lagi.", limit),
+	})
 }

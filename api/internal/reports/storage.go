@@ -9,21 +9,21 @@ import (
 	"regexp"
 )
 
-// image is a file type the upload accepts. The type is decided from the file's own leading bytes;
+// imageType is a file type the upload accepts. The type is decided from the file's own leading bytes;
 // the file name and Content-Type the client sends are never trusted.
-type image struct {
+type imageType struct {
 	ext         string
 	contentType string
 }
 
 var (
-	imageJPEG = image{".jpg", "image/jpeg"}
-	imagePNG  = image{".png", "image/png"}
-	imageWebP = image{".webp", "image/webp"}
+	imageJPEG = imageType{".jpg", "image/jpeg"}
+	imagePNG  = imageType{".png", "image/png"}
+	imageWebP = imageType{".webp", "image/webp"}
 )
 
 // sniffImage recognises JPEG, PNG and WebP by their magic bytes.
-func sniffImage(head []byte) (image, bool) {
+func sniffImage(head []byte) (imageType, bool) {
 	switch {
 	case bytes.HasPrefix(head, []byte{0xFF, 0xD8, 0xFF}):
 		return imageJPEG, true
@@ -32,7 +32,7 @@ func sniffImage(head []byte) (image, bool) {
 	case len(head) >= 12 && bytes.Equal(head[0:4], []byte("RIFF")) && bytes.Equal(head[8:12], []byte("WEBP")):
 		return imageWebP, true
 	}
-	return image{}, false
+	return imageType{}, false
 }
 
 // storedName is the only shape of file name the store reads or writes: a UUID plus a known extension.
@@ -92,7 +92,7 @@ func (s *Storage) Remove(name string) error {
 }
 
 // imageForName maps a stored name's extension back to its image type.
-func imageForName(name string) image {
+func imageForName(name string) imageType {
 	switch filepath.Ext(name) {
 	case ".png":
 		return imagePNG

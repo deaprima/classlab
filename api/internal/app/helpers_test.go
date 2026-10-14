@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,6 +44,25 @@ type env struct {
 	clock  *clock.MockClock
 	cfg    *config.Config
 	router http.Handler
+	logs   *syncBuffer // everything the server logged, for tests that check what must not be logged
+}
+
+// syncBuffer is a bytes.Buffer safe for the server goroutines that log into it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
@@ -66,6 +86,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		BookingMinDurationMinutes: 30,
 		BookingMaxDurationHours:   8,
 		BookingMaxFutureDays:      30,
+		// High on purpose: most tests make many bookings for one student. Quota tests set it to 5, the real default.
+		BookingMaxActivePerUser: 100,
 
 		UploadDir:      t.TempDir(),
 		UploadMaxBytes: 5 << 20,
@@ -80,16 +102,17 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		t.Fatalf("seeding: %v", err)
 	}
 
-	var logOut io.Writer = io.Discard
+	logs := &syncBuffer{}
+	var logOut io.Writer = logs
 	if os.Getenv("TEST_LOG") != "" { // set TEST_LOG=1 to see server logs while debugging a failing test
-		logOut = os.Stderr
+		logOut = io.MultiWriter(logs, os.Stderr)
 	}
 	log := slog.New(slog.NewTextHandler(logOut, nil))
 	router, err := app.NewRouter(t.Context(), cfg, pool, log, clk)
 	if err != nil {
 		t.Fatalf("building router: %v", err)
 	}
-	return &env{t: t, pool: pool, clock: clk, cfg: cfg, router: router}
+	return &env{t: t, pool: pool, clock: clk, cfg: cfg, router: router, logs: logs}
 }
 
 type reqOpt func(*http.Request)
