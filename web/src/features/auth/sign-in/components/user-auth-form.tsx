@@ -92,7 +92,10 @@ export function UserAuthForm({
             <FormItem>
               <FormLabel>NIM / NIP</FormLabel>
               <FormControl>
-                <Input placeholder='Contoh: 220101001 atau 19850101...' {...field} />
+                <Input
+                  placeholder='Contoh: 220101001 atau 19850101...'
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -112,7 +115,11 @@ export function UserAuthForm({
           )}
         />
         <Button className='mt-2' disabled={isLoading}>
-          {isLoading ? <Loader2 className='animate-spin mr-2 h-4 w-4' /> : <LogIn className='mr-2 h-4 w-4' />}
+          {isLoading ? (
+            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+          ) : (
+            <LogIn className='mr-2 h-4 w-4' />
+          )}
           Masuk
         </Button>
       </form>

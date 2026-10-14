@@ -34,7 +34,8 @@ dist-ssr/
 Thumbs.db
 
 # Database & Upload storage (local volume)
-data/
-uploads/
-tmp/
-scratch/
+/data/
+/uploads/
+/api/uploads/
+/tmp/
+/scratch/

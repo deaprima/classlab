@@ -17,9 +17,12 @@ export function SignIn() {
     <AuthLayout>
       <Card className='max-w-sm gap-4'>
         <CardHeader>
-          <CardTitle className='text-lg tracking-tight'>Masuk ke ClassLab</CardTitle>
+          <CardTitle className='text-lg tracking-tight'>
+            Masuk ke ClassLab
+          </CardTitle>
           <CardDescription>
-            Gunakan NIM atau NIP yang telah terdaftar oleh administrator program studi.
+            Gunakan NIM atau NIP yang telah terdaftar oleh administrator program
+            studi.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -27,7 +30,8 @@ export function SignIn() {
         </CardContent>
         <CardFooter>
           <p className='px-4 text-center text-xs text-muted-foreground'>
-            Sistem Peminjaman Ruang Kelas dan Laboratorium Kampus (MVP Rumpun TI).
+            Sistem Peminjaman Ruang Kelas dan Laboratorium Kampus (MVP Rumpun
+            TI).
           </p>
         </CardFooter>
       </Card>
