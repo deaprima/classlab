@@ -445,6 +445,8 @@ Guard peran lewat `beforeLoad` di route; sidebar berbeda per peran. Tampilkan er
 
 Satu phase = satu PR (atau beberapa PR kecil). Jangan mulai phase berikutnya sebelum yang sebelumnya lolos `make lint test`.
 
+**Commit, push, dan PR dibuat oleh manusia, bukan agent.** Agent dilarang menjalankan `git commit`, `git push`, `git merge`, `git rebase`, atau membuat PR; agent hanya menyiapkan saran pesan commit dan deskripsi PR sebagai teks (lihat `agent.md` bagian 8).
+
 | Phase | Isi | Selesai bila |
 |---|---|---|
 | 0 | Scaffold monorepo, `docker-compose.yml` (Postgres), `Makefile`, config env, `/health`, `api/openapi.yaml` draft, migrasi awal, pembersihan template FE | `make up` jalan; `GET /health` 200; FE `pnpm build` hijau; OpenAPI valid |

@@ -30,6 +30,7 @@ type Config struct {
 	BookingMaxFutureDays      int
 	UploadDir                 string
 	UploadMaxBytes            int64
+	SSEHeartbeat              time.Duration
 }
 
 // Load loads configuration from environment variables with optional .env file support.
@@ -58,6 +59,7 @@ func Load() (*Config, error) {
 		BookingMaxFutureDays:      getIntEnv("BOOKING_MAX_FUTURE_DAYS", 30),
 		UploadDir:                 getEnv("UPLOAD_DIR", "./uploads"),
 		UploadMaxBytes:            getInt64Env("UPLOAD_MAX_BYTES", 5*1024*1024),
+		SSEHeartbeat:              getDurationEnv("SSE_HEARTBEAT", 25*time.Second),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -78,6 +80,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("COOKIE_SECURE must be true when APP_ENV=production")
 	}
 
+	if cfg.UploadDir == "" || cfg.UploadMaxBytes < 1 {
+		return nil, fmt.Errorf("UPLOAD_DIR must be set and UPLOAD_MAX_BYTES must be positive")
+	}
+	if cfg.SSEHeartbeat < time.Second {
+		return nil, fmt.Errorf("SSE_HEARTBEAT must be at least 1s")
+	}
 	if _, err := cfg.BookingRules(); err != nil {
 		return nil, err
 	}

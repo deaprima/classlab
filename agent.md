@@ -7,7 +7,7 @@ Dokumen ini mengatur **BAGAIMANA** kamu bekerja. **APA** yang dibangun ada di `b
 1. **Benar dulu, baru cepat.** Aturan bentrok jadwal, RBAC, dan integritas riwayat tidak boleh dikorbankan demi kecepatan.
 2. **Jangan perluas scope.** Daftar *out of scope* di `brief.md` bagian 1 bersifat mengikat.
 3. **Jujur soal status.** Katakan apa yang sudah dijalankan dan dites, apa yang belum, dan apa yang kamu tebak. Jangan menyatakan "selesai" atas hal yang tidak kamu jalankan.
-4. **Perubahan kecil dan bisa direview.** Satu tujuan per commit, satu phase per PR.
+4. **Perubahan kecil dan bisa direview.** Satu tujuan per commit, satu phase per PR. Commit, push, dan PR dilakukan **manusia**, bukan agent (lihat bagian 8).
 5. **Kontrak adalah janji.** `api/openapi.yaml` dipakai frontend. Mengubahnya diam-diam merusak pekerjaan orang lain.
 
 ## 2. Kapan harus bertanya (berhenti dan tanya)
@@ -137,12 +137,16 @@ Aturan tes:
 
 ## 8. Git dan alur kerja
 
+> **ATURAN KERAS: agent DILARANG melakukan `git commit`, `git push`, `git merge`, `git rebase`, `git tag`, membuat atau membuka PR, dan menghapus atau membuat ulang cabang remote, dalam keadaan apa pun.** Semua itu hanya dilakukan oleh manusia. Jawaban ambigu seperti "oke", "lanjut", atau "gas" **bukan** izin. Bahkan bila pengguna secara eksplisit meminta, agent tidak melakukannya; agent menyiapkan pesan commit dan deskripsi PR sebagai teks, lalu berhenti. Perubahan dibiarkan di working tree (tidak di-stage, tidak di-commit).
+
+Yang boleh dilakukan agent: perintah git baca-saja (`git status`, `git diff`, `git log`, `git show`, `git branch`) untuk memahami keadaan repo.
+
 - Jangan commit langsung ke `main`. Cabang: `feat/<modul>-<ringkas>`, `fix/...`, `chore/...`.
-- Pesan commit mengikuti **Conventional Commits** (`feat(bookings): reject requires reason`). Bahasa Inggris.
-- Satu PR = satu phase atau satu bagian yang koheren. Deskripsi PR memuat: apa yang berubah, cara menjalankan/menguji, hal yang belum dikerjakan, dan keputusan yang diambil.
-- Jangan mencampur refactor, pembersihan, dan fitur dalam satu commit.
-- Jangan commit rahasia, `.env`, dump database, atau file build (`dist`, binary).
-- Jangan `force push` ke cabang bersama.
+- Saat pekerjaan selesai, agent **menyarankan** pesan commit dalam laporan (bagian 10) dan manusia yang menjalankannya. Pesan mengikuti **Conventional Commits** (`feat(bookings): reject requires reason`). Bahasa Inggris.
+- Satu PR = satu phase atau satu bagian yang koheren. Agent menyiapkan teks deskripsi PR: apa yang berubah, cara menjalankan/menguji, hal yang belum dikerjakan, dan keputusan yang diambil.
+- Agent menyarankan pemisahan commit bila ada refactor, pembersihan, atau fitur yang sebaiknya tidak bercampur dalam satu commit.
+- Jangan membuat file yang berisi rahasia, `.env`, dump database, atau file build (`dist`, binary) di tempat yang akan ikut ter-commit manusia; periksa `.gitignore`.
+- Jangan `force push` ke cabang bersama (dan tentu saja agent tidak melakukan push sama sekali).
 
 ## 9. Gaya kode dan bahasa
 
@@ -162,12 +166,14 @@ Diuji: <perintah yang dijalankan dan hasilnya>
 Belum diuji / belum dikerjakan: <daftar jujur>
 Keputusan diambil: <dengan default apa, dan dicatat di docs/decisions.md>
 Perlu keputusan: <pertanyaan konkret, bila ada>
+Saran commit/PR: <pesan commit dan deskripsi PR sebagai teks; agent TIDAK menjalankan commit atau push>
 ```
 
 Jangan menulis klaim seperti "semua berfungsi" tanpa menyebut bukti. Jika sebuah perintah gagal dan kamu tidak bisa memperbaikinya, laporkan error aslinya.
 
 ## 11. Daftar larangan cepat
 
+- **Jangan pernah `git commit`, `git push`, `git merge`, `git rebase`, `git tag`, atau membuat/membuka PR.** Hanya manusia yang melakukannya. "oke", "lanjut", "gas" bukan izin.
 - Jangan membangun fitur *out of scope* (mobile, CCTV, SSO, email/WA, pembayaran, inventaris alat).
 - Jangan mengubah jadwal akademik (`room_schedules`) akibat booking; gunakan overlay (BR-05).
 - Jangan menyimpan token di localStorage atau mengirim refresh token di body.
@@ -179,6 +185,7 @@ Jangan menulis klaim seperti "semua berfungsi" tanpa menyebut bukti. Jika sebuah
 
 ## 12. Definition of Done (per tugas)
 
+- [ ] Tidak ada `git commit`/`push`/PR yang dijalankan agent; perubahan dibiarkan di working tree untuk manusia
 - [ ] Perilaku sesuai `brief.md` (aturan bisnis, peran, kode error)
 - [ ] `api/openapi.yaml` diperbarui bila kontrak berubah (dan dikonfirmasi bila mengubah kontrak yang sudah ada)
 - [ ] Migrasi (jika ada) punya `up` dan `down`, dan sudah dicoba maju-mundur

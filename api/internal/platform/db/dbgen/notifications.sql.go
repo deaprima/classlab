@@ -13,9 +13,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countNotifications = `-- name: CountNotifications :one
+SELECT count(*)
+FROM notifications
+WHERE user_id = $1
+  AND (NOT $2::boolean OR read_at IS NULL)
+`
+
+type CountNotificationsParams struct {
+	UserID     uuid.UUID `json:"user_id"`
+	UnreadOnly bool      `json:"unread_only"`
+}
+
+func (q *Queries) CountNotifications(ctx context.Context, arg CountNotificationsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countNotifications, arg.UserID, arg.UnreadOnly)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createNotification = `-- name: CreateNotification :exec
-INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+
+WITH n AS (
+  INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id, created_at)
+  VALUES ($1, $2, $3, $4, $5, $6, $7)
+  RETURNING id, user_id
+)
+SELECT pg_notify('classlab_notifications', user_id::text || ':' || id::text) FROM n
 `
 
 type CreateNotificationParams struct {
@@ -28,6 +52,9 @@ type CreateNotificationParams struct {
 	CreatedAt time.Time   `json:"created_at"`
 }
 
+// pg_notify runs in the same statement as the insert, and Postgres delivers it only when the
+// transaction commits. So the live stream hears about a notification exactly when it becomes
+// visible, and never about one whose transaction rolled back. Payload: "<user_id>:<notification_id>".
 func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotificationParams) error {
 	_, err := q.db.Exec(ctx, createNotification,
 		arg.UserID,
@@ -42,23 +69,30 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 }
 
 const createNotificationForRole = `-- name: CreateNotificationForRole :exec
-INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id, created_at)
-SELECT id, $1, $2, $3, $4, $5, $6
-FROM users
-WHERE role = $7::user_role AND is_active
+WITH n AS (
+  INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id, created_at)
+  SELECT id, $1, $2, $3, $4, $5, $6
+  FROM users
+  WHERE role = $7::user_role AND is_active
+    AND ($8::uuid IS NULL OR id <> $8::uuid)
+  RETURNING id, user_id
+)
+SELECT pg_notify('classlab_notifications', user_id::text || ':' || id::text) FROM n
 `
 
 type CreateNotificationForRoleParams struct {
-	Type      string      `json:"type"`
-	Title     string      `json:"title"`
-	Body      string      `json:"body"`
-	RefType   pgtype.Text `json:"ref_type"`
-	RefID     pgtype.UUID `json:"ref_id"`
-	CreatedAt time.Time   `json:"created_at"`
-	Role      UserRole    `json:"role"`
+	Type          string      `json:"type"`
+	Title         string      `json:"title"`
+	Body          string      `json:"body"`
+	RefType       pgtype.Text `json:"ref_type"`
+	RefID         pgtype.UUID `json:"ref_id"`
+	CreatedAt     time.Time   `json:"created_at"`
+	Role          UserRole    `json:"role"`
+	ExcludeUserID pgtype.UUID `json:"exclude_user_id"`
 }
 
 // One statement for every active holder of a role, so a new booking cannot reach only some approvers.
+// exclude_user_id keeps people from being notified about what they did themselves.
 func (q *Queries) CreateNotificationForRole(ctx context.Context, arg CreateNotificationForRoleParams) error {
 	_, err := q.db.Exec(ctx, createNotificationForRole,
 		arg.Type,
@@ -68,6 +102,134 @@ func (q *Queries) CreateNotificationForRole(ctx context.Context, arg CreateNotif
 		arg.RefID,
 		arg.CreatedAt,
 		arg.Role,
+		arg.ExcludeUserID,
 	)
 	return err
+}
+
+const getNotificationForUser = `-- name: GetNotificationForUser :one
+SELECT id, user_id, type, title, body, ref_type, ref_id, read_at, created_at
+FROM notifications
+WHERE id = $1 AND user_id = $2
+`
+
+type GetNotificationForUserParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetNotificationForUser(ctx context.Context, arg GetNotificationForUserParams) (Notification, error) {
+	row := q.db.QueryRow(ctx, getNotificationForUser, arg.ID, arg.UserID)
+	var i Notification
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Type,
+		&i.Title,
+		&i.Body,
+		&i.RefType,
+		&i.RefID,
+		&i.ReadAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listNotifications = `-- name: ListNotifications :many
+SELECT id, user_id, type, title, body, ref_type, ref_id, read_at, created_at
+FROM notifications
+WHERE user_id = $1
+  AND (NOT $2::boolean OR read_at IS NULL)
+ORDER BY created_at DESC, id
+LIMIT $4 OFFSET $3
+`
+
+type ListNotificationsParams struct {
+	UserID     uuid.UUID `json:"user_id"`
+	UnreadOnly bool      `json:"unread_only"`
+	PageOffset int32     `json:"page_offset"`
+	PageLimit  int32     `json:"page_limit"`
+}
+
+func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, listNotifications,
+		arg.UserID,
+		arg.UnreadOnly,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Notification{}
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Type,
+			&i.Title,
+			&i.Body,
+			&i.RefType,
+			&i.RefID,
+			&i.ReadAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markAllNotificationsRead = `-- name: MarkAllNotificationsRead :execrows
+UPDATE notifications SET read_at = $2
+WHERE user_id = $1 AND read_at IS NULL
+`
+
+type MarkAllNotificationsReadParams struct {
+	UserID uuid.UUID          `json:"user_id"`
+	ReadAt pgtype.Timestamptz `json:"read_at"`
+}
+
+func (q *Queries) MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotificationsReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markAllNotificationsRead, arg.UserID, arg.ReadAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markNotificationRead = `-- name: MarkNotificationRead :one
+UPDATE notifications SET read_at = COALESCE(read_at, $3)
+WHERE id = $1 AND user_id = $2
+RETURNING id, user_id, type, title, body, ref_type, ref_id, read_at, created_at
+`
+
+type MarkNotificationReadParams struct {
+	ID     uuid.UUID          `json:"id"`
+	UserID uuid.UUID          `json:"user_id"`
+	ReadAt pgtype.Timestamptz `json:"read_at"`
+}
+
+// Marking an already-read notification keeps its original read_at.
+func (q *Queries) MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (Notification, error) {
+	row := q.db.QueryRow(ctx, markNotificationRead, arg.ID, arg.UserID, arg.ReadAt)
+	var i Notification
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Type,
+		&i.Title,
+		&i.Body,
+		&i.RefType,
+		&i.RefID,
+		&i.ReadAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }

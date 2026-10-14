@@ -49,7 +49,7 @@ func main() {
 		}
 	}
 
-	router, err := app.NewRouter(cfg, pool, appLogger, clock.NewRealClock())
+	router, err := app.NewRouter(ctx, cfg, pool, appLogger, clock.NewRealClock())
 	if err != nil {
 		appLogger.Error("failed to build router", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -76,6 +76,8 @@ func main() {
 
 	<-shutdownChan
 	appLogger.Info("shutting down server gracefully...")
+	// Ends the notification streams, which would otherwise hold Shutdown until its timeout.
+	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

@@ -66,6 +66,10 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		BookingMinDurationMinutes: 30,
 		BookingMaxDurationHours:   8,
 		BookingMaxFutureDays:      30,
+
+		UploadDir:      t.TempDir(),
+		UploadMaxBytes: 5 << 20,
+		SSEHeartbeat:   25 * time.Second,
 	}
 	for _, fn := range mutate {
 		fn(cfg)
@@ -81,7 +85,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		logOut = os.Stderr
 	}
 	log := slog.New(slog.NewTextHandler(logOut, nil))
-	router, err := app.NewRouter(cfg, pool, log, clk)
+	router, err := app.NewRouter(t.Context(), cfg, pool, log, clk)
 	if err != nil {
 		t.Fatalf("building router: %v", err)
 	}

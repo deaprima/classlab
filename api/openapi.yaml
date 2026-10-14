@@ -753,15 +753,18 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data, meta]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Notification' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /notifications/{id}/read:
     post:
-      summary: Tandai satu notifikasi sebagai telah dibaca
+      summary: Tandai satu notifikasi sebagai telah dibaca (idempoten; `read_at` pertama dipertahankan)
       security:
         - BearerAuth: []
       parameters:
@@ -770,7 +773,13 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '200': { description: Notifikasi ditandai dibaca }
+        '200':
+          description: Notifikasi ditandai dibaca
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /notifications/read-all:
     post:
@@ -778,11 +787,27 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200': { description: Semua notifikasi ditandai dibaca }
+        '200':
+          description: Semua notifikasi ditandai dibaca
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated: { type: integer, description: Jumlah notifikasi yang berubah dari belum dibaca menjadi dibaca }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
 
   /notifications/stream:
     get:
       summary: Server-Sent Events stream untuk pembaruan notifikasi
+      description: >-
+        Dibaca dengan `fetch` (EventSource tidak bisa mengirim header Authorization). Event:
+        `ready` (`{"unread": N}`, dikirim sekali setelah stream aktif), `notification` (objek Notification;
+        field `id:` berisi UUID-nya), `resync` (server kehilangan event; ambil ulang `GET /notifications`),
+        dan `reconnect` (server menutup stream; buka stream baru). Baris komentar `: keep-alive` dikirim
+        berkala. Stream ditutup sebelum access token yang dipakai membukanya kedaluwarsa. Event tidak
+        diputar ulang: setelah (re)connect, ambil ulang daftar notifikasi.
       security:
         - BearerAuth: []
       responses:
@@ -791,6 +816,7 @@ paths:
           content:
             text/event-stream:
               schema: { type: string }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports:
     get:
@@ -813,13 +839,19 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data, meta]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/DamageReport' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
       summary: Buat laporan kerusakan baru (multipart/form-data)
+      description: >-
+        Foto opsional: JPG, PNG, atau WebP (dicek dari isi berkas, bukan nama atau Content-Type), maksimal
+        `UPLOAD_MAX_BYTES` (default 5 MB). Foto terlalu besar atau bertipe lain dijawab 422 pada field `photo`.
       security:
         - BearerAuth: []
       requestBody:
@@ -839,6 +871,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DamageReport' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports/{id}:
     get:
@@ -859,14 +894,39 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/DamageReport' }
                   - type: object
+                    required: [events]
                     properties:
                       events:
                         type: array
                         items: { $ref: '#/components/schemas/ReportEvent' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /reports/{id}/photo:
+    get:
+      summary: Foto laporan kerusakan (pelapor, TU_KALAB, KAPRODI)
+      description: Foto disimpan di luar webroot dan hanya disajikan lewat endpoint ini.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Berkas gambar
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports/{id}/status:
     patch:
       summary: Perbarui status laporan kerusakan (TU_KALAB)
+      description: Status hanya maju satu langkah (BARU, DITERIMA, DIPROSES, SELESAI); selain itu 409 `INVALID_STATE`.
       security:
         - BearerAuth: []
       parameters:
@@ -890,7 +950,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DamageReport' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
 components:
   securitySchemes:
@@ -1075,6 +1140,7 @@ components:
 
     Notification:
       type: object
+      required: [id, type, title, body, created_at]
       properties:
         id: { type: string, format: uuid }
         type: { type: string }
@@ -1085,20 +1151,36 @@ components:
         read_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
 
+    Reporter:
+      type: object
+      required: [id, identifier, name]
+      properties:
+        id: { type: string, format: uuid }
+        identifier: { type: string, description: NIM atau NIP }
+        name: { type: string }
+
     DamageReport:
       type: object
+      required: [id, room_id, room, reporter_id, reporter, description, status, created_at]
       properties:
         id: { type: string, format: uuid }
         room_id: { type: string, format: uuid }
+        room: { $ref: '#/components/schemas/Room' }
         reporter_id: { type: string, format: uuid }
+        reporter: { $ref: '#/components/schemas/Reporter' }
         description: { type: string }
-        photo_path: { type: string }
+        photo_path:
+          type: string
+          description: >-
+            Path URL foto (`/api/v1/reports/{id}/photo`), bukan lokasi berkas di server. Ada hanya bila
+            laporan punya foto; ambil dengan header Authorization.
         status: { $ref: '#/components/schemas/ReportStatus' }
         handled_by: { type: string, format: uuid }
         created_at: { type: string, format: date-time }
 
     ReportEvent:
       type: object
+      required: [id, report_id, actor_id, to_status, created_at]
       properties:
         id: { type: string, format: uuid }
         report_id: { type: string, format: uuid }

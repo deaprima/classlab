@@ -160,6 +160,43 @@ func TestRBACMatrix(t *testing.T) {
 			body: func(*env) any { return map[string]any{"reason": "Tidak jadi dipakai"} },
 			want: expect{401, 200, 409, 403, 403},
 		},
+		{
+			name: "GET /notifications", method: "GET",
+			path: func(*env) string { return "/api/v1/notifications" },
+			want: expect{401, 200, 200, 200, 200},
+		},
+		{
+			name: "POST /notifications/read-all", method: "POST",
+			path: func(*env) string { return "/api/v1/notifications/read-all" },
+			want: expect{401, 200, 200, 200, 200},
+		},
+		// GET /notifications/stream never ends for a valid caller, so its 401 is checked in notifications_test.go.
+		// POST /reports takes multipart, which this table cannot send; reports_test.go files one as every role.
+		{
+			name: "GET /reports", method: "GET",
+			path: func(*env) string { return "/api/v1/reports" },
+			want: expect{401, 200, 200, 200, 200},
+		},
+		{
+			// The report belongs to the student, so the OB, who may only read their own, gets 404.
+			name: "GET /reports/{id}", method: "GET",
+			path: func(e *env) string { return "/api/v1/reports/" + e.reportAt("BARU", mahasiswaA) },
+			want: expect{401, 200, 200, 404, 200},
+		},
+		{
+			name: "GET /reports/{id}/photo", method: "GET",
+			path: func(e *env) string {
+				res := e.postReport(e.login(mahasiswaA).accessToken, e.freshRoom(), "Rusak", &photoPart{"a.png", "image/png", pngBytes(64)})
+				return "/api/v1/reports/" + idOf(res) + "/photo"
+			},
+			want: expect{401, 200, 200, 404, 200},
+		},
+		{
+			name: "PATCH /reports/{id}/status", method: "PATCH",
+			path: func(e *env) string { return "/api/v1/reports/" + e.reportAt("BARU", mahasiswaA) + "/status" },
+			body: func(*env) any { return map[string]any{"status": "DITERIMA"} },
+			want: expect{401, 403, 200, 403, 403},
+		},
 	}
 
 	roles := []struct {

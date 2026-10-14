@@ -45,3 +45,9 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	JSON(w, statusCode, env)
 }
+
+// LogError records an error that has no response of its own, such as a cleanup that fails after the
+// response has already been decided.
+func LogError(r *http.Request, msg string, err error) {
+	slog.ErrorContext(r.Context(), msg, slog.String("error", err.Error()))
+}
