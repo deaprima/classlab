@@ -5,7 +5,7 @@ import { type ReportStatus } from '@/lib/api-types'
 // these checks only spare the user a slow upload that would be refused.
 export const DESCRIPTION_MAX = 2000
 export const NOTE_MAX = 500
-export const PHOTO_MAX_BYTES = 5 * 1024 * 1024
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024
 export const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const FLOW: ReportStatus[] = ['BARU', 'DITERIMA', 'DIPROSES', 'SELESAI']

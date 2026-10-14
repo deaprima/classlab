@@ -14,7 +14,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { useNotificationStreamStore } from './stream-store'
 
 /** brief.md 6.2: fallback polling every 30 s when the stream is not available. */
-export const POLL_INTERVAL_MS = 30_000
+const POLL_INTERVAL_MS = 30_000
 
 export function useNotifications(query: NotificationListQuery) {
   const connected = useNotificationStreamStore((s) => s.connected)

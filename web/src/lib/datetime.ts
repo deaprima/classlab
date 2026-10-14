@@ -2,7 +2,7 @@
 // The campus runs on WIB. Indonesia has no daylight saving, so WIB is always UTC+07:00 and a
 // fixed offset is exact.
 
-export const APP_TIME_ZONE = 'Asia/Jakarta'
+const APP_TIME_ZONE = 'Asia/Jakarta'
 const WIB_OFFSET = '+07:00'
 
 type DateInput = string | Date

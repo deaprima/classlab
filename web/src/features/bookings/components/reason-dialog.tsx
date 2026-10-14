@@ -23,8 +23,8 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 
 // BR-04 and the API's limits (decisions.md, Phase 3).
-export const REASON_MIN = 5
-export const REASON_MAX = 500
+const REASON_MIN = 5
+const REASON_MAX = 500
 
 function reasonSchema(required: boolean) {
   const text = z

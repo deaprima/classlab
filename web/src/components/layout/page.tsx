@@ -24,7 +24,7 @@ export function Page({ title, description, actions, children }: PageProps) {
         <ThemeSwitch />
         <ProfileDropdown />
       </Header>
-      <Main>
+      <Main id='content' tabIndex={-1} className='outline-none'>
         <div className='mb-6 flex flex-wrap items-end justify-between gap-4'>
           <div className='space-y-1'>
             <h1 className='text-2xl font-bold tracking-tight'>{title}</h1>
@@ -37,14 +37,5 @@ export function Page({ title, description, actions, children }: PageProps) {
         {children}
       </Main>
     </>
-  )
-}
-
-/** Temporary body for pages that are routed and guarded but not built yet. */
-export function PendingPage({ title }: { title: string }) {
-  return (
-    <Page title={title}>
-      <p className='text-muted-foreground'>Halaman ini sedang dikerjakan.</p>
-    </Page>
   )
 }

@@ -11,7 +11,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] **Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan** (Selesai)
 - [x] **Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail**
 - [x] **Phase 4: Notifikasi In-App & Pelaporan Kerusakan**
-- [ ] **Phase 5: Antarmuka Frontend (UI, Routing & Form)**
+- [x] **Phase 5: Antarmuka Frontend (UI, Routing & Form)**
 - [ ] **Phase 6: Hardening Produksi, Caddy, Backup & Dokumentasi**
 
 ---
@@ -99,7 +99,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ### Phase 5: Antarmuka Frontend (UI, Routing & Form)
 - [x] Generate tipe TypeScript dari `api/openapi.yaml` (sinkron; alias di `web/src/lib/api-types.ts`)
 - [x] Konfigurasi Axios client & refresh token interceptor (refresh diserialisasi, dev proxy Vite)
-- [x] Route tree TanStack Router & RBAC navigation guards (halaman fitur masih placeholder)
+- [x] Route tree TanStack Router & RBAC navigation guards
 - [x] Halaman login `/sign-in`
 - [x] Halaman utama `/` (ketersediaan ruang interaktif)
 - [x] Halaman timeline `/rooms/$id` (visual CSS grid)
@@ -109,7 +109,8 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] Notifikasi in-app: badge header, stream SSE (fetch) + fallback polling 30 dtk, halaman `/notifications`
 - [x] Halaman pelaporan kerusakan `/reports`
 - [x] Halaman admin ruang, jadwal, pengguna (`/admin/*`)
-- [ ] Vitest unit & form tests, build check
+- [x] Vitest unit & form tests, build check (27 file, 167 tes) + verifikasi E2E manual Playwright terhadap API asli
+- [x] Pembersihan demo template & kode mati (disetujui 2026-10-14)
 
 ---
 

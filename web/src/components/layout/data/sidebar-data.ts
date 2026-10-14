@@ -14,7 +14,7 @@ import { type UserRole } from '@/lib/api-types'
 import { ACCESS, hasRole } from '@/lib/rbac'
 import { type NavGroup } from '../types'
 
-export const navGroups: NavGroup[] = [
+const navGroups: NavGroup[] = [
   {
     title: 'Peminjaman',
     items: [
