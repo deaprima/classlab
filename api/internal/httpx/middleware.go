@@ -3,6 +3,7 @@ package httpx
 import (
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"classlab/api/internal/platform/logger"
@@ -56,4 +57,23 @@ func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 			)
 		})
 	}
+}
+
+// Recoverer turns a panic into a logged 500 in the standard error format.
+func Recoverer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			rec := recover()
+			if rec == nil {
+				return
+			}
+			if rec == http.ErrAbortHandler {
+				panic(rec)
+			}
+			slog.ErrorContext(r.Context(), "panic recovered",
+				slog.Any("panic", rec), slog.String("stack", string(debug.Stack())))
+			WriteError(w, r, ErrInternal)
+		}()
+		next.ServeHTTP(w, r)
+	})
 }

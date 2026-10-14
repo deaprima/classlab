@@ -2,7 +2,10 @@ package httpx
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+
+	"classlab/api/internal/platform/logger"
 )
 
 type Meta struct {
@@ -25,13 +28,20 @@ func JSON(w http.ResponseWriter, statusCode int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(statusCode)
 	if payload != nil {
-		_ = json.NewEncoder(w).Encode(payload)
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			// Headers are already sent, so the only useful thing left is a log line.
+			slog.Warn("failed to encode response", slog.String("error", err.Error()))
+		}
 	}
 }
 
 // WriteError writes a standard ErrorEnvelope response using MapError.
+// Unmapped errors become 500 and are logged here, because the client only sees a generic message.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
-	reqID := r.Header.Get("X-Request-Id")
+	reqID := logger.RequestIDFromContext(r.Context())
 	statusCode, env := MapError(err, reqID)
+	if statusCode >= http.StatusInternalServerError {
+		slog.ErrorContext(r.Context(), "unhandled error", slog.String("error", err.Error()))
+	}
 	JSON(w, statusCode, env)
 }

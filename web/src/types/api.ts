@@ -58,7 +58,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login pengguna */
+        /**
+         * Login pengguna
+         * @description Refresh token dikirim hanya lewat cookie `refresh_token` (httpOnly, SameSite=Strict, Path=/api/v1/auth), tidak pernah di body. Maksimal 5 percobaan per 15 menit per (identifier + IP).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -79,19 +82,33 @@ export interface paths {
                 /** @description Login sukses (refresh token diset via cookie httpOnly) */
                 200: {
                     headers: {
+                        /** @description Cookie `refresh_token` */
+                        "Set-Cookie"?: string;
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            access_token?: string;
+                            access_token: string;
                             /** @example 900 */
-                            expires_in?: number;
-                            user?: components["schemas"]["User"];
+                            expires_in: number;
+                            user: components["schemas"]["User"];
                         };
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                429: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+                /** @description Terlalu banyak percobaan login */
+                429: {
+                    headers: {
+                        /** @description Detik sampai percobaan berikutnya diizinkan */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -109,7 +126,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rotasi refresh token dan dapatkan access token baru */
+        /**
+         * Rotasi refresh token dan dapatkan access token baru
+         * @description Membaca cookie `refresh_token` dan menggantinya dengan yang baru. Memakai ulang token lama mencabut seluruh keluarga token (family_id) dan mengembalikan 401.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -122,13 +142,15 @@ export interface paths {
                 /** @description Token berhasil diperbarui */
                 200: {
                     headers: {
+                        /** @description Cookie `refresh_token` yang baru */
+                        "Set-Cookie"?: string;
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            access_token?: string;
+                            access_token: string;
                             /** @example 900 */
-                            expires_in?: number;
+                            expires_in: number;
                         };
                     };
                 };
@@ -160,7 +182,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Berhasil logout */
+                /** @description Berhasil logout (body kosong, cookie dihapus) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -225,6 +247,7 @@ export interface paths {
             parameters: {
                 query?: {
                     role?: components["schemas"]["UserRole"];
+                    /** @description Cari pada nama, identifier, dan email (tanpa membedakan huruf besar/kecil) */
                     q?: string;
                     is_active?: boolean;
                     page?: components["parameters"]["PageQuery"];
@@ -236,18 +259,21 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Daftar pengguna */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["User"][];
-                            meta?: components["schemas"]["PaginationMeta"];
+                            data: components["schemas"]["User"][];
+                            meta: components["schemas"]["PaginationMeta"];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
                 403: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -274,6 +300,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Pengguna dibuat */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -282,7 +309,10 @@ export interface paths {
                         "application/json": components["schemas"]["User"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
                 403: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -304,7 +334,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Perbarui data/peran/status/password pengguna (Kaprodi) */
+        /**
+         * Perbarui data/peran/status/password pengguna (Kaprodi)
+         * @description Menonaktifkan pengguna atau mereset password mencabut semua sesi refresh miliknya. Kaprodi tidak dapat menonaktifkan atau mengubah peran akunnya sendiri.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -314,7 +347,7 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: {
+            requestBody: {
                 content: {
                     "application/json": {
                         name?: string;
@@ -327,6 +360,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Pengguna diperbarui */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -335,8 +369,11 @@ export interface paths {
                         "application/json": components["schemas"]["User"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
                 403: components["responses"]["ErrorResponse"];
                 404: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         trace?: never;
@@ -365,6 +402,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -401,6 +439,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Berhasil dibuat */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -437,6 +476,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -496,6 +536,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -531,6 +572,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -693,6 +735,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -738,6 +781,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -778,6 +822,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Berhasil dibuat */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -815,6 +860,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -853,6 +899,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -894,6 +941,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -938,6 +986,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -982,6 +1031,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1020,6 +1070,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1169,6 +1220,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1203,6 +1255,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Berhasil dibuat */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1238,6 +1291,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1290,6 +1344,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description Berhasil */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1307,6 +1362,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ErrorBody: {
+            error: {
+                /** @example BOOKING_CONFLICT */
+                code: string;
+                /** @example Ruang sudah terpakai pada rentang waktu tersebut. */
+                message: string;
+                details: {
+                    field?: string;
+                    message?: string;
+                    kind?: string;
+                    status?: string;
+                    /** Format: date-time */
+                    start_at?: string;
+                    /** Format: date-time */
+                    end_at?: string;
+                }[];
+                /** @example req_123456 */
+                request_id: string;
+            };
+        };
         /** @enum {string} */
         UserRole: "MAHASISWA" | "TU_KALAB" | "OB" | "KAPRODI";
         /** @enum {string} */
@@ -1322,17 +1397,17 @@ export interface components {
         };
         User: {
             /** Format: uuid */
-            id?: string;
+            id: string;
             /** Format: uuid */
-            org_unit_id?: string;
-            identifier?: string;
-            name?: string;
+            org_unit_id: string;
+            identifier: string;
+            name: string;
             /** Format: email */
-            email?: string;
-            role?: components["schemas"]["UserRole"];
-            is_active?: boolean;
+            email: string;
+            role: components["schemas"]["UserRole"];
+            is_active: boolean;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
         };
         Room: {
             /** Format: uuid */
@@ -1458,20 +1533,7 @@ export interface components {
                 [name: string]: unknown;
             };
             content: {
-                "application/json": {
-                    error: {
-                        /** @example BOOKING_CONFLICT */
-                        code: string;
-                        /** @example Ruang sudah terpakai pada rentang waktu tersebut. */
-                        message: string;
-                        details: {
-                            field?: string;
-                            message?: string;
-                        }[];
-                        /** @example req_123456 */
-                        request_id: string;
-                    };
-                };
+                "application/json": components["schemas"]["ErrorBody"];
             };
         };
     };

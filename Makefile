@@ -13,6 +13,7 @@ migrate-down:
 	docker compose exec -T postgres psql -U classlab -d classlab -f - < api/db/migrations/000001_init_schema.down.sql
 
 gen:
+	docker run --rm -v "$(CURDIR)/api:/src" -w /src sqlc/sqlc:1.30.0 generate
 	cd web && pnpm run gen:api
 
 lint:
@@ -24,7 +25,7 @@ test:
 	cd web && pnpm run test
 
 seed:
-	@echo "Seeding data will run in Phase 1..."
+	cd api && go run ./cmd/seed
 
 dev-api:
 	cd api && go run ./cmd/server
