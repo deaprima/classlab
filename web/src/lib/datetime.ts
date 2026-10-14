@@ -118,3 +118,22 @@ export function timeFromMinutes(minutes: number): string {
   const m = minutes % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
+
+const relativeFormat = new Intl.RelativeTimeFormat('id-ID', { numeric: 'auto' })
+
+/** "5 menit yang lalu", "kemarin"; older than a week falls back to the date. */
+export function formatRelative(
+  value: DateInput,
+  now: Date = new Date()
+): string {
+  const seconds = Math.round((toDate(value).getTime() - now.getTime()) / 1000)
+  const abs = Math.abs(seconds)
+  if (abs < 60) return 'baru saja'
+  if (abs < 3600)
+    return relativeFormat.format(Math.round(seconds / 60), 'minute')
+  if (abs < 86400)
+    return relativeFormat.format(Math.round(seconds / 3600), 'hour')
+  if (abs < 7 * 86400)
+    return relativeFormat.format(Math.round(seconds / 86400), 'day')
+  return formatDateTime(value)
+}

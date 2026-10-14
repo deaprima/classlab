@@ -47,3 +47,11 @@ export type BookingListQuery = NonNullable<
 >
 export type BookingListResponse =
   paths['/bookings']['get']['responses']['200']['content']['application/json']
+
+// "Notification" would shadow the DOM type of the same name.
+export type AppNotification = Schemas['Notification']
+export type NotificationListQuery = NonNullable<
+  paths['/notifications']['get']['parameters']['query']
+>
+export type NotificationListResponse =
+  paths['/notifications']['get']['responses']['200']['content']['application/json']

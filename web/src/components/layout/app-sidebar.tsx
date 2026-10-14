@@ -14,6 +14,7 @@ import {
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useUnreadCount } from '@/features/notifications/api'
 import { navGroupsForRole } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
 import { NavUser } from './nav-user'
@@ -21,7 +22,19 @@ import { NavUser } from './nav-user'
 export function AppSidebar() {
   const { collapsible, variant } = useLayout()
   const role = useAuthStore((state) => state.auth.user?.role)
-  const groups = useMemo(() => navGroupsForRole(role), [role])
+  const unread = useUnreadCount().data ?? 0
+  const groups = useMemo(
+    () =>
+      navGroupsForRole(role).map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          item.url === '/notifications' && unread > 0
+            ? { ...item, badge: unread > 99 ? '99+' : String(unread) }
+            : item
+        ),
+      })),
+    [role, unread]
+  )
 
   return (
     <Sidebar collapsible={collapsible} variant={variant}>

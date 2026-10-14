@@ -1,6 +1,14 @@
+import { z } from 'zod'
 import { createFileRoute } from '@tanstack/react-router'
-import { PendingPage } from '@/components/layout/page'
+import { positiveIntParam } from '@/lib/search-params'
+import { Notifications } from '@/features/notifications'
+
+const searchSchema = z.object({
+  page: positiveIntParam,
+  filter: z.enum(['unread']).optional().catch(undefined),
+})
 
 export const Route = createFileRoute('/_authenticated/notifications/')({
-  component: () => <PendingPage title='Notifikasi' />,
+  validateSearch: searchSchema,
+  component: Notifications,
 })

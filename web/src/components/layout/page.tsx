@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { NotificationBell } from '@/features/notifications/components/notification-bell'
 import { Header } from './header'
 import { Main } from './main'
 
@@ -19,6 +20,7 @@ export function Page({ title, description, actions, children }: PageProps) {
     <>
       <Header fixed>
         <Search className='me-auto' />
+        <NotificationBell />
         <ThemeSwitch />
         <ProfileDropdown />
       </Header>
