@@ -92,3 +92,26 @@ export function applyFieldErrors<T extends FieldValues>(
   }
   return unmatched
 }
+
+/**
+ * Splits a failed form submission: 422 field details go onto their fields, and whatever is left
+ * (a message without a field, a 409 conflict with its clashing items, a network error) is returned
+ * for an alert above the form. Null when every problem landed on a field.
+ */
+export function formProblemFrom<T extends FieldValues>(
+  error: unknown,
+  setError: UseFormSetError<T>,
+  fields: Partial<Record<string, Path<T>>>
+): { message: string; conflicts?: ApiErrorDetail[] } | null {
+  const apiError = getApiError(error)
+  if (apiError?.code === 'BOOKING_CONFLICT') {
+    return { message: apiError.message, conflicts: apiError.details }
+  }
+  const rest = applyFieldErrors(error, setError, fields)
+  if (!apiError || apiError.details.length === 0 || rest.length > 0) {
+    return {
+      message: rest.find((d) => d.message)?.message ?? getErrorMessage(error),
+    }
+  }
+  return null
+}

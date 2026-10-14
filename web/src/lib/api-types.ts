@@ -66,3 +66,23 @@ export type ReportListResponse =
   paths['/reports']['get']['responses']['200']['content']['application/json']
 export type ReportDetail =
   paths['/reports/{id}']['get']['responses']['200']['content']['application/json']
+
+export type Schedule = Schemas['Schedule']
+export type ScheduleSource = Schemas['ScheduleSource']
+export type CreateRoomRequest =
+  paths['/rooms']['post']['requestBody']['content']['application/json']
+export type UpdateRoomRequest =
+  paths['/rooms/{id}']['patch']['requestBody']['content']['application/json']
+export type CreateScheduleRequest =
+  paths['/schedules']['post']['requestBody']['content']['application/json']
+export type UpdateScheduleRequest =
+  paths['/schedules/{id}']['patch']['requestBody']['content']['application/json']
+export type UserListQuery = NonNullable<
+  paths['/users']['get']['parameters']['query']
+>
+export type UserListResponse =
+  paths['/users']['get']['responses']['200']['content']['application/json']
+export type CreateUserRequest =
+  paths['/users']['post']['requestBody']['content']['application/json']
+export type UpdateUserRequest =
+  paths['/users/{id}']['patch']['requestBody']['content']['application/json']

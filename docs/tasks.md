@@ -108,7 +108,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] Halaman approval `/approvals` (antrean & dialog penolakan)
 - [x] Notifikasi in-app: badge header, stream SSE (fetch) + fallback polling 30 dtk, halaman `/notifications`
 - [x] Halaman pelaporan kerusakan `/reports`
-- [ ] Halaman admin ruang, jadwal, pengguna (`/admin/*`)
+- [x] Halaman admin ruang, jadwal, pengguna (`/admin/*`)
 - [ ] Vitest unit & form tests, build check
 
 ---
