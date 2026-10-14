@@ -1,4 +1,8 @@
-import { type AvailabilityQuery, type RoomListQuery } from './api-types'
+import {
+  type AvailabilityQuery,
+  type BookingListQuery,
+  type RoomListQuery,
+} from './api-types'
 
 // Structured query keys: invalidating a prefix (e.g. queryKeys.bookings.all) refreshes every list
 // and detail under it.
@@ -16,5 +20,8 @@ export const queryKeys = {
   },
   bookings: {
     all: ['bookings'] as const,
+    list: (query: BookingListQuery) => ['bookings', 'list', query] as const,
+    detail: (id: string) => ['bookings', 'detail', id] as const,
+    events: (id: string) => ['bookings', 'events', id] as const,
   },
 }

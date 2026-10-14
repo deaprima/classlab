@@ -1,8 +1,57 @@
 import { useRef } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api } from '@/lib/api-client'
-import { type Booking, type CreateBookingRequest } from '@/lib/api-types'
+import { getApiError, getErrorMessage } from '@/lib/api-error'
+import {
+  type Booking,
+  type BookingEvent,
+  type BookingListQuery,
+  type BookingListResponse,
+  type CreateBookingRequest,
+} from '@/lib/api-types'
+import { formatSlot } from '@/lib/datetime'
 import { queryKeys } from '@/lib/query-keys'
+
+export function useBookings(query: BookingListQuery) {
+  return useQuery({
+    queryKey: queryKeys.bookings.list(query),
+    queryFn: async () =>
+      (await api.get<BookingListResponse>('/bookings', { params: query })).data,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useBooking(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.bookings.detail(id ?? ''),
+    queryFn: async () => (await api.get<Booking>(`/bookings/${id}`)).data,
+    enabled: !!id,
+  })
+}
+
+export function useBookingEvents(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.bookings.events(id ?? ''),
+    queryFn: async () =>
+      (await api.get<{ data: BookingEvent[] }>(`/bookings/${id}/events`)).data
+        .data,
+    enabled: !!id,
+  })
+}
+
+/** Every status change moves slots and lists: availability, timelines and all booking queries. */
+function invalidateAfterStatusChange(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all })
+  queryClient.invalidateQueries({ queryKey: queryKeys.availability.all })
+  queryClient.invalidateQueries({ queryKey: queryKeys.rooms.all })
+}
 
 type CreateBookingVars = { body: CreateBookingRequest; idempotencyKey: string }
 
@@ -19,12 +68,75 @@ export function useCreateBooking(options: {
         })
       ).data,
     onSuccess: (booking) => {
-      // A new pending booking changes availability and every booking list.
-      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.availability.all })
+      invalidateAfterStatusChange(queryClient)
       options.onSuccess?.(booking)
     },
     onError: options.onError,
+  })
+}
+
+/**
+ * Status changes report failure as a toast. A 409 conflict on approval also lists what now occupies
+ * the slot, since that is the one case the approver cannot see coming from the queue.
+ */
+function toastDecisionError(error: unknown) {
+  const apiError = getApiError(error)
+  if (apiError?.code === 'BOOKING_CONFLICT' && apiError.details.length > 0) {
+    toast.error(apiError.message, {
+      description: apiError.details
+        .flatMap((d) =>
+          d.start_at && d.end_at
+            ? [`Bentrok: ${formatSlot(d.start_at, d.end_at)}`]
+            : []
+        )
+        .join('\n'),
+    })
+    return
+  }
+  toast.error(getErrorMessage(error))
+}
+
+export function useApproveBooking() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) =>
+      (await api.post<Booking>(`/bookings/${id}/approve`)).data,
+    onSuccess: (booking) => {
+      invalidateAfterStatusChange(queryClient)
+      toast.success(`Pengajuan ${booking.requester.name} disetujui.`)
+    },
+    onError: toastDecisionError,
+  })
+}
+
+export function useRejectBooking() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
+      (await api.post<Booking>(`/bookings/${id}/reject`, { reason })).data,
+    onSuccess: (booking) => {
+      invalidateAfterStatusChange(queryClient)
+      toast.success(`Pengajuan ${booking.requester.name} ditolak.`)
+    },
+    onError: toastDecisionError,
+  })
+}
+
+export function useCancelBooking() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) =>
+      (
+        await api.post<Booking>(
+          `/bookings/${id}/cancel`,
+          reason ? { reason } : {}
+        )
+      ).data,
+    onSuccess: () => {
+      invalidateAfterStatusChange(queryClient)
+      toast.success('Peminjaman dibatalkan.')
+    },
+    onError: toastDecisionError,
   })
 }
 

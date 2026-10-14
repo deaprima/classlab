@@ -40,3 +40,10 @@ export type AvailabilityResponse =
 
 export type CreateBookingRequest =
   paths['/bookings']['post']['requestBody']['content']['application/json']
+
+export type BookingEvent = Schemas['BookingEvent']
+export type BookingListQuery = NonNullable<
+  paths['/bookings']['get']['parameters']['query']
+>
+export type BookingListResponse =
+  paths['/bookings']['get']['responses']['200']['content']['application/json']

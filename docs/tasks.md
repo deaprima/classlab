@@ -104,8 +104,8 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] Halaman utama `/` (ketersediaan ruang interaktif)
 - [x] Halaman timeline `/rooms/$id` (visual CSS grid)
 - [x] Halaman pengajuan booking `/bookings/new` (React Hook Form + Zod)
-- [ ] Halaman riwayat booking `/bookings`
-- [ ] Halaman approval `/approvals` (antrean & dialog penolakan)
+- [x] Halaman riwayat booking `/bookings`
+- [x] Halaman approval `/approvals` (antrean & dialog penolakan)
 - [ ] Halaman pelaporan kerusakan `/reports`
 - [ ] Halaman admin ruang, jadwal, pengguna (`/admin/*`)
 - [ ] Vitest unit & form tests, build check
