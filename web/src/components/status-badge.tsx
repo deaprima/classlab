@@ -1,5 +1,13 @@
-import { type AvailabilityStatus, type BookingStatus } from '@/lib/api-types'
-import { AVAILABILITY_LABELS, BOOKING_STATUS_LABELS } from '@/lib/status-labels'
+import {
+  type AvailabilityStatus,
+  type BookingStatus,
+  type ReportStatus,
+} from '@/lib/api-types'
+import {
+  AVAILABILITY_LABELS,
+  BOOKING_STATUS_LABELS,
+  REPORT_STATUS_LABELS,
+} from '@/lib/status-labels'
 import { cn } from '@/lib/utils'
 
 type Tone = 'green' | 'amber' | 'red' | 'blue' | 'gray'
@@ -50,4 +58,15 @@ export function BookingStatusBadge({ status }: { status: BookingStatus }) {
   return (
     <Pill tone={bookingTone[status]} label={BOOKING_STATUS_LABELS[status]} />
   )
+}
+
+const reportTone: Record<ReportStatus, Tone> = {
+  BARU: 'blue',
+  DITERIMA: 'amber',
+  DIPROSES: 'amber',
+  SELESAI: 'green',
+}
+
+export function ReportStatusBadge({ status }: { status: ReportStatus }) {
+  return <Pill tone={reportTone[status]} label={REPORT_STATUS_LABELS[status]} />
 }

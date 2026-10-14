@@ -2,6 +2,7 @@ import {
   type AvailabilityQuery,
   type BookingListQuery,
   type NotificationListQuery,
+  type ReportListQuery,
   type RoomListQuery,
 } from './api-types'
 
@@ -33,5 +34,8 @@ export const queryKeys = {
   },
   reports: {
     all: ['reports'] as const,
+    list: (query: ReportListQuery) => ['reports', 'list', query] as const,
+    detail: (id: string) => ['reports', 'detail', id] as const,
+    photo: (id: string) => ['reports', 'photo', id] as const,
   },
 }

@@ -1,4 +1,8 @@
-import { type AvailabilityStatus, type BookingStatus } from './api-types'
+import {
+  type AvailabilityStatus,
+  type BookingStatus,
+  type ReportStatus,
+} from './api-types'
 
 export const AVAILABILITY_LABELS: Record<AvailabilityStatus, string> = {
   TERSEDIA: 'Tersedia',
@@ -11,4 +15,11 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   DISETUJUI: 'Disetujui',
   DITOLAK: 'Ditolak',
   DIBATALKAN: 'Dibatalkan',
+}
+
+export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  BARU: 'Baru',
+  DITERIMA: 'Diterima',
+  DIPROSES: 'Diproses',
+  SELESAI: 'Selesai',
 }

@@ -55,3 +55,14 @@ export type NotificationListQuery = NonNullable<
 >
 export type NotificationListResponse =
   paths['/notifications']['get']['responses']['200']['content']['application/json']
+
+export type DamageReport = Schemas['DamageReport']
+export type ReportStatus = Schemas['ReportStatus']
+export type ReportEvent = Schemas['ReportEvent']
+export type ReportListQuery = NonNullable<
+  paths['/reports']['get']['parameters']['query']
+>
+export type ReportListResponse =
+  paths['/reports']['get']['responses']['200']['content']['application/json']
+export type ReportDetail =
+  paths['/reports/{id}']['get']['responses']['200']['content']['application/json']
