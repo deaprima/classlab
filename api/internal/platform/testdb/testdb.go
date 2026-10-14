@@ -23,6 +23,9 @@ import (
 
 const templateDB = "classlab_template"
 
+// testLockTimeout matches the production default, so tests exercise the same behaviour.
+const testLockTimeout = 5 * time.Second
+
 var (
 	adminURL string // connection string for the "postgres" maintenance database
 	baseURL  string // connection string prefix; the database name is appended
@@ -122,7 +125,7 @@ func New(t testing.TB) *db.Pool {
 		t.Fatalf("testdb: cloning template: %v", err)
 	}
 
-	pool, err := db.New(ctx, baseURL+name+"?sslmode=disable")
+	pool, err := db.New(ctx, baseURL+name+"?sslmode=disable", testLockTimeout)
 	if err != nil {
 		t.Fatalf("testdb: opening pool: %v", err)
 	}

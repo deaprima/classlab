@@ -31,7 +31,6 @@ func NewHandler(svc *Service, cookieSecure bool) *Handler {
 // Routes mounts the public auth endpoints and, behind authenticate, the ones that need a session.
 func (h *Handler) Routes(authenticate func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
-	r.Use(noStore)
 	r.Post("/login", h.login)
 	r.Post("/refresh", h.refresh)
 	r.Group(func(r chi.Router) {
@@ -145,14 +144,6 @@ func (h *Handler) clearRefreshCookie(w http.ResponseWriter) {
 		HttpOnly: true,
 		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
-	})
-}
-
-// noStore keeps tokens out of any shared or browser cache.
-func noStore(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		next.ServeHTTP(w, r)
 	})
 }
 

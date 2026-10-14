@@ -79,3 +79,14 @@ WHERE booking_id = $1
 ORDER BY created_at,
          CASE from_status WHEN 'MENUNGGU' THEN 1 WHEN 'DISETUJUI' THEN 2 ELSE 0 END,
          id;
+
+-- Serialises one student's booking creations so the quota check below cannot be raced by two
+-- requests for different rooms. An advisory lock leaves the users row itself free for other writers.
+-- name: LockRequesterQuota :exec
+SELECT pg_advisory_xact_lock(hashtextextended('booking-quota:' || $1::text, 0));
+
+-- Live bookings: still pending or approved and not yet over.
+-- name: CountActiveBookingsForRequester :one
+SELECT count(*)
+FROM bookings
+WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI') AND end_at > $2;

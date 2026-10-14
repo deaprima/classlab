@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -28,8 +29,11 @@ type Config struct {
 	BookingMinDurationMinutes int
 	BookingMaxDurationHours   int
 	BookingMaxFutureDays      int
+	BookingMaxActivePerUser   int
 	UploadDir                 string
 	UploadMaxBytes            int64
+	SSEHeartbeat              time.Duration
+	DBLockTimeout             time.Duration
 }
 
 // Load loads configuration from environment variables with optional .env file support.
@@ -56,8 +60,11 @@ func Load() (*Config, error) {
 		BookingMinDurationMinutes: getIntEnv("BOOKING_MIN_DURATION_MINUTES", 30),
 		BookingMaxDurationHours:   getIntEnv("BOOKING_MAX_DURATION_HOURS", 8),
 		BookingMaxFutureDays:      getIntEnv("BOOKING_MAX_FUTURE_DAYS", 30),
+		BookingMaxActivePerUser:   getIntEnv("BOOKING_MAX_ACTIVE_PER_USER", 5),
 		UploadDir:                 getEnv("UPLOAD_DIR", "./uploads"),
 		UploadMaxBytes:            getInt64Env("UPLOAD_MAX_BYTES", 5*1024*1024),
+		SSEHeartbeat:              getDurationEnv("SSE_HEARTBEAT", 25*time.Second),
+		DBLockTimeout:             getDurationEnv("DB_LOCK_TIMEOUT", 5*time.Second),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -78,6 +85,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("COOKIE_SECURE must be true when APP_ENV=production")
 	}
 
+	if cfg.UploadDir == "" || cfg.UploadMaxBytes < 1 {
+		return nil, fmt.Errorf("UPLOAD_DIR must be set and UPLOAD_MAX_BYTES must be positive")
+	}
+	if cfg.SSEHeartbeat < time.Second {
+		return nil, fmt.Errorf("SSE_HEARTBEAT must be at least 1s")
+	}
+	if cfg.DBLockTimeout < 100*time.Millisecond {
+		return nil, fmt.Errorf("DB_LOCK_TIMEOUT must be at least 100ms")
+	}
+	if err := validateCORSOrigins(cfg.CORSAllowedOrigins); err != nil {
+		return nil, err
+	}
 	if _, err := cfg.BookingRules(); err != nil {
 		return nil, err
 	}
@@ -162,6 +181,9 @@ type BookingRules struct {
 	MinDuration   time.Duration
 	MaxDuration   time.Duration
 	MaxFutureDays int
+	// MaxActivePerUser caps how many pending or approved upcoming bookings one student may hold, so
+	// nobody can hold the calendar hostage with requests (a pending one holds its slot, BR-03).
+	MaxActivePerUser int
 }
 
 // BookingRules parses and validates the booking settings. Load calls it so a bad value stops the
@@ -185,12 +207,16 @@ func (c *Config) BookingRules() (BookingRules, error) {
 	if c.BookingMaxFutureDays < 1 {
 		return BookingRules{}, fmt.Errorf("BOOKING_MAX_FUTURE_DAYS must be at least 1")
 	}
+	if c.BookingMaxActivePerUser < 1 {
+		return BookingRules{}, fmt.Errorf("BOOKING_MAX_ACTIVE_PER_USER must be at least 1")
+	}
 	return BookingRules{
-		OpenMinute:    open,
-		CloseMinute:   closing,
-		MinDuration:   time.Duration(c.BookingMinDurationMinutes) * time.Minute,
-		MaxDuration:   time.Duration(c.BookingMaxDurationHours) * time.Hour,
-		MaxFutureDays: c.BookingMaxFutureDays,
+		OpenMinute:       open,
+		CloseMinute:      closing,
+		MinDuration:      time.Duration(c.BookingMinDurationMinutes) * time.Minute,
+		MaxDuration:      time.Duration(c.BookingMaxDurationHours) * time.Hour,
+		MaxFutureDays:    c.BookingMaxFutureDays,
+		MaxActivePerUser: c.BookingMaxActivePerUser,
 	}, nil
 }
 
@@ -203,4 +229,20 @@ func parseClock(v string) (int, error) {
 		return 0, fmt.Errorf("%q is not a valid HH:MM time", v)
 	}
 	return h*60 + m, nil
+}
+
+// validateCORSOrigins refuses a wildcard: the API always answers with credentials allowed, and a
+// browser rejects "*" there, while a server that reflects the caller's origin instead would let any
+// site read authenticated responses. Each entry must be a bare origin (scheme and host, no path).
+func validateCORSOrigins(origins []string) error {
+	for _, o := range origins {
+		if o == "*" {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS must list explicit origins; \"*\" is not allowed because credentials are enabled")
+		}
+		u, err := url.Parse(o)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS entry %q must look like https://host[:port] with no path", o)
+		}
+	}
+	return nil
 }

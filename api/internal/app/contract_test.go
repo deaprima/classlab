@@ -23,6 +23,13 @@ var (
 	specErr    error
 )
 
+func init() {
+	// Photos are binary; the validator needs to be told how to read each image type.
+	for _, mt := range []string{"image/jpeg", "image/png", "image/webp"} {
+		openapi3filter.RegisterBodyDecoder(mt, openapi3filter.FileBodyDecoder)
+	}
+}
+
 func loadSpec() (routers.Router, error) {
 	specOnce.Do(func() {
 		_, file, _, _ := runtime.Caller(0)

@@ -10,7 +10,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] **Phase 1: Autentikasi, Manajemen Pengguna & RBAC** (Selesai)
 - [x] **Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan** (Selesai)
 - [x] **Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail**
-- [ ] **Phase 4: Notifikasi In-App & Pelaporan Kerusakan**
+- [x] **Phase 4: Notifikasi In-App & Pelaporan Kerusakan**
 - [ ] **Phase 5: Antarmuka Frontend (UI, Routing & Form)**
 - [ ] **Phase 6: Hardening Produksi, Caddy, Backup & Dokumentasi**
 
@@ -88,11 +88,11 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ---
 
 ### Phase 4: Notifikasi In-App & Pelaporan Kerusakan
-- [ ] Endpoint notifikasi: list, unread filter, mark as read, mark all as read
-- [ ] Endpoint streaming notifikasi SSE (`/notifications/stream`)
-- [ ] Endpoint pelaporan kerusakan: multipart file upload, validasi magic bytes, batas 5MB
-- [ ] Lifecycle status laporan kerusakan (BARU -> DITERIMA -> DIPROSES -> SELESAI)
-- [ ] Append-only `report_events` & notifikasi status ke pelapor
+- [x] Endpoint notifikasi: list, unread filter, mark as read, mark all as read
+- [x] Endpoint streaming notifikasi SSE (`/notifications/stream`)
+- [x] Endpoint pelaporan kerusakan: multipart file upload, validasi magic bytes, batas 5MB
+- [x] Lifecycle status laporan kerusakan (BARU -> DITERIMA -> DIPROSES -> SELESAI)
+- [x] Append-only `report_events` & notifikasi status ke pelapor
 
 ---
 

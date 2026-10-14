@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -98,14 +100,14 @@ func (s *Service) Login(ctx context.Context, identifier, plainPassword, clientIP
 
 	limitKey := strings.ToLower(identifier) + "|" + clientIP
 	if retryAfter, ok := s.limiter.Allow(limitKey); !ok {
-		s.log.WarnContext(ctx, "login rate limited", slog.String("identifier", identifier))
+		s.log.WarnContext(ctx, "login rate limited", slog.String("identifier_ref", identifierRef(identifier)))
 		return nil, &RateLimitedError{RetryAfter: retryAfter}
 	}
 
 	u, err := s.q.GetUserForLogin(ctx, identifier)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.hasher.BurnVerify(plainPassword)
-		s.log.InfoContext(ctx, "login failed", slog.String("identifier", identifier), slog.String("reason", "unknown_user"))
+		s.log.InfoContext(ctx, "login failed", slog.String("identifier_ref", identifierRef(identifier)), slog.String("reason", "unknown_user"))
 		return nil, errBadCredentials
 	}
 	if err != nil {
@@ -121,7 +123,7 @@ func (s *Service) Login(ctx context.Context, identifier, plainPassword, clientIP
 		if match {
 			reason = "inactive"
 		}
-		s.log.InfoContext(ctx, "login failed", slog.String("identifier", identifier), slog.String("reason", reason))
+		s.log.InfoContext(ctx, "login failed", slog.String("identifier_ref", identifierRef(identifier)), slog.String("reason", reason))
 		return nil, errBadCredentials
 	}
 
@@ -262,4 +264,12 @@ func (s *Service) Logout(ctx context.Context, actor httpx.Principal, rawToken st
 
 func (s *Service) Me(ctx context.Context, actor httpx.Principal) (users.User, error) {
 	return s.users.Get(ctx, actor.UserID)
+}
+
+// identifierRef is a short, stable stand-in for an identifier in logs. The raw value is not logged:
+// people mistype their password into the identifier field, so it can hold a credential. The
+// reference still lets an operator see that several failures came from the same account.
+func identifierRef(identifier string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(identifier)))
+	return hex.EncodeToString(sum[:4])
 }

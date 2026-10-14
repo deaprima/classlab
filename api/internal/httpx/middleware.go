@@ -3,6 +3,7 @@ package httpx
 import (
 	"log/slog"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 	"time"
 
@@ -11,11 +12,15 @@ import (
 	"github.com/google/uuid"
 )
 
+var validRequestID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
 // RequestID middleware generates or preserves a unique X-Request-Id header.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A caller-supplied id is kept so a request can be traced across services, but only if it is
+		// short and plain: it is echoed in a header, the error body and every log line.
 		reqID := r.Header.Get("X-Request-Id")
-		if reqID == "" {
+		if !validRequestID.MatchString(reqID) {
 			reqID = "req_" + uuid.New().String()
 		}
 
@@ -34,6 +39,10 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.statusCode = code
 	r.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.ResponseController reach the real writer, which streaming responses (SSE) need
+// for Flush and for clearing the server's write deadline.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 // RequestLogger logs HTTP requests using log/slog without leaking sensitive data.
 func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {
@@ -74,6 +83,15 @@ func Recoverer(next http.Handler) http.Handler {
 				slog.Any("panic", rec), slog.String("stack", string(debug.Stack())))
 			WriteError(w, r, ErrInternal)
 		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// NoStore marks API responses as uncacheable: they are per-user and often sensitive. A handler that
+// wants caching (the report photo) overrides the header.
+func NoStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
 	})
 }

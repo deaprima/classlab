@@ -41,3 +41,25 @@ func TestParseTimeParam(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePageBounds(t *testing.T) {
+	for _, ok := range []string{"", "page=1", "page=10000&per_page=100", "per_page=1"} {
+		if _, _, err := httpx.ParsePage(httptest.NewRequest("GET", "/?"+ok, nil)); err != nil {
+			t.Errorf("%q rejected: %v", ok, err)
+		}
+	}
+	// (page-1)*per_page must fit the int32 OFFSET of the queries: a page beyond the cap used to turn
+	// into a negative offset and a 500.
+	for _, bad := range []string{
+		"page=0", "page=-1", "page=x", "page=10001", "page=2147483648", "page=999999999999",
+		"page=99999999999999999999", "per_page=0", "per_page=101", "per_page=x",
+	} {
+		if _, _, err := httpx.ParsePage(httptest.NewRequest("GET", "/?"+bad, nil)); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	page, per, err := httpx.ParsePage(httptest.NewRequest("GET", "/?page=10000&per_page=100", nil))
+	if err != nil || (page-1)*per > 1<<31-1 {
+		t.Errorf("the largest allowed page overflows int32: %d*%d (%v)", page, per, err)
+	}
+}

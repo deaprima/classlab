@@ -3,6 +3,7 @@ package httpx
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -28,6 +29,8 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 const (
 	defaultPerPage = 20
 	maxPerPage     = 100
+	// maxPage keeps (page-1)*per_page inside the int32 OFFSET the queries take; deeper paging is not a use case.
+	maxPage = 10000
 )
 
 // ParsePage reads ?page= and ?per_page=, rejecting malformed or out-of-range values.
@@ -37,8 +40,8 @@ func ParsePage(r *http.Request) (page, perPage int, err error) {
 
 	if v := q.Get("page"); v != "" {
 		page, err = strconv.Atoi(v)
-		if err != nil || page < 1 {
-			return 0, 0, ValidationError(ErrorDetail{Field: "page", Message: "page harus bilangan bulat >= 1."})
+		if err != nil || page < 1 || page > maxPage {
+			return 0, 0, ValidationError(ErrorDetail{Field: "page", Message: fmt.Sprintf("page harus bilangan bulat antara 1 dan %d.", maxPage)})
 		}
 	}
 	if v := q.Get("per_page"); v != "" {

@@ -25,3 +25,7 @@ WHERE revoked_at IS NULL
     SELECT t.family_id FROM refresh_tokens t
     WHERE t.token_hash = sqlc.arg(token_hash) AND t.user_id = sqlc.arg(user_id)
   );
+
+-- Expired tokens can no longer be used, so keeping them only grows the table.
+-- name: DeleteExpiredRefreshTokens :execrows
+DELETE FROM refresh_tokens WHERE expires_at < $1;

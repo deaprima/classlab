@@ -13,6 +13,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveBookingsForRequester = `-- name: CountActiveBookingsForRequester :one
+SELECT count(*)
+FROM bookings
+WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI') AND end_at > $2
+`
+
+type CountActiveBookingsForRequesterParams struct {
+	RequesterID uuid.UUID `json:"requester_id"`
+	EndAt       time.Time `json:"end_at"`
+}
+
+// Live bookings: still pending or approved and not yet over.
+func (q *Queries) CountActiveBookingsForRequester(ctx context.Context, arg CountActiveBookingsForRequesterParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveBookingsForRequester, arg.RequesterID, arg.EndAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countBookings = `-- name: CountBookings :one
 SELECT count(*)
 FROM bookings b
@@ -446,4 +465,15 @@ func (q *Queries) LoadBooking(ctx context.Context, id uuid.UUID) (Booking, error
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const lockRequesterQuota = `-- name: LockRequesterQuota :exec
+SELECT pg_advisory_xact_lock(hashtextextended('booking-quota:' || $1::text, 0))
+`
+
+// Serialises one student's booking creations so the quota check below cannot be raced by two
+// requests for different rooms. An advisory lock leaves the users row itself free for other writers.
+func (q *Queries) LockRequesterQuota(ctx context.Context, dollar_1 string) error {
+	_, err := q.db.Exec(ctx, lockRequesterQuota, dollar_1)
+	return err
 }

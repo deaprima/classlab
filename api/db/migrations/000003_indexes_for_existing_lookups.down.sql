@@ -1,0 +1,9 @@
+DROP INDEX IF EXISTS bookings_requester_active_idx;
+DROP INDEX IF EXISTS damage_reports_room_idx;
+DROP INDEX IF EXISTS damage_reports_status_idx;
+DROP INDEX IF EXISTS damage_reports_reporter_idx;
+DROP INDEX IF EXISTS refresh_tokens_expires_idx;
+DROP INDEX IF EXISTS refresh_tokens_family_idx;
+DROP INDEX IF EXISTS refresh_tokens_user_idx;
+DROP INDEX IF EXISTS report_events_report_idx;
+DROP INDEX IF EXISTS booking_events_booking_idx;

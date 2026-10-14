@@ -14,9 +14,11 @@ import (
 	"classlab/api/internal/bookings"
 	"classlab/api/internal/config"
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/password"
+	"classlab/api/internal/reports"
 	"classlab/api/internal/rooms"
 	"classlab/api/internal/schedules"
 	"classlab/api/internal/users"
@@ -28,10 +30,15 @@ import (
 const (
 	loginMaxAttempts = 5
 	loginWindow      = 15 * time.Minute
+
+	// maxStreamsPerUser is how many notification streams one user may hold open (tabs, devices).
+	maxStreamsPerUser = 5
 )
 
 // NewRouter fails only on an invalid booking configuration; config.Load already rejects that at start.
-func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Clock) (http.Handler, error) {
+// ctx bounds background work owned by the router (the notification listener) and should last as long
+// as the server.
+func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Clock) (http.Handler, error) {
 	rules, err := cfg.BookingRules()
 	if err != nil {
 		return nil, fmt.Errorf("booking configuration: %w", err)
@@ -50,6 +57,18 @@ func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Cl
 	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk))
 	availabilityHandler := availability.NewHandler(availability.NewService(pool))
 	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, rules))
+
+	notificationsHandler := notifications.NewHandler(
+		notifications.NewService(pool, clk),
+		notifications.NewHub(ctx, pool.Config().ConnString(), log),
+		// A stream ends before the access token it was opened with expires.
+		notifications.StreamOptions{Heartbeat: cfg.SSEHeartbeat, MaxLifetime: cfg.JWTAccessExpiry, MaxPerUser: maxStreamsPerUser},
+		log,
+	)
+	reportsHandler := reports.NewHandler(
+		reports.NewService(pool, clk, reports.NewStorage(cfg.UploadDir), cfg.UploadMaxBytes, log),
+		cfg.UploadMaxBytes,
+	)
 
 	r := chi.NewRouter()
 	r.Use(httpx.RequestID)
@@ -73,6 +92,7 @@ func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Cl
 	r.Get("/health", health(pool, clk))
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(httpx.NoStore)
 		r.Mount("/auth", auth.NewHandler(authSvc, cfg.CookieSecure).Routes(authenticate))
 		r.With(authenticate).Mount("/users", users.NewHandler(usersSvc).Routes())
 		r.Group(func(r chi.Router) {
@@ -83,6 +103,8 @@ func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Cl
 			})
 			r.Route("/schedules", schedulesHandler.Register)
 			r.Route("/bookings", bookingsHandler.Register)
+			r.Route("/notifications", notificationsHandler.Register)
+			r.Route("/reports", reportsHandler.Register)
 			r.Get("/availability", availabilityHandler.Check)
 		})
 	})

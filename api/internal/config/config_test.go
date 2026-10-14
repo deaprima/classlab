@@ -12,6 +12,7 @@ func validBookingConfig() *Config {
 		BookingMinDurationMinutes: 30,
 		BookingMaxDurationHours:   8,
 		BookingMaxFutureDays:      30,
+		BookingMaxActivePerUser:   5,
 	}
 }
 
@@ -20,7 +21,7 @@ func TestBookingRulesParsesSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := BookingRules{OpenMinute: 7 * 60, CloseMinute: 21 * 60, MinDuration: 30 * time.Minute, MaxDuration: 8 * time.Hour, MaxFutureDays: 30}
+	want := BookingRules{OpenMinute: 7 * 60, CloseMinute: 21 * 60, MinDuration: 30 * time.Minute, MaxDuration: 8 * time.Hour, MaxFutureDays: 30, MaxActivePerUser: 5}
 	if r != want {
 		t.Errorf("rules = %+v; want %+v", r, want)
 	}
@@ -45,12 +46,42 @@ func TestBookingRulesRejectsBadSettings(t *testing.T) {
 		"zero max duration":     func(c *Config) { c.BookingMaxDurationHours = 0 },
 		"min above max":         func(c *Config) { c.BookingMinDurationMinutes, c.BookingMaxDurationHours = 600, 8 },
 		"no future days":        func(c *Config) { c.BookingMaxFutureDays = 0 },
+		"no booking quota":      func(c *Config) { c.BookingMaxActivePerUser = 0 },
+		"negative quota":        func(c *Config) { c.BookingMaxActivePerUser = -1 },
 	}
 	for name, mutate := range cases {
 		c := validBookingConfig()
 		mutate(c)
 		if _, err := c.BookingRules(); err == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestValidateCORSOrigins(t *testing.T) {
+	for _, ok := range [][]string{
+		{"http://localhost:5173"},
+		{"https://classlab.kampus.ac.id", "http://localhost:5173"},
+		{"https://classlab.kampus.ac.id:8443"},
+		nil,
+	} {
+		if err := validateCORSOrigins(ok); err != nil {
+			t.Errorf("%v rejected: %v", ok, err)
+		}
+	}
+	for name, bad := range map[string][]string{
+		"wildcard":            {"*"},
+		"wildcard among good": {"https://a.example", "*"},
+		"path":                {"https://a.example/app"},
+		"trailing slash":      {"https://a.example/"},
+		"no scheme":           {"a.example"},
+		"wrong scheme":        {"ftp://a.example"},
+		"credentials in url":  {"https://user:pw@a.example"},
+		"query":               {"https://a.example?x=1"},
+		"empty entry":         {""},
+	} {
+		if err := validateCORSOrigins(bad); err == nil {
+			t.Errorf("%s: accepted %v", name, bad)
 		}
 	}
 }

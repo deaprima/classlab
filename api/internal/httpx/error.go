@@ -3,7 +3,12 @@ package httpx
 import (
 	"errors"
 	"net/http"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// PGLockNotAvailable is the SQLSTATE raised when lock_timeout expires.
+const PGLockNotAvailable = "55P03"
 
 // Standard Domain Errors
 var (
@@ -84,6 +89,19 @@ func MapError(err error, requestID string) (int, ErrorEnvelope) {
 					Code:      customErr.Code,
 					Message:   customErr.Message,
 					Details:   dets,
+					RequestID: requestID,
+				},
+			}
+		}
+
+		// A statement gave up waiting for a row lock (see db.New): the system is busy, not broken.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == PGLockNotAvailable {
+			return http.StatusServiceUnavailable, ErrorEnvelope{
+				Error: ErrorBody{
+					Code:      "SERVICE_BUSY",
+					Message:   "Sistem sedang sibuk. Silakan coba lagi beberapa saat lagi.",
+					Details:   details,
 					RequestID: requestID,
 				},
 			}

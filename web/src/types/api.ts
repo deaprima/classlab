@@ -861,7 +861,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Ajukan booking baru (MAHASISWA) */
+        /**
+         * Ajukan booking baru (MAHASISWA)
+         * @description Satu mahasiswa maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu `MENUNGGU` atau `DISETUJUI` yang belum berakhir. Melebihi batas dijawab 422 tanpa `field`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1165,11 +1168,13 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["Notification"][];
-                            meta?: components["schemas"]["PaginationMeta"];
+                            data: components["schemas"]["Notification"][];
+                            meta: components["schemas"]["PaginationMeta"];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -1189,7 +1194,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Tandai satu notifikasi sebagai telah dibaca */
+        /** Tandai satu notifikasi sebagai telah dibaca (idempoten; `read_at` pertama dipertahankan) */
         post: {
             parameters: {
                 query?: never;
@@ -1206,8 +1211,12 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Notification"];
+                    };
                 };
+                401: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -1240,8 +1249,14 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            /** @description Jumlah notifikasi yang berubah dari belum dibaca menjadi dibaca */
+                            updated: number;
+                        };
+                    };
                 };
+                401: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -1257,7 +1272,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Server-Sent Events stream untuk pembaruan notifikasi */
+        /**
+         * Server-Sent Events stream untuk pembaruan notifikasi
+         * @description Dibaca dengan `fetch` (EventSource tidak bisa mengirim header Authorization). Event: `ready` (`{"unread": N}`, dikirim sekali setelah stream aktif), `notification` (objek Notification; field `id:` berisi UUID-nya), `resync` (server kehilangan event; ambil ulang `GET /notifications`), dan `reconnect` (server menutup stream; buka stream baru). Baris komentar `: keep-alive` dikirim berkala. Stream ditutup sebelum access token yang dipakai membukanya kedaluwarsa. Event tidak diputar ulang: setelah (re)connect, ambil ulang daftar notifikasi. Satu pengguna maksimal membuka 5 stream sekaligus; yang ke-6 dijawab 429.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -1276,6 +1294,8 @@ export interface paths {
                         "text/event-stream": string;
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                429: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -1315,15 +1335,20 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["DamageReport"][];
-                            meta?: components["schemas"]["PaginationMeta"];
+                            data: components["schemas"]["DamageReport"][];
+                            meta: components["schemas"]["PaginationMeta"];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
-        /** Buat laporan kerusakan baru (multipart/form-data) */
+        /**
+         * Buat laporan kerusakan baru (multipart/form-data)
+         * @description Foto opsional: JPG, PNG, atau WebP (dicek dari isi berkas, bukan nama atau Content-Type), maksimal `UPLOAD_MAX_BYTES` (default 5 MB). Foto terlalu besar atau bertipe lain dijawab 422 pada field `photo`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1352,6 +1377,9 @@ export interface paths {
                         "application/json": components["schemas"]["DamageReport"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -1386,10 +1414,57 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["DamageReport"] & {
-                            events?: components["schemas"]["ReportEvent"][];
+                            events: components["schemas"]["ReportEvent"][];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/{id}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Foto laporan kerusakan (pelapor, TU_KALAB, KAPRODI)
+         * @description Foto disimpan di luar webroot dan hanya disajikan lewat endpoint ini.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berkas gambar */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/jpeg": string;
+                        "image/png": string;
+                        "image/webp": string;
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -1413,7 +1488,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Perbarui status laporan kerusakan (TU_KALAB) */
+        /**
+         * Perbarui status laporan kerusakan (TU_KALAB)
+         * @description Status hanya maju satu langkah (BARU, DITERIMA, DIPROSES, SELESAI); selain itu 409 `INVALID_STATE`.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -1441,7 +1519,12 @@ export interface paths {
                         "application/json": components["schemas"]["DamageReport"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         trace?: never;
@@ -1603,45 +1686,55 @@ export interface components {
         };
         Notification: {
             /** Format: uuid */
-            id?: string;
-            type?: string;
-            title?: string;
-            body?: string;
+            id: string;
+            type: string;
+            title: string;
+            body: string;
             ref_type?: string;
             /** Format: uuid */
             ref_id?: string;
             /** Format: date-time */
             read_at?: string;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
+        };
+        Reporter: {
+            /** Format: uuid */
+            id: string;
+            /** @description NIM atau NIP */
+            identifier: string;
+            name: string;
         };
         DamageReport: {
             /** Format: uuid */
-            id?: string;
+            id: string;
             /** Format: uuid */
-            room_id?: string;
+            room_id: string;
+            room: components["schemas"]["Room"];
             /** Format: uuid */
-            reporter_id?: string;
-            description?: string;
+            reporter_id: string;
+            reporter: components["schemas"]["Reporter"];
+            description: string;
+            /** @description Path URL foto (`/api/v1/reports/{id}/photo`), bukan lokasi berkas di server. Ada hanya bila laporan punya foto; ambil dengan header Authorization. */
             photo_path?: string;
-            status?: components["schemas"]["ReportStatus"];
+            status: components["schemas"]["ReportStatus"];
             /** Format: uuid */
             handled_by?: string;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
         };
         ReportEvent: {
             /** Format: uuid */
-            id?: string;
+            id: string;
             /** Format: uuid */
-            report_id?: string;
+            report_id: string;
             /** Format: uuid */
-            actor_id?: string;
+            actor_id: string;
             from_status?: components["schemas"]["ReportStatus"];
-            to_status?: components["schemas"]["ReportStatus"];
+            to_status: components["schemas"]["ReportStatus"];
             note?: string;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
         };
     };
     responses: {

@@ -58,3 +58,11 @@ ON CONFLICT (identifier) DO NOTHING;
 
 -- name: CountActiveUsersByIdentifiers :one
 SELECT count(*) FROM users WHERE identifier = ANY(sqlc.arg(identifiers)::text[]) AND is_active;
+
+-- Taken before an account change that could remove the last Kaprodi, so two such changes made at
+-- the same moment cannot each see "the other one is still there".
+-- name: LockKaprodiGuard :exec
+SELECT pg_advisory_xact_lock(hashtextextended('kaprodi-guard', 0));
+
+-- name: CountActiveKaprodi :one
+SELECT count(*) FROM users WHERE role = 'KAPRODI' AND is_active;

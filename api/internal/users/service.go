@@ -227,11 +227,30 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	var updated User
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
+
+		// Changes that can remove a Kaprodi are serialised and checked afterwards. The self-protection rule
+		// above is not enough: two Kaprodi deactivating each other at the same moment would each pass it.
+		mayRemoveKaprodi := (in.IsActive != nil && !*in.IsActive) || (in.Role != nil && *in.Role != httpx.RoleKaprodi)
+		if mayRemoveKaprodi {
+			if err := q.LockKaprodiGuard(ctx); err != nil {
+				return fmt.Errorf("locking kaprodi guard: %w", err)
+			}
+		}
+
 		row, err := q.UpdateUser(ctx, params)
 		if err != nil {
 			return err
 		}
 		updated = userRow(row).toUser()
+		if mayRemoveKaprodi {
+			left, err := q.CountActiveKaprodi(ctx)
+			if err != nil {
+				return fmt.Errorf("counting active kaprodi: %w", err)
+			}
+			if left == 0 {
+				return httpx.ValidationError(httpx.ErrorDetail{Message: "Harus tersisa minimal satu Kaprodi aktif."})
+			}
+		}
 
 		// Deactivation and password reset must end existing sessions, not just block new logins.
 		deactivated := in.IsActive != nil && !*in.IsActive
