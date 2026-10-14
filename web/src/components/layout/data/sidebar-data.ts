@@ -1,102 +1,90 @@
 import {
-  Bug,
-  Command,
-  FileX,
-  Lock,
-  LayoutDashboard,
-  ListTodo,
-  Monitor,
   Bell,
+  CalendarClock,
+  CalendarPlus,
+  ClipboardCheck,
+  DoorOpen,
+  History,
+  LayoutGrid,
   Palette,
-  ServerOff,
-  Construction,
-  Settings,
-  UserCog,
-  UserX,
+  TriangleAlert,
   Users,
-  Wrench,
 } from 'lucide-react'
-import { type SidebarData } from '../types'
+import { type UserRole } from '@/lib/api-types'
+import { ACCESS, hasRole } from '@/lib/rbac'
+import { type NavGroup } from '../types'
 
-// Placeholder navigation: only routes that exist after the template cleanup.
-// Phase 5 replaces this with the role-based ClassLab menu.
-export const sidebarData: SidebarData = {
-  user: {
-    name: 'Pengguna',
-    email: '',
-    avatar: '/avatars/shadcn.jpg',
+const navGroups: NavGroup[] = [
+  {
+    title: 'Peminjaman',
+    items: [
+      { title: 'Ketersediaan Ruang', url: '/', icon: LayoutGrid },
+      {
+        title: 'Ajukan Peminjaman',
+        url: '/bookings/new',
+        icon: CalendarPlus,
+        roles: ACCESS.createBooking,
+      },
+      {
+        title: 'Riwayat Peminjaman',
+        url: '/bookings',
+        icon: History,
+        roles: ACCESS.viewBookings,
+      },
+      {
+        title: 'Persetujuan',
+        url: '/approvals',
+        icon: ClipboardCheck,
+        roles: ACCESS.approveBookings,
+      },
+    ],
   },
-  teams: [
-    {
-      name: 'ClassLab.io',
-      logo: Command,
-      plan: 'Rumpun TI',
-    },
-  ],
-  navGroups: [
-    {
-      title: 'Umum',
-      items: [
-        { title: 'Ketersediaan Ruang', url: '/', icon: LayoutDashboard },
-        { title: 'Tugas (Referensi)', url: '/tasks', icon: ListTodo },
-        { title: 'Pengguna (Referensi)', url: '/users', icon: Users },
-      ],
-    },
-    {
-      title: 'Halaman',
-      items: [
-        {
-          title: 'Errors',
-          icon: Bug,
-          items: [
-            { title: 'Unauthorized', url: '/errors/unauthorized', icon: Lock },
-            { title: 'Forbidden', url: '/errors/forbidden', icon: UserX },
-            { title: 'Not Found', url: '/errors/not-found', icon: FileX },
-            {
-              title: 'Internal Server Error',
-              url: '/errors/internal-server-error',
-              icon: ServerOff,
-            },
-            {
-              title: 'Maintenance Error',
-              url: '/errors/maintenance-error',
-              icon: Construction,
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Lainnya',
-      items: [
-        {
-          title: 'Pengaturan',
-          icon: Settings,
-          items: [
-            { title: 'Pengaturan Profil', url: '/settings', icon: UserCog },
-            {
-              title: 'Pengaturan Akun',
-              url: '/settings/account',
-              icon: Wrench,
-            },
-            {
-              title: 'Pengaturan Tampilan',
-              url: '/settings/appearance',
-              icon: Palette,
-            },
-            {
-              title: 'Pengaturan Notifikasi',
-              url: '/settings/notifications',
-              icon: Bell,
-            },
-            {
-              title: 'Pengaturan Display',
-              url: '/settings/display',
-              icon: Monitor,
-            },
-          ],
-        },
-      ],
-    },
-  ],
+  {
+    title: 'Umum',
+    items: [
+      { title: 'Notifikasi', url: '/notifications', icon: Bell },
+      { title: 'Laporan Kerusakan', url: '/reports', icon: TriangleAlert },
+    ],
+  },
+  {
+    title: 'Administrasi',
+    items: [
+      {
+        title: 'Kelola Ruang',
+        url: '/admin/rooms',
+        icon: DoorOpen,
+        roles: ACCESS.manageRooms,
+      },
+      {
+        title: 'Kelola Jadwal',
+        url: '/admin/schedules',
+        icon: CalendarClock,
+        roles: ACCESS.manageSchedules,
+      },
+      {
+        title: 'Kelola Pengguna',
+        url: '/admin/users',
+        icon: Users,
+        roles: ACCESS.manageUsers,
+      },
+    ],
+  },
+  {
+    title: 'Lainnya',
+    items: [{ title: 'Tampilan', url: '/settings/appearance', icon: Palette }],
+  },
+]
+
+/** Navigation for one role; groups left without items are dropped. */
+export function navGroupsForRole(role: UserRole | undefined): NavGroup[] {
+  if (!role) return []
+  const user = { role }
+  return navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !item.roles || hasRole(user, item.roles)
+      ),
+    }))
+    .filter((group) => group.items.length > 0)
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getPageNumbers } from './utils'
+import { getDisplayNameInitials, getPageNumbers } from './utils'
 
 describe('getPageNumbers', () => {
   it('returns all pages when total is at most 5', () => {
@@ -24,5 +24,18 @@ describe('getPageNumbers', () => {
   it('handles current page greater than total pages', () => {
     expect(getPageNumbers(6, 5)).toEqual([1, 2, 3, 4, 5])
     expect(getPageNumbers(11, 10)).toEqual([1, '...', 7, 8, 9, 10])
+  })
+})
+
+describe('getDisplayNameInitials', () => {
+  it.each([
+    ['Andi Pratama', 'AP'],
+    ['Agus Prasetyo (OB)', 'AP'],
+    ['Siti Rahma (TU/Kalab)', 'SR'],
+    ['Budi', 'BU'],
+    ['(OB)', '(O'],
+    ['   ', '?'],
+  ])('%s -> %s', (name, expected) => {
+    expect(getDisplayNameInitials(name)).toBe(expected)
   })
 })

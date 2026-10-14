@@ -17,15 +17,16 @@ import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
 import { Route as errors401RouteImport } from './routes/(errors)/401'
 import { Route as authSignInRouteImport } from './routes/(auth)/sign-in'
-import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
-import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
-import { Route as AuthenticatedTasksIndexRouteImport } from './routes/_authenticated/tasks/index'
-import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
-import { Route as AuthenticatedSettingsNotificationsRouteImport } from './routes/_authenticated/settings/notifications'
-import { Route as AuthenticatedSettingsDisplayRouteImport } from './routes/_authenticated/settings/display'
+import { Route as AuthenticatedReportsIndexRouteImport } from './routes/_authenticated/reports/index'
+import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_authenticated/notifications/index'
+import { Route as AuthenticatedBookingsIndexRouteImport } from './routes/_authenticated/bookings/index'
+import { Route as AuthenticatedApprovalsIndexRouteImport } from './routes/_authenticated/approvals/index'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
-import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
-import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedRoomsIdRouteImport } from './routes/_authenticated/rooms/$id'
+import { Route as AuthenticatedBookingsNewRouteImport } from './routes/_authenticated/bookings/new'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
+import { Route as AuthenticatedAdminSchedulesRouteImport } from './routes/_authenticated/admin/schedules'
+import { Route as AuthenticatedAdminRoomsRouteImport } from './routes/_authenticated/admin/rooms'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -66,76 +67,82 @@ const authSignInRoute = authSignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedSettingsRouteRoute =
-  AuthenticatedSettingsRouteRouteImport.update({
-    id: '/settings',
-    path: '/settings',
+const AuthenticatedReportsIndexRoute =
+  AuthenticatedReportsIndexRouteImport.update({
+    id: '/reports/',
+    path: '/reports/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
-  id: '/users/',
-  path: '/users/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedTasksIndexRoute = AuthenticatedTasksIndexRouteImport.update({
-  id: '/tasks/',
-  path: '/tasks/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedSettingsIndexRoute =
-  AuthenticatedSettingsIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+const AuthenticatedNotificationsIndexRoute =
+  AuthenticatedNotificationsIndexRouteImport.update({
+    id: '/notifications/',
+    path: '/notifications/',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedSettingsNotificationsRoute =
-  AuthenticatedSettingsNotificationsRouteImport.update({
-    id: '/notifications',
-    path: '/notifications',
-    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+const AuthenticatedBookingsIndexRoute =
+  AuthenticatedBookingsIndexRouteImport.update({
+    id: '/bookings/',
+    path: '/bookings/',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedSettingsDisplayRoute =
-  AuthenticatedSettingsDisplayRouteImport.update({
-    id: '/display',
-    path: '/display',
-    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+const AuthenticatedApprovalsIndexRoute =
+  AuthenticatedApprovalsIndexRouteImport.update({
+    id: '/approvals/',
+    path: '/approvals/',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSettingsAppearanceRoute =
   AuthenticatedSettingsAppearanceRouteImport.update({
-    id: '/appearance',
-    path: '/appearance',
-    getParentRoute: () => AuthenticatedSettingsRouteRoute,
-  } as any)
-const AuthenticatedSettingsAccountRoute =
-  AuthenticatedSettingsAccountRouteImport.update({
-    id: '/account',
-    path: '/account',
-    getParentRoute: () => AuthenticatedSettingsRouteRoute,
-  } as any)
-const AuthenticatedErrorsErrorRoute =
-  AuthenticatedErrorsErrorRouteImport.update({
-    id: '/errors/$error',
-    path: '/errors/$error',
+    id: '/settings/appearance',
+    path: '/settings/appearance',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedRoomsIdRoute = AuthenticatedRoomsIdRouteImport.update({
+  id: '/rooms/$id',
+  path: '/rooms/$id',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedBookingsNewRoute =
+  AuthenticatedBookingsNewRouteImport.update({
+    id: '/bookings/new',
+    path: '/bookings/new',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminSchedulesRoute =
+  AuthenticatedAdminSchedulesRouteImport.update({
+    id: '/admin/schedules',
+    path: '/admin/schedules',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminRoomsRoute = AuthenticatedAdminRoomsRouteImport.update({
+  id: '/admin/rooms',
+  path: '/admin/rooms',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
-  '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/sign-in': typeof authSignInRoute
   '/401': typeof errors401Route
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
-  '/errors/$error': typeof AuthenticatedErrorsErrorRoute
-  '/settings/account': typeof AuthenticatedSettingsAccountRoute
+  '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
+  '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/bookings/new': typeof AuthenticatedBookingsNewRoute
+  '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
-  '/settings/display': typeof AuthenticatedSettingsDisplayRoute
-  '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
-  '/settings/': typeof AuthenticatedSettingsIndexRoute
-  '/tasks/': typeof AuthenticatedTasksIndexRoute
-  '/users/': typeof AuthenticatedUsersIndexRoute
+  '/approvals/': typeof AuthenticatedApprovalsIndexRoute
+  '/bookings/': typeof AuthenticatedBookingsIndexRoute
+  '/notifications/': typeof AuthenticatedNotificationsIndexRoute
+  '/reports/': typeof AuthenticatedReportsIndexRoute
 }
 export interface FileRoutesByTo {
   '/sign-in': typeof authSignInRoute
@@ -145,19 +152,20 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/': typeof AuthenticatedIndexRoute
-  '/errors/$error': typeof AuthenticatedErrorsErrorRoute
-  '/settings/account': typeof AuthenticatedSettingsAccountRoute
+  '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
+  '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/bookings/new': typeof AuthenticatedBookingsNewRoute
+  '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
-  '/settings/display': typeof AuthenticatedSettingsDisplayRoute
-  '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
-  '/settings': typeof AuthenticatedSettingsIndexRoute
-  '/tasks': typeof AuthenticatedTasksIndexRoute
-  '/users': typeof AuthenticatedUsersIndexRoute
+  '/approvals': typeof AuthenticatedApprovalsIndexRoute
+  '/bookings': typeof AuthenticatedBookingsIndexRoute
+  '/notifications': typeof AuthenticatedNotificationsIndexRoute
+  '/reports': typeof AuthenticatedReportsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/(auth)/sign-in': typeof authSignInRoute
   '/(errors)/401': typeof errors401Route
   '/(errors)/403': typeof errors403Route
@@ -165,34 +173,37 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/': typeof AuthenticatedIndexRoute
-  '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
-  '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
+  '/_authenticated/admin/rooms': typeof AuthenticatedAdminRoomsRoute
+  '/_authenticated/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
+  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/bookings/new': typeof AuthenticatedBookingsNewRoute
+  '/_authenticated/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
-  '/_authenticated/settings/display': typeof AuthenticatedSettingsDisplayRoute
-  '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
-  '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
-  '/_authenticated/tasks/': typeof AuthenticatedTasksIndexRoute
-  '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/approvals/': typeof AuthenticatedApprovalsIndexRoute
+  '/_authenticated/bookings/': typeof AuthenticatedBookingsIndexRoute
+  '/_authenticated/notifications/': typeof AuthenticatedNotificationsIndexRoute
+  '/_authenticated/reports/': typeof AuthenticatedReportsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/settings'
     | '/sign-in'
     | '/401'
     | '/403'
     | '/404'
     | '/500'
     | '/503'
-    | '/errors/$error'
-    | '/settings/account'
+    | '/admin/rooms'
+    | '/admin/schedules'
+    | '/admin/users'
+    | '/bookings/new'
+    | '/rooms/$id'
     | '/settings/appearance'
-    | '/settings/display'
-    | '/settings/notifications'
-    | '/settings/'
-    | '/tasks/'
-    | '/users/'
+    | '/approvals/'
+    | '/bookings/'
+    | '/notifications/'
+    | '/reports/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/sign-in'
@@ -202,18 +213,19 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/'
-    | '/errors/$error'
-    | '/settings/account'
+    | '/admin/rooms'
+    | '/admin/schedules'
+    | '/admin/users'
+    | '/bookings/new'
+    | '/rooms/$id'
     | '/settings/appearance'
-    | '/settings/display'
-    | '/settings/notifications'
-    | '/settings'
-    | '/tasks'
-    | '/users'
+    | '/approvals'
+    | '/bookings'
+    | '/notifications'
+    | '/reports'
   id:
     | '__root__'
     | '/_authenticated'
-    | '/_authenticated/settings'
     | '/(auth)/sign-in'
     | '/(errors)/401'
     | '/(errors)/403'
@@ -221,14 +233,16 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/'
-    | '/_authenticated/errors/$error'
-    | '/_authenticated/settings/account'
+    | '/_authenticated/admin/rooms'
+    | '/_authenticated/admin/schedules'
+    | '/_authenticated/admin/users'
+    | '/_authenticated/bookings/new'
+    | '/_authenticated/rooms/$id'
     | '/_authenticated/settings/appearance'
-    | '/_authenticated/settings/display'
-    | '/_authenticated/settings/notifications'
-    | '/_authenticated/settings/'
-    | '/_authenticated/tasks/'
-    | '/_authenticated/users/'
+    | '/_authenticated/approvals/'
+    | '/_authenticated/bookings/'
+    | '/_authenticated/notifications/'
+    | '/_authenticated/reports/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -299,109 +313,105 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof authSignInRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/settings': {
-      id: '/_authenticated/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AuthenticatedSettingsRouteRouteImport
+    '/_authenticated/reports/': {
+      id: '/_authenticated/reports/'
+      path: '/reports'
+      fullPath: '/reports/'
+      preLoaderRoute: typeof AuthenticatedReportsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/users/': {
-      id: '/_authenticated/users/'
-      path: '/users'
-      fullPath: '/users/'
-      preLoaderRoute: typeof AuthenticatedUsersIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/tasks/': {
-      id: '/_authenticated/tasks/'
-      path: '/tasks'
-      fullPath: '/tasks/'
-      preLoaderRoute: typeof AuthenticatedTasksIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/settings/': {
-      id: '/_authenticated/settings/'
-      path: '/'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
-      parentRoute: typeof AuthenticatedSettingsRouteRoute
-    }
-    '/_authenticated/settings/notifications': {
-      id: '/_authenticated/settings/notifications'
+    '/_authenticated/notifications/': {
+      id: '/_authenticated/notifications/'
       path: '/notifications'
-      fullPath: '/settings/notifications'
-      preLoaderRoute: typeof AuthenticatedSettingsNotificationsRouteImport
-      parentRoute: typeof AuthenticatedSettingsRouteRoute
+      fullPath: '/notifications/'
+      preLoaderRoute: typeof AuthenticatedNotificationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/settings/display': {
-      id: '/_authenticated/settings/display'
-      path: '/display'
-      fullPath: '/settings/display'
-      preLoaderRoute: typeof AuthenticatedSettingsDisplayRouteImport
-      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    '/_authenticated/bookings/': {
+      id: '/_authenticated/bookings/'
+      path: '/bookings'
+      fullPath: '/bookings/'
+      preLoaderRoute: typeof AuthenticatedBookingsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/approvals/': {
+      id: '/_authenticated/approvals/'
+      path: '/approvals'
+      fullPath: '/approvals/'
+      preLoaderRoute: typeof AuthenticatedApprovalsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings/appearance': {
       id: '/_authenticated/settings/appearance'
-      path: '/appearance'
+      path: '/settings/appearance'
       fullPath: '/settings/appearance'
       preLoaderRoute: typeof AuthenticatedSettingsAppearanceRouteImport
-      parentRoute: typeof AuthenticatedSettingsRouteRoute
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/settings/account': {
-      id: '/_authenticated/settings/account'
-      path: '/account'
-      fullPath: '/settings/account'
-      preLoaderRoute: typeof AuthenticatedSettingsAccountRouteImport
-      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    '/_authenticated/rooms/$id': {
+      id: '/_authenticated/rooms/$id'
+      path: '/rooms/$id'
+      fullPath: '/rooms/$id'
+      preLoaderRoute: typeof AuthenticatedRoomsIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/errors/$error': {
-      id: '/_authenticated/errors/$error'
-      path: '/errors/$error'
-      fullPath: '/errors/$error'
-      preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
+    '/_authenticated/bookings/new': {
+      id: '/_authenticated/bookings/new'
+      path: '/bookings/new'
+      fullPath: '/bookings/new'
+      preLoaderRoute: typeof AuthenticatedBookingsNewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/schedules': {
+      id: '/_authenticated/admin/schedules'
+      path: '/admin/schedules'
+      fullPath: '/admin/schedules'
+      preLoaderRoute: typeof AuthenticatedAdminSchedulesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/rooms': {
+      id: '/_authenticated/admin/rooms'
+      path: '/admin/rooms'
+      fullPath: '/admin/rooms'
+      preLoaderRoute: typeof AuthenticatedAdminRoomsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
   }
 }
 
-interface AuthenticatedSettingsRouteRouteChildren {
-  AuthenticatedSettingsAccountRoute: typeof AuthenticatedSettingsAccountRoute
-  AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
-  AuthenticatedSettingsDisplayRoute: typeof AuthenticatedSettingsDisplayRoute
-  AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
-  AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
-}
-
-const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteChildren =
-  {
-    AuthenticatedSettingsAccountRoute: AuthenticatedSettingsAccountRoute,
-    AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
-    AuthenticatedSettingsDisplayRoute: AuthenticatedSettingsDisplayRoute,
-    AuthenticatedSettingsNotificationsRoute:
-      AuthenticatedSettingsNotificationsRoute,
-    AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
-  }
-
-const AuthenticatedSettingsRouteRouteWithChildren =
-  AuthenticatedSettingsRouteRoute._addFileChildren(
-    AuthenticatedSettingsRouteRouteChildren,
-  )
-
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
-  AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
-  AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
-  AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
+  AuthenticatedAdminRoomsRoute: typeof AuthenticatedAdminRoomsRoute
+  AuthenticatedAdminSchedulesRoute: typeof AuthenticatedAdminSchedulesRoute
+  AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedBookingsNewRoute: typeof AuthenticatedBookingsNewRoute
+  AuthenticatedRoomsIdRoute: typeof AuthenticatedRoomsIdRoute
+  AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
+  AuthenticatedApprovalsIndexRoute: typeof AuthenticatedApprovalsIndexRoute
+  AuthenticatedBookingsIndexRoute: typeof AuthenticatedBookingsIndexRoute
+  AuthenticatedNotificationsIndexRoute: typeof AuthenticatedNotificationsIndexRoute
+  AuthenticatedReportsIndexRoute: typeof AuthenticatedReportsIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
-  AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
-  AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
-  AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
+  AuthenticatedAdminRoomsRoute: AuthenticatedAdminRoomsRoute,
+  AuthenticatedAdminSchedulesRoute: AuthenticatedAdminSchedulesRoute,
+  AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedBookingsNewRoute: AuthenticatedBookingsNewRoute,
+  AuthenticatedRoomsIdRoute: AuthenticatedRoomsIdRoute,
+  AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
+  AuthenticatedApprovalsIndexRoute: AuthenticatedApprovalsIndexRoute,
+  AuthenticatedBookingsIndexRoute: AuthenticatedBookingsIndexRoute,
+  AuthenticatedNotificationsIndexRoute: AuthenticatedNotificationsIndexRoute,
+  AuthenticatedReportsIndexRoute: AuthenticatedReportsIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

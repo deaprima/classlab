@@ -1,34 +1,32 @@
 import { create } from 'zustand'
+import { type User, type UserRole } from '@/lib/api-types'
 
-export type UserRole = 'MAHASISWA' | 'TU_KALAB' | 'OB' | 'KAPRODI'
-
-export interface AuthUser {
-  id: string
-  org_unit_id: string
-  identifier: string
-  name: string
-  email: string
-  role: UserRole
-  is_active: boolean
-}
+export type AuthUser = User
+export type { UserRole }
 
 interface AuthState {
   auth: {
     user: AuthUser | null
     accessToken: string | null
     isAuthenticated: boolean
+    setSession: (accessToken: string, user: AuthUser) => void
     setUser: (user: AuthUser | null) => void
     setAccessToken: (accessToken: string | null) => void
     reset: () => void
   }
 }
 
-// In-memory auth store: access token is NOT stored in localStorage or JS cookies
+// Session state lives in memory only. The access token never touches localStorage or a JS cookie
+// (agent.md 6); after a reload the session is restored from the httpOnly refresh cookie.
 export const useAuthStore = create<AuthState>()((set) => ({
   auth: {
     user: null,
     accessToken: null,
     isAuthenticated: false,
+    setSession: (accessToken, user) =>
+      set((state) => ({
+        auth: { ...state.auth, accessToken, user, isAuthenticated: true },
+      })),
     setUser: (user) =>
       set((state) => ({
         auth: {

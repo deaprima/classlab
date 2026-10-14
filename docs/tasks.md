@@ -11,7 +11,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 - [x] **Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan** (Selesai)
 - [x] **Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail**
 - [x] **Phase 4: Notifikasi In-App & Pelaporan Kerusakan**
-- [ ] **Phase 5: Antarmuka Frontend (UI, Routing & Form)**
+- [x] **Phase 5: Antarmuka Frontend (UI, Routing & Form)**
 - [ ] **Phase 6: Hardening Produksi, Caddy, Backup & Dokumentasi**
 
 ---
@@ -97,18 +97,20 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ---
 
 ### Phase 5: Antarmuka Frontend (UI, Routing & Form)
-- [ ] Generate tipe TypeScript dari `api/openapi.yaml`
-- [ ] Konfigurasi Axios client & refresh token interceptor
-- [ ] Route tree TanStack Router & RBAC navigation guards
-- [ ] Halaman login `/sign-in`
-- [ ] Halaman utama `/` (ketersediaan ruang interaktif)
-- [ ] Halaman timeline `/rooms/$id` (visual CSS grid)
-- [ ] Halaman pengajuan booking `/bookings/new` (React Hook Form + Zod)
-- [ ] Halaman riwayat booking `/bookings`
-- [ ] Halaman approval `/approvals` (antrean & dialog penolakan)
-- [ ] Halaman pelaporan kerusakan `/reports`
-- [ ] Halaman admin ruang, jadwal, pengguna (`/admin/*`)
-- [ ] Vitest unit & form tests, build check
+- [x] Generate tipe TypeScript dari `api/openapi.yaml` (sinkron; alias di `web/src/lib/api-types.ts`)
+- [x] Konfigurasi Axios client & refresh token interceptor (refresh diserialisasi, dev proxy Vite)
+- [x] Route tree TanStack Router & RBAC navigation guards
+- [x] Halaman login `/sign-in`
+- [x] Halaman utama `/` (ketersediaan ruang interaktif)
+- [x] Halaman timeline `/rooms/$id` (visual CSS grid)
+- [x] Halaman pengajuan booking `/bookings/new` (React Hook Form + Zod)
+- [x] Halaman riwayat booking `/bookings`
+- [x] Halaman approval `/approvals` (antrean & dialog penolakan)
+- [x] Notifikasi in-app: badge header, stream SSE (fetch) + fallback polling 30 dtk, halaman `/notifications`
+- [x] Halaman pelaporan kerusakan `/reports`
+- [x] Halaman admin ruang, jadwal, pengguna (`/admin/*`)
+- [x] Vitest unit & form tests, build check (27 file, 167 tes) + verifikasi E2E manual Playwright terhadap API asli
+- [x] Pembersihan demo template & kode mati (disetujui 2026-10-14)
 
 ---
 

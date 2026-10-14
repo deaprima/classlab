@@ -5,10 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function sleep(ms: number = 1000) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 /**
  * Generates page numbers for pagination with ellipsis
  * @param currentPage - Current page number (1-based)
@@ -62,9 +58,13 @@ export function getPageNumbers(currentPage: number, totalPages: number) {
 /**
  * Initials from a display name: first character of the first word + first
  * character of the last word. One word only: first two characters. Empty: `?`.
+ * Words not starting with a letter, such as "(OB)", are skipped unless
+ * nothing else is left.
  */
 export function getDisplayNameInitials(displayName: string): string {
-  const parts = displayName.trim().split(/\s+/).filter(Boolean)
+  const words = displayName.trim().split(/\s+/).filter(Boolean)
+  const lettered = words.filter((w) => /^\p{L}/u.test(w))
+  const parts = lettered.length > 0 ? lettered : words
   if (parts.length === 0) return '?'
   if (parts.length === 1) {
     return parts[0].slice(0, 2).toUpperCase()

@@ -1,17 +1,13 @@
 import { Link } from '@tanstack/react-router'
-import {
-  BadgeCheck,
-  Bell,
-  ChevronsUpDown,
-  CreditCard,
-  LogOut,
-} from 'lucide-react'
+import { ChevronsUpDown, LogOut, Palette } from 'lucide-react'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE_LABELS } from '@/lib/rbac'
+import { getDisplayNameInitials } from '@/lib/utils'
 import useDialogState from '@/hooks/use-dialog-state'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -25,17 +21,25 @@ import {
 } from '@/components/ui/sidebar'
 import { SignOutDialog } from '@/components/sign-out-dialog'
 
-type NavUserProps = {
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
-}
-
-export function NavUser({ user }: NavUserProps) {
+export function NavUser() {
   const { isMobile } = useSidebar()
   const [open, setOpen] = useDialogState()
+  const user = useAuthStore((state) => state.auth.user)
+  if (!user) return null
+
+  const identity = (
+    <>
+      <Avatar className='h-8 w-8 rounded-lg'>
+        <AvatarFallback className='rounded-lg'>
+          {getDisplayNameInitials(user.name)}
+        </AvatarFallback>
+      </Avatar>
+      <div className='grid flex-1 text-start text-sm leading-tight'>
+        <span className='truncate font-semibold'>{user.name}</span>
+        <span className='truncate text-xs'>{ROLE_LABELS[user.role]}</span>
+      </div>
+    </>
+  )
 
   return (
     <>
@@ -47,14 +51,7 @@ export function NavUser({ user }: NavUserProps) {
                 size='lg'
                 className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'
               >
-                <Avatar className='h-8 w-8 rounded-lg'>
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className='rounded-lg'>SN</AvatarFallback>
-                </Avatar>
-                <div className='grid flex-1 text-start text-sm leading-tight'>
-                  <span className='truncate font-semibold'>{user.name}</span>
-                  <span className='truncate text-xs'>{user.email}</span>
-                </div>
+                {identity}
                 <ChevronsUpDown className='ms-auto size-4' />
               </SidebarMenuButton>
             </DropdownMenuTrigger>
@@ -66,45 +63,26 @@ export function NavUser({ user }: NavUserProps) {
             >
               <DropdownMenuLabel className='p-0 font-normal'>
                 <div className='flex items-center gap-2 px-1 py-1.5 text-start text-sm'>
-                  <Avatar className='h-8 w-8 rounded-lg'>
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback className='rounded-lg'>SN</AvatarFallback>
-                  </Avatar>
-                  <div className='grid flex-1 text-start text-sm leading-tight'>
-                    <span className='truncate font-semibold'>{user.name}</span>
-                    <span className='truncate text-xs'>{user.email}</span>
-                  </div>
+                  {identity}
                 </div>
+                <p className='px-1 pb-1.5 text-xs text-muted-foreground'>
+                  {user.identifier} · {user.email}
+                </p>
               </DropdownMenuLabel>
-
               <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem asChild>
-                  <Link to='/settings/account'>
-                    <BadgeCheck />
-                    Account
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to='/settings'>
-                    <CreditCard />
-                    Billing
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to='/settings/notifications'>
-                    <Bell />
-                    Notifications
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
+              <DropdownMenuItem asChild>
+                <Link to='/settings/appearance'>
+                  <Palette />
+                  Tampilan
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant='destructive'
                 onClick={() => setOpen(true)}
               >
                 <LogOut />
-                Sign out
+                Keluar
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -5,13 +5,15 @@ export function MaintenanceError() {
     <div className='h-svh'>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
         <h1 className='text-[7rem] leading-tight font-bold'>503</h1>
-        <span className='font-medium'>Website is under maintenance!</span>
+        <span className='font-medium'>Sistem sedang dalam pemeliharaan</span>
         <p className='text-center text-muted-foreground'>
-          The site is not available at the moment. <br />
-          We'll be back online shortly.
+          ClassLab sementara tidak dapat digunakan. <br />
+          Silakan coba lagi beberapa saat lagi.
         </p>
         <div className='mt-6 flex gap-4'>
-          <Button variant='outline'>Learn more</Button>
+          <Button variant='outline' onClick={() => window.location.reload()}>
+            Muat ulang
+          </Button>
         </div>
       </div>
     </div>
