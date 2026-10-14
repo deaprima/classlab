@@ -26,6 +26,9 @@ paths:
   /auth/login:
     post:
       summary: Login pengguna
+      description: >
+        Refresh token dikirim hanya lewat cookie `refresh_token` (httpOnly, SameSite=Strict, Path=/api/v1/auth),
+        tidak pernah di body. Maksimal 5 percobaan per 15 menit per (identifier + IP).
       requestBody:
         required: true
         content:
@@ -39,34 +42,54 @@ paths:
       responses:
         '200':
           description: Login sukses (refresh token diset via cookie httpOnly)
+          headers:
+            Set-Cookie:
+              description: Cookie `refresh_token`
+              schema: { type: string }
           content:
             application/json:
               schema:
                 type: object
+                required: [access_token, expires_in, user]
                 properties:
                   access_token: { type: string }
                   expires_in: { type: integer, example: 900 }
                   user: { $ref: '#/components/schemas/User' }
-        '401':
-          $ref: '#/components/responses/ErrorResponse'
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
         '429':
-          $ref: '#/components/responses/ErrorResponse'
+          description: Terlalu banyak percobaan login
+          headers:
+            Retry-After:
+              description: Detik sampai percobaan berikutnya diizinkan
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
 
   /auth/refresh:
     post:
       summary: Rotasi refresh token dan dapatkan access token baru
+      description: >
+        Membaca cookie `refresh_token` dan menggantinya dengan yang baru. Memakai ulang token lama
+        mencabut seluruh keluarga token (family_id) dan mengembalikan 401.
       responses:
         '200':
           description: Token berhasil diperbarui
+          headers:
+            Set-Cookie:
+              description: Cookie `refresh_token` yang baru
+              schema: { type: string }
           content:
             application/json:
               schema:
                 type: object
+                required: [access_token, expires_in]
                 properties:
                   access_token: { type: string }
                   expires_in: { type: integer, example: 900 }
-        '401':
-          $ref: '#/components/responses/ErrorResponse'
+        '401': { $ref: '#/components/responses/ErrorResponse' }
 
   /auth/logout:
     post:
@@ -75,9 +98,8 @@ paths:
         - BearerAuth: []
       responses:
         '200':
-          description: Berhasil logout
-        '401':
-          $ref: '#/components/responses/ErrorResponse'
+          description: Berhasil logout (body kosong, cookie dihapus)
+        '401': { $ref: '#/components/responses/ErrorResponse' }
 
   /auth/me:
     get:
@@ -91,8 +113,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
-        '401':
-          $ref: '#/components/responses/ErrorResponse'
+        '401': { $ref: '#/components/responses/ErrorResponse' }
 
   /users:
     get:
@@ -105,6 +126,7 @@ paths:
           schema: { $ref: '#/components/schemas/UserRole' }
         - name: q
           in: query
+          description: Cari pada nama, identifier, dan email (tanpa membedakan huruf besar/kecil)
           schema: { type: string }
         - name: is_active
           in: query
@@ -113,16 +135,20 @@ paths:
         - { $ref: '#/components/parameters/PerPageQuery' }
       responses:
         '200':
+          description: Daftar pengguna
           content:
             application/json:
               schema:
                 type: object
+                required: [data, meta]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/User' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
       summary: Buat pengguna baru (Kaprodi)
       security:
@@ -139,18 +165,25 @@ paths:
                 identifier: { type: string }
                 name: { type: string }
                 email: { type: string, format: email }
-                password: { type: string }
+                password: { type: string, minLength: 8, maxLength: 128 }
                 role: { $ref: '#/components/schemas/UserRole' }
       responses:
         '201':
+          description: Pengguna dibuat
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /users/{id}:
     patch:
       summary: Perbarui data/peran/status/password pengguna (Kaprodi)
+      description: >
+        Menonaktifkan pengguna atau mereset password mencabut semua sesi refresh miliknya.
+        Kaprodi tidak dapat menonaktifkan atau mengubah peran akunnya sendiri.
       security:
         - BearerAuth: []
       parameters:
@@ -159,23 +192,29 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              minProperties: 1
               properties:
                 name: { type: string }
                 email: { type: string, format: email }
                 role: { $ref: '#/components/schemas/UserRole' }
                 is_active: { type: boolean }
-                password: { type: string }
+                password: { type: string, minLength: 8, maxLength: 128 }
       responses:
         '200':
+          description: Pengguna diperbarui
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /rooms:
     get:
@@ -199,6 +238,7 @@ paths:
         - { $ref: '#/components/parameters/PerPageQuery' }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -230,6 +270,7 @@ paths:
                   items: { type: string }
       responses:
         '201':
+          description: Berhasil dibuat
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Room' }
@@ -247,6 +288,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Room' }
@@ -273,6 +315,7 @@ paths:
                 is_active: { type: boolean }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Room' }
@@ -310,6 +353,7 @@ paths:
           schema: { type: string, format: date-time }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -401,6 +445,7 @@ paths:
           schema: { type: integer }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -435,6 +480,7 @@ paths:
         - { $ref: '#/components/parameters/PerPageQuery' }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -468,6 +514,7 @@ paths:
                 notes: { type: string }
       responses:
         '201':
+          description: Berhasil dibuat
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
@@ -486,6 +533,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
@@ -503,6 +551,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -524,6 +573,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
@@ -550,6 +600,7 @@ paths:
                 reason: { type: string, minLength: 5 }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
@@ -574,6 +625,7 @@ paths:
                 reason: { type: string }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
@@ -592,6 +644,7 @@ paths:
         - { $ref: '#/components/parameters/PerPageQuery' }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -651,6 +704,7 @@ paths:
         - { $ref: '#/components/parameters/PerPageQuery' }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -677,6 +731,7 @@ paths:
                 photo: { type: string, format: binary }
       responses:
         '201':
+          description: Berhasil dibuat
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DamageReport' }
@@ -693,6 +748,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema:
@@ -726,6 +782,7 @@ paths:
                 note: { type: string }
       responses:
         '200':
+          description: Berhasil
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DamageReport' }
@@ -753,26 +810,32 @@ components:
       description: Respons error terstandar ClassLab
       content:
         application/json:
-          schema:
-            type: object
-            required: [error]
-            properties:
-              error:
-                type: object
-                required: [code, message, details, request_id]
-                properties:
-                  code: { type: string, example: BOOKING_CONFLICT }
-                  message: { type: string, example: Ruang sudah terpakai pada rentang waktu tersebut. }
-                  details:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        field: { type: string }
-                        message: { type: string }
-                  request_id: { type: string, example: req_123456 }
+          schema: { $ref: '#/components/schemas/ErrorBody' }
 
   schemas:
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details, request_id]
+          properties:
+            code: { type: string, example: BOOKING_CONFLICT }
+            message: { type: string, example: Ruang sudah terpakai pada rentang waktu tersebut. }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+                  kind: { type: string }
+                  status: { type: string }
+                  start_at: { type: string, format: date-time }
+                  end_at: { type: string, format: date-time }
+            request_id: { type: string, example: req_123456 }
+
     UserRole:
       type: string
       enum: [MAHASISWA, TU_KALAB, OB, KAPRODI]
@@ -798,6 +861,7 @@ components:
 
     User:
       type: object
+      required: [id, org_unit_id, identifier, name, email, role, is_active, created_at]
       properties:
         id: { type: string, format: uuid }
         org_unit_id: { type: string, format: uuid }

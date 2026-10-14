@@ -17,6 +17,7 @@ switch ($Action) {
         Get-Content api/db/migrations/000001_init_schema.down.sql -Raw | docker compose exec -T postgres psql -U classlab -d classlab
     }
     "gen" {
+        docker run --rm -v "${PWD}/api:/src" -w /src sqlc/sqlc:1.30.0 generate
         Set-Location web
         pnpm run gen:api
         Set-Location ..
@@ -44,6 +45,11 @@ switch ($Action) {
         pnpm run test
         Set-Location ..
     }
+    "seed" {
+        Set-Location api
+        go run ./cmd/seed
+        Set-Location ..
+    }
     "dev-api" {
         Set-Location api
         go run ./cmd/server
@@ -56,6 +62,6 @@ switch ($Action) {
     }
     default {
         Write-Host "Aksi tidak dikenal: $Action" -ForegroundColor Red
-        Write-Host "Daftar aksi: up, down, migrate, migrate-down, gen, lint, test, dev-api, dev-web"
+        Write-Host "Daftar aksi: up, down, migrate, migrate-down, gen, seed, lint, test, dev-api, dev-web"
     }
 }

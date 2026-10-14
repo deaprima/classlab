@@ -7,7 +7,7 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ## 📌 Ringkasan Fase
 
 - [x] **Phase 0: Scaffold Monorepo & Fondasi Dev** (Selesai)
-- [ ] **Phase 1: Autentikasi, Manajemen Pengguna & RBAC**
+- [x] **Phase 1: Autentikasi, Manajemen Pengguna & RBAC** (Selesai)
 - [ ] **Phase 2: Master Data Ruang, Jadwal Akademik & Ketersediaan**
 - [ ] **Phase 3: Mesin Booking, Locking Konkurensi & Audit Trail**
 - [ ] **Phase 4: Notifikasi In-App & Pelaporan Kerusakan**
@@ -53,15 +53,15 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ---
 
 ### Phase 1: Autentikasi, Manajemen Pengguna & RBAC
-- [ ] Implementasi argon2id password hashing
-- [ ] Implementasi JWT token generator & verifier
-- [ ] Implementasi refresh token rotation & reuse detection (family_id)
-- [ ] Middleware HTTP: RequestID, slog JSON logger, auth bearer, RBAC checker
-- [ ] Rate limiter login (5 attempts / 15 min per identifier + IP)
-- [ ] Handler & Service: `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`
-- [ ] Handler & Service Pengguna: `GET /users`, `POST /users`, `PATCH /users/{id}`
-- [ ] Seeder data dev (Rumpun TI, Kaprodi, TU/Kalab, OB, Mahasiswa)
-- [ ] Automated tests: Auth, token lifecycle, RBAC matrix
+- [x] Implementasi argon2id password hashing
+- [x] Implementasi JWT token generator & verifier
+- [x] Implementasi refresh token rotation & reuse detection (family_id)
+- [x] Middleware HTTP: RequestID, slog JSON logger, auth bearer, RBAC checker
+- [x] Rate limiter login (5 attempts / 15 min per identifier + IP)
+- [x] Handler & Service: `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`
+- [x] Handler & Service Pengguna: `GET /users`, `POST /users`, `PATCH /users/{id}`
+- [x] Seeder data dev (Rumpun TI, Kaprodi, TU/Kalab, OB, Mahasiswa)
+- [x] Automated tests: Auth, token lifecycle, RBAC matrix
 
 ---
 

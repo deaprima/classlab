@@ -7,17 +7,17 @@ import (
 
 // Standard Domain Errors
 var (
-	ErrBadRequest              = errors.New("bad request")
-	ErrUnauthenticated         = errors.New("unauthenticated")
-	ErrForbidden               = errors.New("forbidden")
-	ErrNotFound                = errors.New("resource not found")
-	ErrBookingConflict         = errors.New("booking conflict")
-	ErrInvalidState            = errors.New("invalid state transition")
-	ErrRoomInactive            = errors.New("room is inactive")
-	ErrRoomHasActiveBookings   = errors.New("room has active bookings")
-	ErrValidation              = errors.New("validation error")
-	ErrRateLimited             = errors.New("rate limited")
-	ErrInternal                = errors.New("internal server error")
+	ErrBadRequest            = errors.New("bad request")
+	ErrUnauthenticated       = errors.New("unauthenticated")
+	ErrForbidden             = errors.New("forbidden")
+	ErrNotFound              = errors.New("resource not found")
+	ErrBookingConflict       = errors.New("booking conflict")
+	ErrInvalidState          = errors.New("invalid state transition")
+	ErrRoomInactive          = errors.New("room is inactive")
+	ErrRoomHasActiveBookings = errors.New("room has active bookings")
+	ErrValidation            = errors.New("validation error")
+	ErrRateLimited           = errors.New("rate limited")
+	ErrInternal              = errors.New("internal server error")
 )
 
 type ErrorDetail struct {
@@ -192,4 +192,10 @@ func MapError(err error, requestID string) (int, ErrorEnvelope) {
 			RequestID: requestID,
 		},
 	}
+}
+
+// ValidationError builds a 422 VALIDATION_ERROR carrying per-field details.
+func ValidationError(details ...ErrorDetail) *CustomDomainError {
+	return NewCustomError(http.StatusUnprocessableEntity, "VALIDATION_ERROR",
+		"Data masukan tidak memenuhi validasi.", details, ErrValidation)
 }

@@ -19,6 +19,9 @@ type Config struct {
 	JWTAccessExpiry           time.Duration
 	RefreshTokenExpiry        time.Duration
 	CookieSecure              bool
+	Argon2MemoryKiB           uint32
+	Argon2Iterations          uint32
+	Argon2Parallelism         uint8
 	CORSAllowedOrigins        []string
 	OperatingHoursStart       string
 	OperatingHoursEnd         string
@@ -44,6 +47,9 @@ func Load() (*Config, error) {
 		JWTAccessExpiry:           getDurationEnv("JWT_ACCESS_EXPIRY", 15*time.Minute),
 		RefreshTokenExpiry:        getDurationEnv("REFRESH_TOKEN_EXPIRY", 7*24*time.Hour),
 		CookieSecure:              getBoolEnv("COOKIE_SECURE", false),
+		Argon2MemoryKiB:           uint32(getIntEnv("ARGON2_MEMORY_KIB", 19*1024)),
+		Argon2Iterations:          uint32(getIntEnv("ARGON2_ITERATIONS", 2)),
+		Argon2Parallelism:         uint8(getIntEnv("ARGON2_PARALLELISM", 1)),
 		CORSAllowedOrigins:        getStringSliceEnv("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173"}),
 		OperatingHoursStart:       getEnv("OPERATING_HOURS_START", "07:00"),
 		OperatingHoursEnd:         getEnv("OPERATING_HOURS_END", "21:00"),
@@ -62,6 +68,14 @@ func Load() (*Config, error) {
 	}
 	if len(cfg.JWTSecret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters long")
+	}
+
+	if cfg.Argon2MemoryKiB < 8 || cfg.Argon2Iterations < 1 || cfg.Argon2Parallelism < 1 {
+		return nil, fmt.Errorf("ARGON2_* parameters are out of range")
+	}
+	// The refresh cookie carries the session; without Secure it would travel over plain HTTP.
+	if cfg.AppEnv == "production" && !cfg.CookieSecure {
+		return nil, fmt.Errorf("COOKIE_SECURE must be true when APP_ENV=production")
 	}
 
 	return cfg, nil
@@ -106,6 +120,12 @@ func getInt64Env(key string, defaultVal int64) int64 {
 
 func getDurationEnv(key string, defaultVal time.Duration) time.Duration {
 	if val := os.Getenv(key); val != "" {
+		// time.ParseDuration has no day unit, but .env.example documents "7d".
+		if days, ok := strings.CutSuffix(val, "d"); ok {
+			if n, err := strconv.Atoi(days); err == nil {
+				return time.Duration(n) * 24 * time.Hour
+			}
+		}
 		parsed, err := time.ParseDuration(val)
 		if err == nil {
 			return parsed

@@ -11,14 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"classlab/api/internal/app"
 	"classlab/api/internal/config"
-	"classlab/api/internal/httpx"
+	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/logger"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
+	"classlab/api/internal/seed"
 )
 
 func main() {
@@ -43,59 +41,17 @@ func main() {
 	defer pool.Close()
 	appLogger.Info("database connection established successfully")
 
-	r := chi.NewRouter()
-
-	// Global Middlewares
-	r.Use(httpx.RequestID)
-	r.Use(httpx.RequestLogger(appLogger))
-	r.Use(middleware.Recoverer)
-
-	// CORS Setup
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   cfg.CORSAllowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-Id", "Idempotency-Key"},
-		ExposedHeaders:   []string{"Link", "X-Request-Id"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
-
-	// Health check endpoint (Liveness + DB Ping)
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		pingCtx, pingCancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer pingCancel()
-
-		dbStatus := "ok"
-		if err := pool.Ping(pingCtx); err != nil {
-			dbStatus = "error: " + err.Error()
-			httpx.JSON(w, http.StatusServiceUnavailable, map[string]any{
-				"status":   "unhealthy",
-				"database": dbStatus,
-				"time":     time.Now().UTC().Format(time.RFC3339),
-			})
-			return
+	// Dev seed accounts share a published password; they must never be live in production.
+	if cfg.AppEnv == "production" {
+		if err := seed.AssertNoDevAccounts(ctx, pool); err != nil {
+			appLogger.Error("refusing to start", slog.String("error", err.Error()))
+			os.Exit(1)
 		}
-
-		httpx.JSON(w, http.StatusOK, map[string]any{
-			"status":   "healthy",
-			"database": dbStatus,
-			"version":  "0.1.0",
-			"time":     time.Now().UTC().Format(time.RFC3339),
-		})
-	})
-
-	// API v1 router group
-	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
-			httpx.JSON(w, http.StatusOK, map[string]string{
-				"message": "ClassLab API v1",
-			})
-		})
-	})
+	}
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      r,
+		Handler:      app.NewRouter(cfg, pool, appLogger, clock.NewRealClock()),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

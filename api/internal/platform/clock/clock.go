@@ -48,3 +48,11 @@ func (m *MockClock) Add(d time.Duration) {
 	defer m.mu.Unlock()
 	m.now = m.now.Add(d)
 }
+
+// WIB is the display zone for API responses; storage and arithmetic stay in UTC.
+// A fixed zone avoids depending on tzdata being installed (e.g. on Windows or scratch images).
+var WIB = time.FixedZone("WIB", 7*60*60)
+
+func ToWIB(t time.Time) time.Time {
+	return t.In(WIB)
+}
