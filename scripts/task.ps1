@@ -1,7 +1,14 @@
 param(
     [Parameter(Position=0, Mandatory=$true)]
-    [string]$Action
+    [string]$Action,
+    [Parameter(Position=1)]
+    [string]$Arg
 )
+
+# golang-migrate runs in Docker, sharing the Postgres container network; versions live in schema_migrations.
+function Invoke-Migrate([string[]]$MigrateArgs) {
+    docker run --rm --network container:classlab-postgres -v "${PWD}/api/db/migrations:/migrations" migrate/migrate:v4.18.3 -path=/migrations -database "postgres://classlab:classlab_secret@localhost:5432/classlab?sslmode=disable" @MigrateArgs
+}
 
 switch ($Action) {
     "up" {
@@ -11,10 +18,14 @@ switch ($Action) {
         docker compose down
     }
     "migrate" {
-        Get-Content api/db/migrations/000001_init_schema.up.sql -Raw | docker compose exec -T postgres psql -U classlab -d classlab
+        Invoke-Migrate @("up")
     }
     "migrate-down" {
-        Get-Content api/db/migrations/000001_init_schema.down.sql -Raw | docker compose exec -T postgres psql -U classlab -d classlab
+        Invoke-Migrate @("down", "1")
+    }
+    "migrate-force" {
+        # One-time, for a database created by the old psql-based target: task.ps1 migrate-force 1
+        Invoke-Migrate @("force", $Arg)
     }
     "gen" {
         docker run --rm -v "${PWD}/api:/src" -w /src sqlc/sqlc:1.30.0 generate
@@ -62,6 +73,6 @@ switch ($Action) {
     }
     default {
         Write-Host "Aksi tidak dikenal: $Action" -ForegroundColor Red
-        Write-Host "Daftar aksi: up, down, migrate, migrate-down, gen, seed, lint, test, dev-api, dev-web"
+        Write-Host "Daftar aksi: up, down, migrate, migrate-down, migrate-force, gen, seed, lint, test, dev-api, dev-web"
     }
 }

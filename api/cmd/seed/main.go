@@ -36,12 +36,13 @@ func run() error {
 	defer pool.Close()
 
 	hasher := password.NewHasher(cfg.Argon2MemoryKiB, cfg.Argon2Iterations, cfg.Argon2Parallelism)
-	created, err := seed.Run(ctx, pool, hasher, clock.NewRealClock())
+	res, err := seed.Run(ctx, pool, hasher, clock.NewRealClock())
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Seed done: %d new account(s). Password for all: %s\n", created, seed.DevPassword)
+	fmt.Printf("Seed done: %d new account(s), %d room(s), %d schedule(s).\n", res.Accounts, res.Rooms, res.Schedules)
+	fmt.Printf("Password for all accounts: %s\n", seed.DevPassword)
 	for _, line := range seed.Accounts() {
 		fmt.Println("  " + line)
 	}

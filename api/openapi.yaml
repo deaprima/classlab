@@ -219,6 +219,7 @@ paths:
   /rooms:
     get:
       summary: Daftar ruang
+      description: Ruang yang sudah dihapus (soft delete) tidak pernah muncul. Urut berdasarkan kode.
       security:
         - BearerAuth: []
       parameters:
@@ -227,9 +228,10 @@ paths:
           schema: { $ref: '#/components/schemas/RoomType' }
         - name: capacity_min
           in: query
-          schema: { type: integer }
+          schema: { type: integer, minimum: 0 }
         - name: q
           in: query
+          description: Cari pada kode dan nama (tanpa membedakan huruf besar/kecil)
           schema: { type: string }
         - name: is_active
           in: query
@@ -243,13 +245,17 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data, meta]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Room' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
       summary: Tambah ruang baru (TU_KALAB, KAPRODI)
+      description: Kode disimpan dalam huruf besar dan harus unik di antara ruang yang belum dihapus dalam satu unit.
       security:
         - BearerAuth: []
       requestBody:
@@ -274,7 +280,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Room' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /rooms/{id}:
     get:
@@ -292,9 +301,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Room' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
     patch:
       summary: Ubah data ruang (TU_KALAB, KAPRODI)
+      description: Kode ruang tidak dapat diubah. Mengirim `facilities` menggantikan seluruh daftar (`[]` mengosongkan).
       security:
         - BearerAuth: []
       parameters:
@@ -303,10 +314,12 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              minProperties: 1
               properties:
                 name: { type: string }
                 type: { $ref: '#/components/schemas/RoomType' }
@@ -319,9 +332,16 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Room' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
     delete:
       summary: Soft delete ruang (TU_KALAB, KAPRODI)
+      description: >
+        Ditolak dengan `ROOM_HAS_ACTIVE_BOOKINGS` bila masih ada booking MENUNGGU/DISETUJUI yang belum berakhir (BR-07).
+        Jadwal dan riwayat booking tetap tersimpan.
       security:
         - BearerAuth: []
       parameters:
@@ -330,12 +350,18 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '204': { description: Ruang berhasil dinonaktifkan/dihapus }
+        '204': { description: Ruang berhasil dihapus }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /rooms/{id}/schedule:
     get:
       summary: Timeline gabungan jadwal akademik + booking disetujui (overlay)
+      description: >
+        Berisi jadwal (`SCHEDULE`) dan booking berstatus DISETUJUI (`BOOKING`) yang beririsan dengan [from, to),
+        urut waktu mulai. Booking MENUNGGU tidak ditampilkan. Rentang maksimal 31 hari.
       security:
         - BearerAuth: []
       parameters:
@@ -358,14 +384,22 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/TimelineItem' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /schedules:
     post:
-      summary: Buat jadwal akademik manual / berulang
+      summary: Buat jadwal manual / akademik, opsional berulang mingguan (TU_KALAB, KAPRODI)
+      description: >
+        Dengan `repeat`, dibuat satu sesi per minggu dari `start_at` sampai `repeat.until` (tanggal WIB, inklusif),
+        maksimal 26 sesi. Semua atau tidak sama sekali: bila satu sesi bentrok, tidak ada yang dibuat dan
+        `details` memuat seluruh bentrokan. Jadwal harus berada pada satu hari WIB. `source` default `MANUAL`.
       security:
         - BearerAuth: []
       requestBody:
@@ -380,18 +414,35 @@ paths:
                 title: { type: string }
                 start_at: { type: string, format: date-time }
                 end_at: { type: string, format: date-time }
+                source: { $ref: '#/components/schemas/ScheduleSource' }
                 repeat:
                   type: object
+                  required: [freq, until]
                   properties:
                     freq: { type: string, enum: [WEEKLY] }
                     until: { type: string, format: date }
       responses:
-        '201': { description: Jadwal berhasil dibuat }
+        '201':
+          description: Jadwal berhasil dibuat (satu elemen, atau satu per minggu bila berulang)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /schedules/{id}:
     patch:
-      summary: Ubah jadwal akademik
+      summary: Ubah jadwal (TU_KALAB, KAPRODI)
+      description: Ruang tidak dapat dipindah. Pengecekan bentrok mengabaikan jadwal itu sendiri.
       security:
         - BearerAuth: []
       parameters:
@@ -400,19 +451,30 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              minProperties: 1
               properties:
                 title: { type: string }
                 start_at: { type: string, format: date-time }
                 end_at: { type: string, format: date-time }
       responses:
-        '200': { description: Jadwal diperbarui }
+        '200':
+          description: Jadwal diperbarui
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
     delete:
-      summary: Hapus jadwal akademik
+      summary: Hapus jadwal (TU_KALAB, KAPRODI)
       security:
         - BearerAuth: []
       parameters:
@@ -422,10 +484,17 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '204': { description: Jadwal dihapus }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /availability:
     get:
       summary: Status ketersediaan per ruang pada rentang waktu
+      description: >
+        Hanya ruang aktif yang belum dihapus. Prioritas status: DIGUNAKAN (jadwal atau booking DISETUJUI)
+        > DIAJUKAN (booking MENUNGGU) > TERSEDIA. Interval setengah-terbuka [start_at, end_at), jadi
+        08:00-10:00 dan 10:00-12:00 tidak bentrok. Rentang maksimal 31 hari. Respons tidak dipaginasi.
       security:
         - BearerAuth: []
       parameters:
@@ -442,7 +511,7 @@ paths:
           schema: { $ref: '#/components/schemas/RoomType' }
         - name: capacity_min
           in: query
-          schema: { type: integer }
+          schema: { type: integer, minimum: 0 }
       responses:
         '200':
           description: Berhasil
@@ -450,10 +519,13 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/AvailabilityRoom' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings:
     get:
@@ -874,6 +946,7 @@ components:
 
     Room:
       type: object
+      required: [id, org_unit_id, code, name, type, capacity, facilities, is_active]
       properties:
         id: { type: string, format: uuid }
         org_unit_id: { type: string, format: uuid }
@@ -884,17 +957,35 @@ components:
         facilities: { type: array, items: { type: string } }
         is_active: { type: boolean }
 
+    ScheduleSource:
+      type: string
+      enum: [AKADEMIK, MANUAL]
+
+    Schedule:
+      type: object
+      required: [id, room_id, title, start_at, end_at, source, created_by]
+      properties:
+        id: { type: string, format: uuid }
+        room_id: { type: string, format: uuid }
+        title: { type: string }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        source: { $ref: '#/components/schemas/ScheduleSource' }
+        created_by: { type: string, format: uuid }
+
     TimelineItem:
       type: object
+      required: [id, kind, title, start_at, end_at]
       properties:
         id: { type: string, format: uuid }
         kind: { type: string, enum: [SCHEDULE, BOOKING] }
-        title: { type: string }
+        title: { type: string, description: 'Judul jadwal, atau tujuan (purpose) untuk booking' }
         start_at: { type: string, format: date-time }
         end_at: { type: string, format: date-time }
 
     AvailabilityRoom:
       type: object
+      required: [room, status, conflicts]
       properties:
         room: { $ref: '#/components/schemas/Room' }
         status: { type: string, enum: [TERSEDIA, DIGUNAKAN, DIAJUKAN] }
@@ -902,9 +993,11 @@ components:
           type: array
           items:
             type: object
+            required: [kind, title, start_at, end_at]
             properties:
-              kind: { type: string }
+              kind: { type: string, enum: [SCHEDULE, BOOKING] }
               title: { type: string }
+              status: { type: string, enum: [MENUNGGU, DISETUJUI], description: 'Hanya untuk kind BOOKING' }
               start_at: { type: string, format: date-time }
               end_at: { type: string, format: date-time }
 

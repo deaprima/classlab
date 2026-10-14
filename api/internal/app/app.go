@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"classlab/api/internal/auth"
+	"classlab/api/internal/availability"
 	"classlab/api/internal/config"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/password"
+	"classlab/api/internal/rooms"
+	"classlab/api/internal/schedules"
 	"classlab/api/internal/users"
 
 	"github.com/go-chi/chi/v5"
@@ -34,6 +37,10 @@ func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Cl
 	authSvc := auth.NewService(pool, usersSvc, hasher, tokens, limiter, clk, cfg.RefreshTokenExpiry, log)
 
 	authenticate := httpx.Authenticate(authSvc)
+
+	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk))
+	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk))
+	availabilityHandler := availability.NewHandler(availability.NewService(pool))
 
 	r := chi.NewRouter()
 	r.Use(httpx.RequestID)
@@ -59,6 +66,15 @@ func NewRouter(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Cl
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Mount("/auth", auth.NewHandler(authSvc, cfg.CookieSecure).Routes(authenticate))
 		r.With(authenticate).Mount("/users", users.NewHandler(usersSvc).Routes())
+		r.Group(func(r chi.Router) {
+			r.Use(authenticate)
+			r.Route("/rooms", func(r chi.Router) {
+				roomsHandler.Register(r)
+				r.Get("/{id}/schedule", availabilityHandler.Timeline)
+			})
+			r.Route("/schedules", schedulesHandler.Register)
+			r.Get("/availability", availabilityHandler.Check)
+		})
 	})
 
 	return r

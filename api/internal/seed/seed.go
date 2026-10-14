@@ -18,7 +18,10 @@ import (
 // DevPassword is printed by `make seed` and is intentionally not a secret.
 const DevPassword = "classlab-dev-2026"
 
-const orgUnitName = "Rumpun TI"
+const (
+	orgUnitName       = "Rumpun TI"
+	tuKalabIdentifier = "198203152008012002"
+)
 
 type account struct {
 	Identifier string
@@ -46,8 +49,11 @@ func identifiers() []string {
 	return ids
 }
 
-// Run is idempotent: existing org units and accounts are left untouched.
-func Run(ctx context.Context, pool *db.Pool, hasher *password.Hasher, clk clock.Clock) (created int, err error) {
+// Result counts what one Run actually inserted; a repeat run reports zeros.
+type Result struct{ Accounts, Rooms, Schedules int }
+
+// Run is idempotent: existing org units, accounts, rooms and schedules are left untouched.
+func Run(ctx context.Context, pool *db.Pool, hasher *password.Hasher, clk clock.Clock) (res Result, err error) {
 	q := dbgen.New(pool)
 	now := clk.Now()
 
@@ -56,13 +62,13 @@ func Run(ctx context.Context, pool *db.Pool, hasher *password.Hasher, clk clock.
 		unit, err = q.CreateOrgUnit(ctx, dbgen.CreateOrgUnitParams{Type: dbgen.OrgUnitTypeRUMPUN, Name: orgUnitName, CreatedAt: now})
 	}
 	if err != nil {
-		return 0, fmt.Errorf("ensuring org unit: %w", err)
+		return res, fmt.Errorf("ensuring org unit: %w", err)
 	}
 
 	// One hash for every account: each login still verifies against its own stored copy.
 	hash, err := hasher.Hash(DevPassword)
 	if err != nil {
-		return 0, fmt.Errorf("hashing seed password: %w", err)
+		return res, fmt.Errorf("hashing seed password: %w", err)
 	}
 
 	for _, a := range accounts {
@@ -71,11 +77,18 @@ func Run(ctx context.Context, pool *db.Pool, hasher *password.Hasher, clk clock.
 			PasswordHash: hash, Role: a.Role, CreatedAt: now,
 		})
 		if err != nil {
-			return created, fmt.Errorf("seeding %s: %w", a.Identifier, err)
+			return res, fmt.Errorf("seeding %s: %w", a.Identifier, err)
 		}
-		created += int(n)
+		res.Accounts += int(n)
 	}
-	return created, nil
+
+	// Schedules are attributed to the TU/Kalab account, who manages them in real use.
+	owner, err := q.GetUserForLogin(ctx, tuKalabIdentifier)
+	if err != nil {
+		return res, fmt.Errorf("looking up schedule owner: %w", err)
+	}
+	res.Rooms, res.Schedules, err = seedRooms(ctx, q, unit.ID, owner.ID, now)
+	return res, err
 }
 
 // AssertNoDevAccounts fails when any active seed account exists. Production must deactivate or delete them.
