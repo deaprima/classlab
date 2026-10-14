@@ -78,6 +78,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("COOKIE_SECURE must be true when APP_ENV=production")
 	}
 
+	if _, err := cfg.BookingRules(); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
 }
 
@@ -149,4 +153,54 @@ func getStringSliceEnv(key string, defaultVal []string) []string {
 		}
 	}
 	return defaultVal
+}
+
+// BookingRules are the BR-01 limits, parsed from the environment settings.
+type BookingRules struct {
+	OpenMinute    int // minutes after midnight WIB when bookings may start
+	CloseMinute   int // minutes after midnight WIB when bookings must end
+	MinDuration   time.Duration
+	MaxDuration   time.Duration
+	MaxFutureDays int
+}
+
+// BookingRules parses and validates the booking settings. Load calls it so a bad value stops the
+// server at start instead of rejecting every booking later.
+func (c *Config) BookingRules() (BookingRules, error) {
+	open, err := parseClock(c.OperatingHoursStart)
+	if err != nil {
+		return BookingRules{}, fmt.Errorf("OPERATING_HOURS_START: %w", err)
+	}
+	closing, err := parseClock(c.OperatingHoursEnd)
+	if err != nil {
+		return BookingRules{}, fmt.Errorf("OPERATING_HOURS_END: %w", err)
+	}
+	if open >= closing {
+		return BookingRules{}, fmt.Errorf("OPERATING_HOURS_START must be before OPERATING_HOURS_END")
+	}
+	if c.BookingMinDurationMinutes < 1 || c.BookingMaxDurationHours < 1 ||
+		time.Duration(c.BookingMinDurationMinutes)*time.Minute > time.Duration(c.BookingMaxDurationHours)*time.Hour {
+		return BookingRules{}, fmt.Errorf("BOOKING_MIN_DURATION_MINUTES and BOOKING_MAX_DURATION_HOURS must be positive with min <= max")
+	}
+	if c.BookingMaxFutureDays < 1 {
+		return BookingRules{}, fmt.Errorf("BOOKING_MAX_FUTURE_DAYS must be at least 1")
+	}
+	return BookingRules{
+		OpenMinute:    open,
+		CloseMinute:   closing,
+		MinDuration:   time.Duration(c.BookingMinDurationMinutes) * time.Minute,
+		MaxDuration:   time.Duration(c.BookingMaxDurationHours) * time.Hour,
+		MaxFutureDays: c.BookingMaxFutureDays,
+	}, nil
+}
+
+// parseClock reads "HH:MM" as minutes after midnight; "24:00" is allowed as a closing time.
+func parseClock(v string) (int, error) {
+	hh, mm, ok := strings.Cut(v, ":")
+	h, errH := strconv.Atoi(hh)
+	m, errM := strconv.Atoi(mm)
+	if !ok || errH != nil || errM != nil || h < 0 || h > 24 || m < 0 || m > 59 || (h == 24 && m != 0) {
+		return 0, fmt.Errorf("%q is not a valid HH:MM time", v)
+	}
+	return h*60 + m, nil
 }

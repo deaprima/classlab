@@ -850,11 +850,14 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["Booking"][];
-                            meta?: components["schemas"]["PaginationMeta"];
+                            data: components["schemas"]["Booking"][];
+                            meta: components["schemas"]["PaginationMeta"];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -884,15 +887,20 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Berhasil dibuat */
+                /** @description Berhasil dibuat. Bila `Idempotency-Key` sama dengan permintaan identik sebelumnya, booking yang sudah ada dikembalikan dengan status yang sama dan header `Idempotency-Replayed: true`. */
                 201: {
                     headers: {
+                        /** @description `true` bila respons ini adalah pengulangan dari permintaan sebelumnya */
+                        "Idempotency-Replayed"?: string;
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["Booking"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
@@ -931,6 +939,8 @@ export interface paths {
                         "application/json": components["schemas"]["Booking"];
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
@@ -968,10 +978,13 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["BookingEvent"][];
+                            data: components["schemas"]["BookingEvent"][];
                         };
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
@@ -1012,6 +1025,9 @@ export interface paths {
                         "application/json": components["schemas"]["Booking"];
                     };
                 };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
             };
         };
@@ -1057,7 +1073,12 @@ export interface paths {
                         "application/json": components["schemas"]["Booking"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -1102,7 +1123,12 @@ export interface paths {
                         "application/json": components["schemas"]["Booking"];
                     };
                 };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ErrorResponse"];
+                404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
             };
         };
         delete?: never;
@@ -1530,43 +1556,50 @@ export interface components {
                 end_at: string;
             }[];
         };
+        BookingRequester: {
+            /** Format: uuid */
+            id: string;
+            /** @description NIM atau NIP */
+            identifier: string;
+            name: string;
+        };
         Booking: {
             /** Format: uuid */
-            id?: string;
+            id: string;
             /** Format: uuid */
-            room_id?: string;
-            room?: components["schemas"]["Room"];
+            room_id: string;
+            room: components["schemas"]["Room"];
             /** Format: uuid */
-            requester_id?: string;
-            requester?: components["schemas"]["User"];
+            requester_id: string;
+            requester: components["schemas"]["BookingRequester"];
             /** Format: date-time */
-            start_at?: string;
+            start_at: string;
             /** Format: date-time */
-            end_at?: string;
-            purpose?: string;
+            end_at: string;
+            purpose: string;
             participants?: number;
             notes?: string;
-            status?: components["schemas"]["BookingStatus"];
+            status: components["schemas"]["BookingStatus"];
             /** Format: uuid */
             decided_by?: string;
             /** Format: date-time */
             decided_at?: string;
             decision_reason?: string;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
         };
         BookingEvent: {
             /** Format: uuid */
-            id?: string;
+            id: string;
             /** Format: uuid */
-            booking_id?: string;
+            booking_id: string;
             /** Format: uuid */
-            actor_id?: string;
+            actor_id: string;
             from_status?: components["schemas"]["BookingStatus"];
-            to_status?: components["schemas"]["BookingStatus"];
+            to_status: components["schemas"]["BookingStatus"];
             reason?: string;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
         };
         Notification: {
             /** Format: uuid */

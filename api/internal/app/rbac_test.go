@@ -120,6 +120,46 @@ func TestRBACMatrix(t *testing.T) {
 			},
 			want: expect{401, 403, 204, 403, 204},
 		},
+		{
+			name: "POST /bookings", method: "POST",
+			path: func(*env) string { return "/api/v1/bookings" },
+			body: func(e *env) any { return bookingBody(e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil) },
+			want: expect{401, 201, 403, 403, 403},
+		},
+		{
+			name: "GET /bookings", method: "GET",
+			path: func(*env) string { return "/api/v1/bookings" },
+			want: expect{401, 200, 200, 403, 200},
+		},
+		{
+			name: "GET /bookings/{id}", method: "GET",
+			path: func(e *env) string { return "/api/v1/bookings/" + e.pendingBookingOf(mahasiswaA) },
+			want: expect{401, 200, 200, 403, 200},
+		},
+		{
+			name: "GET /bookings/{id}/events", method: "GET",
+			path: func(e *env) string { return "/api/v1/bookings/" + e.pendingBookingOf(mahasiswaA) + "/events" },
+			want: expect{401, 200, 200, 403, 200},
+		},
+		{
+			name: "POST /bookings/{id}/approve", method: "POST",
+			path: func(e *env) string { return "/api/v1/bookings/" + e.pendingBookingOf(mahasiswaA) + "/approve" },
+			want: expect{401, 403, 200, 403, 403},
+		},
+		{
+			name: "POST /bookings/{id}/reject", method: "POST",
+			path: func(e *env) string { return "/api/v1/bookings/" + e.pendingBookingOf(mahasiswaA) + "/reject" },
+			body: func(*env) any { return map[string]any{"reason": "Dipakai ujian"} },
+			want: expect{401, 403, 200, 403, 403},
+		},
+		{
+			// The booking is pending and belongs to the student, so the owner may cancel it while TU/Kalab
+			// passes the role gate but gets 409 INVALID_STATE: approvers cancel only approved bookings.
+			name: "POST /bookings/{id}/cancel", method: "POST",
+			path: func(e *env) string { return "/api/v1/bookings/" + e.pendingBookingOf(mahasiswaA) + "/cancel" },
+			body: func(*env) any { return map[string]any{"reason": "Tidak jadi dipakai"} },
+			want: expect{401, 200, 409, 403, 403},
+		},
 	}
 
 	roles := []struct {
