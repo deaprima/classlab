@@ -1,56 +1,81 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { mockAdapter, sampleUser } from '@/test-utils/mock-adapter'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
+import { useAuthStore } from '@/stores/auth-store'
+import { api } from '@/lib/api-client'
 import { SignOutDialog } from './sign-out-dialog'
 
 const navigate = vi.fn()
-const reset = vi.fn()
+const toastError = vi.hoisted(() => vi.fn())
 
-const MOCK_HREF = 'https://app.test/dashboard?tab=1'
-
-vi.mock('@/stores/auth-store', () => ({
-  useAuthStore: () => ({
-    auth: { reset },
-  }),
-}))
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
     useNavigate: () => navigate,
-    useLocation: () => ({ href: MOCK_HREF }),
   }
 })
+
+const originalAdapter = api.defaults.adapter
+
+function renderDialog() {
+  const queryClient = new QueryClient()
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <SignOutDialog open onOpenChange={vi.fn()} />
+    </QueryClientProvider>
+  )
+}
 
 describe('SignOutDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useAuthStore.getState().auth.setSession('token', { ...sampleUser })
   })
 
-  it('calls auth.reset and navigates to sign-in with current location as redirect', async () => {
-    const { getByRole } = await render(
-      <SignOutDialog open onOpenChange={vi.fn()} />
-    )
-
-    await userEvent.click(getByRole('button', { name: /^Sign out$/i }))
-
-    expect(reset).toHaveBeenCalledOnce()
-    expect(navigate).toHaveBeenCalledWith({
-      to: '/sign-in',
-      search: { redirect: MOCK_HREF },
-      replace: true,
-    })
+  afterEach(() => {
+    api.defaults.adapter = originalAdapter
+    useAuthStore.getState().auth.reset()
   })
 
-  it('does not call reset or navigate when Cancel is clicked', async () => {
-    const { getByRole } = await render(
-      <SignOutDialog open onOpenChange={vi.fn()} />
+  it('revokes the session on the server, clears it locally and goes to sign-in', async () => {
+    const logout = vi.fn(() => ({ status: 200 }))
+    api.defaults.adapter = mockAdapter((config) =>
+      config.url === '/auth/logout' && config.method === 'post'
+        ? logout()
+        : { status: 404 }
     )
+    const { getByRole } = await renderDialog()
 
-    await userEvent.click(getByRole('button', { name: /^Cancel$/i }))
+    await userEvent.click(getByRole('button', { name: /^Keluar$/ }))
 
-    expect(reset).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalled())
+    expect(logout).toHaveBeenCalledOnce()
+    expect(useAuthStore.getState().auth.isAuthenticated).toBe(false)
+    expect(navigate).toHaveBeenCalledWith({ to: '/sign-in', replace: true })
+  })
+
+  it('keeps the user signed in when the server cannot be reached', async () => {
+    api.defaults.adapter = mockAdapter(() => ({ status: 503 }))
+    const { getByRole } = await renderDialog()
+
+    await userEvent.click(getByRole('button', { name: /^Keluar$/ }))
+
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalled())
+    expect(useAuthStore.getState().auth.isAuthenticated).toBe(true)
     expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when Batal is clicked', async () => {
+    const { getByRole } = await renderDialog()
+
+    await userEvent.click(getByRole('button', { name: /^Batal$/ }))
+
+    expect(navigate).not.toHaveBeenCalled()
+    expect(useAuthStore.getState().auth.isAuthenticated).toBe(true)
   })
 })

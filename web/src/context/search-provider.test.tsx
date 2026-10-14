@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { sampleUser } from '@/test-utils/mock-adapter'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, type RenderResult } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
+import { useAuthStore } from '@/stores/auth-store'
 import { SearchProvider } from '@/context/search-provider'
 
-const COMMAND_MENU_PLACEHOLDER = 'Type a command or search...'
+const COMMAND_MENU_PLACEHOLDER = 'Cari halaman atau perintah...'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -58,6 +60,11 @@ async function openCommandPalette(
 describe('SearchProvider and CommandMenu', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useAuthStore.getState().auth.setSession('token', { ...sampleUser })
+  })
+
+  afterEach(() => {
+    useAuthStore.getState().auth.reset()
   })
 
   it('renders the command palette when the palette is open', async () => {
@@ -69,10 +76,10 @@ describe('SearchProvider and CommandMenu', () => {
     await expect
       .element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
       .toBeInTheDocument()
-    await expect.element(getByText('Theme')).toBeInTheDocument()
-    await expect.element(getByText('Light')).toBeInTheDocument()
-    await expect.element(getByText('Dark')).toBeInTheDocument()
-    await expect.element(getByText('System')).toBeInTheDocument()
+    await expect.element(getByText('Tema')).toBeInTheDocument()
+    await expect.element(getByText('Terang')).toBeInTheDocument()
+    await expect.element(getByText('Gelap')).toBeInTheDocument()
+    await expect.element(getByText('Sistem')).toBeInTheDocument()
     await expect.element(getByText('Ketersediaan Ruang')).toBeInTheDocument()
   })
 
@@ -109,25 +116,27 @@ describe('SearchProvider and CommandMenu', () => {
 
     await openCommandPalette(screen)
 
-    await userEvent.click(screen.getByText('Tugas (Referensi)'))
+    await userEvent.click(screen.getByText('Laporan Kerusakan'))
 
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/tasks' })
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/reports' })
     await expect
       .element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
       .not.toBeInTheDocument()
   })
 
-  it('navigates for nested sidebar items (group with sub-items)', async () => {
+  it('lists only the pages the current role may open', async () => {
     const screen = await renderWithSearchProvider()
-    const { getByPlaceholder, getByRole } = screen
 
     await openCommandPalette(screen)
 
-    await userEvent.click(getByRole('option', { name: 'Pengaturan Akun' }))
-
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/settings/account' })
     await expect
-      .element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+      .element(screen.getByRole('option', { name: 'Ajukan Peminjaman' }))
+      .toBeInTheDocument()
+    await expect
+      .element(screen.getByRole('option', { name: 'Persetujuan' }))
+      .not.toBeInTheDocument()
+    await expect
+      .element(screen.getByRole('option', { name: 'Kelola Pengguna' }))
       .not.toBeInTheDocument()
   })
 
@@ -136,7 +145,7 @@ describe('SearchProvider and CommandMenu', () => {
 
     await openCommandPalette(screen)
 
-    await userEvent.click(screen.getByText('Dark'))
+    await userEvent.click(screen.getByText('Gelap'))
 
     expect(mocks.setTheme).toHaveBeenCalledWith('dark')
     await expect
@@ -155,7 +164,7 @@ describe('SearchProvider and CommandMenu', () => {
     )
 
     await expect
-      .element(screen.getByText('No results found.'))
+      .element(screen.getByText('Tidak ada hasil.'))
       .toBeInTheDocument()
   })
 })

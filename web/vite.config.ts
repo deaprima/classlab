@@ -21,6 +21,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    // Same origin in dev as behind Caddy in prod: the SameSite=Strict refresh cookie scoped to
+    // /api/v1/auth then works without CORS.
+    proxy: {
+      '/api': {
+        target: process.env.API_PROXY_TARGET ?? 'http://localhost:8080',
+      },
+    },
+  },
   test: {
     silent: 'passed-only',
     unstubEnvs: true,

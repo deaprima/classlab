@@ -97,10 +97,10 @@ Dokumen ini melacak kemajuan implementasi proyek ClassLab.io per fase sesuai `br
 ---
 
 ### Phase 5: Antarmuka Frontend (UI, Routing & Form)
-- [ ] Generate tipe TypeScript dari `api/openapi.yaml`
-- [ ] Konfigurasi Axios client & refresh token interceptor
-- [ ] Route tree TanStack Router & RBAC navigation guards
-- [ ] Halaman login `/sign-in`
+- [x] Generate tipe TypeScript dari `api/openapi.yaml` (sinkron; alias di `web/src/lib/api-types.ts`)
+- [x] Konfigurasi Axios client & refresh token interceptor (refresh diserialisasi, dev proxy Vite)
+- [x] Route tree TanStack Router & RBAC navigation guards (halaman fitur masih placeholder)
+- [x] Halaman login `/sign-in`
 - [ ] Halaman utama `/` (ketersediaan ruang interaktif)
 - [ ] Halaman timeline `/rooms/$id` (visual CSS grid)
 - [ ] Halaman pengajuan booking `/bookings/new` (React Hook Form + Zod)

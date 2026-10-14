@@ -1,12 +1,16 @@
-import { useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useNavigate } from '@tanstack/react-router'
-import { Loader2, LogIn } from 'lucide-react'
-import { toast } from 'sonner'
-import { useAuthStore, type AuthUser } from '@/stores/auth-store'
-import { sleep, cn } from '@/lib/utils'
+import { useMutation } from '@tanstack/react-query'
+import { useRouter } from '@tanstack/react-router'
+import { AlertCircle, Loader2, LogIn } from 'lucide-react'
+import { useAuthStore } from '@/stores/auth-store'
+import { api } from '@/lib/api-client'
+import { applyFieldErrors, getApiError, getErrorMessage } from '@/lib/api-error'
+import { type LoginRequest, type LoginResponse } from '@/lib/api-types'
+import { safeRedirectPath } from '@/lib/session'
+import { cn } from '@/lib/utils'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -20,9 +24,11 @@ import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
 
 const formSchema = z.object({
-  identifier: z.string().min(1, 'NIM atau NIP wajib diisi.'),
+  identifier: z.string().trim().min(1, 'NIM atau NIP wajib diisi.'),
   password: z.string().min(1, 'Kata sandi wajib diisi.'),
 })
+
+type FormValues = z.infer<typeof formSchema>
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string
@@ -33,58 +39,55 @@ export function UserAuthForm({
   redirectTo,
   ...props
 }: UserAuthFormProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const navigate = useNavigate()
-  const { auth } = useAuthStore()
+  const router = useRouter()
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      identifier: '',
-      password: '',
+    defaultValues: { identifier: '', password: '' },
+  })
+
+  const login = useMutation({
+    mutationFn: async (body: LoginRequest) =>
+      (await api.post<LoginResponse>('/auth/login', body)).data,
+    onSuccess: (data) => {
+      useAuthStore.getState().auth.setSession(data.access_token, data.user)
+      router.history.replace(safeRedirectPath(redirectTo))
+    },
+    onError: (error) => {
+      const details = getApiError(error)?.details ?? []
+      const unmatched = applyFieldErrors(error, form.setError, {
+        identifier: 'identifier',
+        password: 'password',
+      })
+      // Wrong credentials (401) and rate limiting (429) carry no field; show the server's message.
+      if (unmatched.length > 0 || unmatched.length === details.length) {
+        form.setError('root', { message: getErrorMessage(error) })
+      }
+      form.resetField('password', { keepError: true })
     },
   })
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
-    setIsLoading(true)
-
-    toast.promise(sleep(1000), {
-      loading: 'Memverifikasi kredensial...',
-      success: () => {
-        setIsLoading(false)
-
-        const mockUser: AuthUser = {
-          id: '018f23a4-8f0b-789a-bcde-0123456789ab',
-          org_unit_id: '018f23a4-8f0b-789a-bcde-000000000001',
-          identifier: data.identifier,
-          name: 'PJ Kelas TI',
-          email: `${data.identifier}@student.univ.ac.id`,
-          role: 'MAHASISWA',
-          is_active: true,
-        }
-
-        auth.setUser(mockUser)
-        auth.setAccessToken('mock_access_token_dev')
-
-        const targetPath = redirectTo || '/'
-        navigate({ to: targetPath, replace: true })
-
-        return `Selamat datang kembali, ${mockUser.name}!`
-      },
-      error: () => {
-        setIsLoading(false)
-        return 'Gagal masuk. Periksa NIM/NIP dan kata sandi.'
-      },
-    })
+  function onSubmit(data: FormValues) {
+    form.clearErrors('root')
+    login.mutate(data)
   }
+
+  const rootError = form.formState.errors.root?.message
 
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn('grid gap-4', className)}
+        noValidate
         {...props}
       >
+        {rootError && (
+          <Alert variant='destructive'>
+            <AlertCircle />
+            <AlertDescription>{rootError}</AlertDescription>
+          </Alert>
+        )}
         <FormField
           control={form.control}
           name='identifier'
@@ -93,7 +96,9 @@ export function UserAuthForm({
               <FormLabel>NIM / NIP</FormLabel>
               <FormControl>
                 <Input
-                  placeholder='Contoh: 220101001 atau 19850101...'
+                  placeholder='Contoh: 220101001'
+                  autoComplete='username'
+                  autoFocus
                   {...field}
                 />
               </FormControl>
@@ -108,18 +113,18 @@ export function UserAuthForm({
             <FormItem>
               <FormLabel>Kata Sandi</FormLabel>
               <FormControl>
-                <PasswordInput placeholder='Masukkan kata sandi' {...field} />
+                <PasswordInput
+                  placeholder='Masukkan kata sandi'
+                  autoComplete='current-password'
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={isLoading}>
-          {isLoading ? (
-            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-          ) : (
-            <LogIn className='mr-2 h-4 w-4' />
-          )}
+        <Button className='mt-2' disabled={login.isPending}>
+          {login.isPending ? <Loader2 className='animate-spin' /> : <LogIn />}
           Masuk
         </Button>
       </form>
