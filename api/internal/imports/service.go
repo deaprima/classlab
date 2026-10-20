@@ -26,6 +26,7 @@ const pgUniqueViolation = "23505"
 type Options struct {
 	Limits             Limits
 	TempPasswordLength int
+	MaxWeeks           int // meetings one schedule line may expand to (IMPORT_MAX_WEEKS)
 }
 
 type Service struct {
