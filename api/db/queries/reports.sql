@@ -20,15 +20,22 @@ JOIN users u ON u.id = d.reporter_id
 WHERE (sqlc.narg(reporter_id)::uuid IS NULL OR d.reporter_id = sqlc.narg(reporter_id)::uuid)
   AND (sqlc.narg(status)::report_status IS NULL OR d.status = sqlc.narg(status)::report_status)
   AND (sqlc.narg(room_id)::uuid IS NULL OR d.room_id = sqlc.narg(room_id)::uuid)
+  AND (sqlc.narg(room_types)::text[] IS NULL
+       OR r.type::text = ANY(sqlc.narg(room_types)::text[])
+       OR d.reporter_id = sqlc.narg(viewer_id)::uuid)
 ORDER BY d.created_at DESC, d.id
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
 -- name: CountReports :one
 SELECT count(*)
 FROM damage_reports d
+JOIN rooms r ON r.id = d.room_id
 WHERE (sqlc.narg(reporter_id)::uuid IS NULL OR d.reporter_id = sqlc.narg(reporter_id)::uuid)
   AND (sqlc.narg(status)::report_status IS NULL OR d.status = sqlc.narg(status)::report_status)
-  AND (sqlc.narg(room_id)::uuid IS NULL OR d.room_id = sqlc.narg(room_id)::uuid);
+  AND (sqlc.narg(room_id)::uuid IS NULL OR d.room_id = sqlc.narg(room_id)::uuid)
+  AND (sqlc.narg(room_types)::text[] IS NULL
+       OR r.type::text = ANY(sqlc.narg(room_types)::text[])
+       OR d.reporter_id = sqlc.narg(viewer_id)::uuid);
 
 -- Taken before a status change so two concurrent updates cannot both pass the one-step check.
 -- name: LockReport :one

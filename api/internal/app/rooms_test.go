@@ -95,7 +95,7 @@ func TestCreateRoomValidation(t *testing.T) {
 }
 
 func TestListRooms(t *testing.T) {
-	e := newEnv(t) // seed: 6 rooms, 3 KELAS (40, 40, 60) and 3 LAB (30, 40, 35)
+	e := newEnv(t) // seed: 10 rooms: 3 KELAS (40, 40, 60), 3 LAB (30, 40, 35), AUDITORIUM (300), 2 RUANG_UJIAN (40, 60), RUANG_SIDANG (15)
 	tok := bearer(e.login(mahasiswaA).accessToken)
 	get := func(query string) ([]any, map[string]any, int) {
 		res := e.do("GET", "/api/v1/rooms"+query, nil, tok)
@@ -114,18 +114,21 @@ func TestListRooms(t *testing.T) {
 	}
 
 	items, meta, _ := get("")
-	if len(items) != 6 || meta["total"] != float64(6) {
+	if len(items) != 10 || meta["total"] != float64(10) {
 		t.Fatalf("default listing: %d items, meta %v", len(items), meta)
 	}
-	if want := []string{"KLS-101", "KLS-102", "KLS-201", "LAB-1", "LAB-2", "LAB-3"}; !slices.Equal(codes(items), want) {
+	if want := []string{"AUD-1", "KLS-101", "KLS-102", "KLS-201", "LAB-1", "LAB-2", "LAB-3", "SDG-1", "UJI-1", "UJI-2"}; !slices.Equal(codes(items), want) {
 		t.Errorf("order = %v; want by code %v", codes(items), want)
 	}
 
+	if items, _, _ = get("?type=RUANG_UJIAN"); len(items) != 2 {
+		t.Errorf("type=RUANG_UJIAN: %d; want 2", len(items))
+	}
 	if items, _, _ = get("?type=LAB"); len(items) != 3 {
 		t.Errorf("type=LAB: %d; want 3", len(items))
 	}
-	if items, _, _ = get("?capacity_min=40"); len(items) != 4 {
-		t.Errorf("capacity_min=40: %d; want 4", len(items))
+	if items, _, _ = get("?capacity_min=40"); len(items) != 7 {
+		t.Errorf("capacity_min=40: %d; want 7", len(items))
 	}
 	if items, _, _ = get("?type=LAB&capacity_min=40"); len(items) != 1 {
 		t.Errorf("combined filter: %d; want 1 (LAB-2)", len(items))
@@ -139,16 +142,16 @@ func TestListRooms(t *testing.T) {
 	if items, _, _ = get("?q=%25"); len(items) != 0 {
 		t.Errorf("q=%% matched %d rooms; wildcards must be literal", len(items))
 	}
-	if items, meta, _ = get("?per_page=4&page=2"); len(items) != 2 || meta["total"] != float64(6) {
-		t.Errorf("page 2 of per_page=4: %d items, meta %v", len(items), meta)
+	if items, meta, _ = get("?per_page=4&page=3"); len(items) != 2 || meta["total"] != float64(10) {
+		t.Errorf("page 3 of per_page=4: %d items, meta %v", len(items), meta)
 	}
 
 	e.do("PATCH", "/api/v1/rooms/"+e.roomIDByCode("LAB-3"), map[string]any{"is_active": false}, bearer(e.adminToken()))
 	if items, _, _ = get("?is_active=false"); len(items) != 1 {
 		t.Errorf("is_active=false: %d; want 1", len(items))
 	}
-	if items, _, _ = get(""); len(items) != 6 {
-		t.Errorf("inactive rooms stay listed by default: %d; want 6", len(items))
+	if items, _, _ = get(""); len(items) != 10 {
+		t.Errorf("inactive rooms stay listed by default: %d; want 10", len(items))
 	}
 
 	for _, bad := range []string{"?type=X", "?capacity_min=-1", "?capacity_min=a", "?is_active=maybe", "?page=0", "?per_page=500"} {
@@ -309,4 +312,65 @@ func TestDeleteRoomKeepsItsSchedulesAsHistory(t *testing.T) {
 	if n := e.countRows("SELECT count(*) FROM room_schedules WHERE room_id = $1", room); n != 1 {
 		t.Errorf("schedules after soft delete: %d; want 1", n)
 	}
+}
+
+// Authority over rooms follows the room's type (BR-10): the approver roles of the type and ADMIN may
+// create, change and delete; every other role is refused, including when the change moves a room to a
+// type the actor does not manage.
+func TestRoomWritesFollowRoomTypeAuthority(t *testing.T) {
+	e := newEnv(t)
+	tokens := map[string]string{
+		"TU": e.tuToken(), "KALAB": e.kalabToken(), "ADMIN": e.adminToken(),
+		"OB": e.obToken(), "MAHASISWA": e.login(mahasiswaA).accessToken, "ORGANISASI": e.orgToken(),
+	}
+	types := []string{"KELAS", "LAB", "AUDITORIUM", "RUANG_UJIAN", "RUANG_SIDANG"}
+	// who may manage which type: approver_roles of the type plus ADMIN everywhere.
+	allowed := map[string][]string{
+		"KELAS": {"TU", "ADMIN"}, "LAB": {"KALAB", "ADMIN"},
+		"AUDITORIUM": {"TU", "ADMIN"}, "RUANG_UJIAN": {"TU", "ADMIN"}, "RUANG_SIDANG": {"TU", "ADMIN"},
+	}
+
+	n := 0
+	for _, typ := range types {
+		for role, tok := range tokens {
+			n++
+			may := slices.Contains(allowed[typ], role)
+			wantCreate, wantChange := http.StatusForbidden, http.StatusForbidden
+			wantDelete := http.StatusForbidden
+			if may {
+				wantCreate, wantChange, wantDelete = http.StatusCreated, http.StatusOK, http.StatusNoContent
+			}
+
+			body := e.newRoomBody("AUTH-" + string(rune('A'+n/26)) + string(rune('A'+n%26)))
+			body["type"] = typ
+			if res := e.do("POST", "/api/v1/rooms", body, bearer(tok)); res.Code != wantCreate {
+				t.Errorf("%s creating %s: %d; want %d (%s)", role, typ, res.Code, wantCreate, res.Body.String())
+			}
+
+			existing := e.insertRoom("EX-"+typ[:3]+string(rune('A'+n%26))+string(rune('A'+n/26)), typ, 10)
+			if res := e.do("PATCH", "/api/v1/rooms/"+existing, map[string]any{"capacity": 11}, bearer(tok)); res.Code != wantChange {
+				t.Errorf("%s updating %s: %d; want %d (%s)", role, typ, res.Code, wantChange, res.Body.String())
+			}
+			if res := e.do("DELETE", "/api/v1/rooms/"+existing, nil, bearer(tok)); res.Code != wantDelete {
+				t.Errorf("%s deleting %s: %d; want %d (%s)", role, typ, res.Code, wantDelete, res.Body.String())
+			}
+		}
+	}
+}
+
+// Changing a room's type needs authority over the type it has now and over the one it moves to.
+func TestUpdateRoomTypeNeedsAuthorityOverBothTypes(t *testing.T) {
+	e := newEnv(t)
+	tu, kalab, admin := bearer(e.tuToken()), bearer(e.kalabToken()), bearer(e.adminToken())
+	room := e.insertRoom("MOVE-1", "KELAS", 20)
+	path := "/api/v1/rooms/" + room
+
+	mustStatus(t, e.do("PATCH", path, map[string]any{"type": "LAB"}, tu), http.StatusForbidden)    // cannot manage LAB
+	mustStatus(t, e.do("PATCH", path, map[string]any{"type": "LAB"}, kalab), http.StatusForbidden) // cannot manage KELAS
+	if got := e.roomTypeOf(room); got != "KELAS" {
+		t.Fatalf("a refused change moved the room to %s", got)
+	}
+	mustStatus(t, e.do("PATCH", path, map[string]any{"type": "AUDITORIUM"}, tu), http.StatusOK)
+	mustStatus(t, e.do("PATCH", path, map[string]any{"type": "LAB"}, admin), http.StatusOK)
+	mustStatus(t, e.do("PATCH", path, map[string]any{"name": "Lab Baru"}, kalab), http.StatusOK) // now the KALAB's type
 }

@@ -8,10 +8,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"classlab/api/internal/audit"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
+	"classlab/api/internal/roomtypes"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -34,10 +36,11 @@ type Service struct {
 	pool  *db.Pool
 	q     *dbgen.Queries
 	clock clock.Clock
+	types *roomtypes.Store
 }
 
-func NewService(pool *db.Pool, clk clock.Clock) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk}
+func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types}
 }
 
 type ListFilter struct {
@@ -72,11 +75,6 @@ func (in UpdateInput) empty() bool {
 	return in.Name == nil && in.Type == nil && in.Capacity == nil && in.Facilities == nil && in.IsActive == nil
 }
 
-// canManage reports whether the actor may change room data (brief section 3).
-func canManage(actor httpx.Principal) bool {
-	return actor.HasRole(httpx.RoleTUKalab, httpx.RoleKaprodi)
-}
-
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (Room, error) {
 	row, err := s.q.GetRoom(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -85,7 +83,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (Room, error) {
 	if err != nil {
 		return Room{}, fmt.Errorf("getting room: %w", err)
 	}
-	return FromRow(row), nil
+	return FromRow(Row(row)), nil
 }
 
 func (s *Service) List(ctx context.Context, f ListFilter) ([]Room, int64, error) {
@@ -121,16 +119,13 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Room, int64, error)
 
 	out := make([]Room, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, FromRow(r))
+		out = append(out, FromRow(Row(r)))
 	}
 	return out, total, nil
 }
 
+// Create adds a room. Who may do so depends on the room's type: its approvers and administrators (BR-10).
 func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateInput) (Room, error) {
-	if !canManage(actor) {
-		return Room{}, httpx.ErrForbidden
-	}
-
 	in.Code = strings.ToUpper(strings.TrimSpace(in.Code))
 	in.Name = strings.TrimSpace(in.Name)
 
@@ -147,15 +142,36 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	if len(problems) > 0 {
 		return Room{}, httpx.ValidationError(problems...)
 	}
+	if err := s.types.RequireRoomManager(ctx, actor, in.Type); err != nil {
+		return Room{}, err
+	}
 
-	row, err := s.q.CreateRoom(ctx, dbgen.CreateRoomParams{
-		OrgUnitID:  in.OrgUnitID,
-		Code:       in.Code,
-		Name:       in.Name,
-		Type:       dbgen.RoomType(in.Type),
-		Capacity:   int32(in.Capacity),
-		Facilities: facilities,
-		CreatedAt:  s.clock.Now(),
+	token, err := NewQRToken()
+	if err != nil {
+		return Room{}, err
+	}
+
+	var created Room
+	err = s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+		now := s.clock.Now()
+		row, err := s.q.WithTx(tx).CreateRoom(ctx, dbgen.CreateRoomParams{
+			OrgUnitID:   in.OrgUnitID,
+			Code:        in.Code,
+			Name:        in.Name,
+			Type:        dbgen.RoomType(in.Type),
+			Capacity:    int32(in.Capacity),
+			Facilities:  facilities,
+			QrToken:     token,
+			QrRotatedAt: now,
+		})
+		if err != nil {
+			return err
+		}
+		created = FromRow(Row(row))
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionRoomCreated, EntityType: audit.EntityRoom,
+			EntityID: created.ID, After: created, At: now,
+		})
 	})
 	if err != nil {
 		if d, ok := constraintDetail(err); ok {
@@ -163,13 +179,10 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		}
 		return Room{}, fmt.Errorf("creating room: %w", err)
 	}
-	return FromRow(row), nil
+	return created, nil
 }
 
 func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUID, in UpdateInput) (Room, error) {
-	if !canManage(actor) {
-		return Room{}, httpx.ErrForbidden
-	}
 	if in.empty() {
 		return Room{}, httpx.ValidationError(httpx.ErrorDetail{Message: "Tidak ada field yang diubah."})
 	}
@@ -206,20 +219,42 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	var updated Room
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if _, err := q.LockRoom(ctx, id); err != nil {
+		locked, err := q.LockRoom(ctx, id)
+		if err != nil {
 			return err
 		}
+		before := FromRow(Row(locked))
+
+		// The actor must manage the type the room has now, and the type it is moving to.
+		if err := s.types.RequireRoomManager(ctx, actor, before.Type); err != nil {
+			return err
+		}
+		if in.Type != nil && *in.Type != before.Type {
+			if err := s.types.RequireRoomManager(ctx, actor, *in.Type); err != nil {
+				return err
+			}
+		}
+
 		row, err := q.UpdateRoom(ctx, params)
 		if err != nil {
 			return err
 		}
-		updated = FromRow(row)
-		return nil
+		updated = FromRow(Row(row))
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionRoomUpdated, EntityType: audit.EntityRoom,
+			EntityID: id, Before: before, After: updated, At: params.UpdatedAt,
+		})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Room{}, httpx.ErrNotFound
 	}
 	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			return Room{}, err
+		}
+		if d, ok := constraintDetail(err); ok {
+			return Room{}, httpx.ValidationError(d)
+		}
 		return Room{}, fmt.Errorf("updating room: %w", err)
 	}
 	return updated, nil
@@ -227,18 +262,20 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 
 // Delete soft-deletes a room (BR-07). Schedules and past bookings stay as history.
 func (s *Service) Delete(ctx context.Context, actor httpx.Principal, id uuid.UUID) error {
-	if !canManage(actor) {
-		return httpx.ErrForbidden
-	}
-
 	now := s.clock.Now()
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		// Locking first means a booking being created right now either commits before this check
 		// (and blocks the delete) or waits for the delete and is refused as ROOM_INACTIVE/not found.
-		if _, err := q.LockRoom(ctx, id); err != nil {
+		locked, err := q.LockRoom(ctx, id)
+		if err != nil {
 			return err
 		}
+		before := FromRow(Row(locked))
+		if err := s.types.RequireRoomManager(ctx, actor, before.Type); err != nil {
+			return err
+		}
+
 		live, err := q.CountLiveBookingsForRoom(ctx, dbgen.CountLiveBookingsForRoomParams{RoomID: id, EndAt: now})
 		if err != nil {
 			return fmt.Errorf("counting live bookings: %w", err)
@@ -246,12 +283,21 @@ func (s *Service) Delete(ctx context.Context, actor httpx.Principal, id uuid.UUI
 		if live > 0 {
 			return httpx.ErrRoomHasActiveBookings
 		}
-		return q.SoftDeleteRoom(ctx, dbgen.SoftDeleteRoomParams{ID: id, DeletedAt: pgtype.Timestamptz{Time: now, Valid: true}})
+		if err := q.SoftDeleteRoom(ctx, dbgen.SoftDeleteRoomParams{ID: id, DeletedAt: pgtype.Timestamptz{Time: now, Valid: true}}); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionRoomDeleted, EntityType: audit.EntityRoom,
+			EntityID: id, Before: before, At: now,
+		})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return httpx.ErrNotFound
 	}
 	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) || errors.Is(err, httpx.ErrRoomHasActiveBookings) {
+			return err
+		}
 		return fmt.Errorf("deleting room: %w", err)
 	}
 	return nil
@@ -271,9 +317,11 @@ func validateName(v string) []httpx.ErrorDetail {
 	return nil
 }
 
+// validateType accepts any type the database knows. Which types exist is data (room_type_policies),
+// not something this package lists by hand.
 func validateType(v string) []httpx.ErrorDetail {
-	if v != string(dbgen.RoomTypeKELAS) && v != string(dbgen.RoomTypeLAB) {
-		return []httpx.ErrorDetail{{Field: "type", Message: "Tipe ruang harus KELAS atau LAB."}}
+	if !dbgen.RoomType(v).Valid() {
+		return []httpx.ErrorDetail{{Field: "type", Message: "Tipe ruang tidak dikenal."}}
 	}
 	return nil
 }

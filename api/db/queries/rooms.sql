@@ -39,8 +39,8 @@ WHERE deleted_at IS NULL
   );
 
 -- name: CreateRoom :one
-INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, qr_token, qr_rotated_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
 RETURNING id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at;
 
 -- name: UpdateRoom :one
@@ -62,11 +62,11 @@ WHERE id = $1 AND deleted_at IS NULL;
 -- name: CountLiveBookingsForRoom :one
 SELECT count(*)
 FROM bookings
-WHERE room_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI') AND end_at > $2;
+WHERE room_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG') AND end_at > $2;
 
 -- name: SeedRoom :execrows
-INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, qr_token, qr_rotated_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
 ON CONFLICT (org_unit_id, code) WHERE deleted_at IS NULL DO NOTHING;
 
 -- name: GetRoomByCode :one

@@ -35,8 +35,11 @@ func (h *Handler) Routes(authenticate func(http.Handler) http.Handler) http.Hand
 	r.Post("/refresh", h.refresh)
 	r.Group(func(r chi.Router) {
 		r.Use(authenticate)
+		// These three stay reachable while a temporary password is pending (BR-24); every other route in
+		// the API sits behind httpx.RequirePasswordChanged.
 		r.Post("/logout", h.logout)
 		r.Get("/me", h.me)
+		r.Post("/change-password", h.changePassword)
 	})
 	return r
 }
@@ -47,9 +50,10 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	AccessToken string     `json:"access_token"`
-	ExpiresIn   int        `json:"expires_in"`
-	User        users.User `json:"user"`
+	AccessToken        string     `json:"access_token"`
+	ExpiresIn          int        `json:"expires_in"`
+	User               users.User `json:"user"`
+	MustChangePassword bool       `json:"must_change_password"`
 }
 
 type refreshResponse struct {
@@ -75,7 +79,9 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setRefreshCookie(w, sess.RefreshToken, sess.RefreshExpiresAt)
-	httpx.JSON(w, http.StatusOK, loginResponse{AccessToken: sess.AccessToken, ExpiresIn: sess.ExpiresIn, User: *sess.User})
+	httpx.JSON(w, http.StatusOK, loginResponse{
+		AccessToken: sess.AccessToken, ExpiresIn: sess.ExpiresIn, User: *sess.User, MustChangePassword: sess.User.MustChangePassword,
+	})
 }
 
 func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
@@ -155,4 +161,34 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+
+	var req changePasswordRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+
+	// The refresh cookie tells the service which session to keep alive.
+	var raw string
+	if c, err := r.Cookie(RefreshCookieName); err == nil {
+		raw = c.Value
+	}
+	if err := h.svc.ChangePassword(r.Context(), actor, raw, req.CurrentPassword, req.NewPassword); err != nil {
+		var limited *RateLimitedError
+		if errors.As(err, &limited) {
+			w.Header().Set("Retry-After", strconv.Itoa(int(limited.RetryAfter.Seconds())+1))
+		}
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

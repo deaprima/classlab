@@ -16,19 +16,31 @@ import (
 const countReports = `-- name: CountReports :one
 SELECT count(*)
 FROM damage_reports d
+JOIN rooms r ON r.id = d.room_id
 WHERE ($1::uuid IS NULL OR d.reporter_id = $1::uuid)
   AND ($2::report_status IS NULL OR d.status = $2::report_status)
   AND ($3::uuid IS NULL OR d.room_id = $3::uuid)
+  AND ($4::text[] IS NULL
+       OR r.type::text = ANY($4::text[])
+       OR d.reporter_id = $5::uuid)
 `
 
 type CountReportsParams struct {
 	ReporterID pgtype.UUID      `json:"reporter_id"`
 	Status     NullReportStatus `json:"status"`
 	RoomID     pgtype.UUID      `json:"room_id"`
+	RoomTypes  []string         `json:"room_types"`
+	ViewerID   pgtype.UUID      `json:"viewer_id"`
 }
 
 func (q *Queries) CountReports(ctx context.Context, arg CountReportsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countReports, arg.ReporterID, arg.Status, arg.RoomID)
+	row := q.db.QueryRow(ctx, countReports,
+		arg.ReporterID,
+		arg.Status,
+		arg.RoomID,
+		arg.RoomTypes,
+		arg.ViewerID,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -204,14 +216,19 @@ JOIN users u ON u.id = d.reporter_id
 WHERE ($1::uuid IS NULL OR d.reporter_id = $1::uuid)
   AND ($2::report_status IS NULL OR d.status = $2::report_status)
   AND ($3::uuid IS NULL OR d.room_id = $3::uuid)
+  AND ($4::text[] IS NULL
+       OR r.type::text = ANY($4::text[])
+       OR d.reporter_id = $5::uuid)
 ORDER BY d.created_at DESC, d.id
-LIMIT $5 OFFSET $4
+LIMIT $7 OFFSET $6
 `
 
 type ListReportsParams struct {
 	ReporterID pgtype.UUID      `json:"reporter_id"`
 	Status     NullReportStatus `json:"status"`
 	RoomID     pgtype.UUID      `json:"room_id"`
+	RoomTypes  []string         `json:"room_types"`
+	ViewerID   pgtype.UUID      `json:"viewer_id"`
 	PageOffset int32            `json:"page_offset"`
 	PageLimit  int32            `json:"page_limit"`
 }
@@ -241,6 +258,8 @@ func (q *Queries) ListReports(ctx context.Context, arg ListReportsParams) ([]Lis
 		arg.ReporterID,
 		arg.Status,
 		arg.RoomID,
+		arg.RoomTypes,
+		arg.ViewerID,
 		arg.PageOffset,
 		arg.PageLimit,
 	)

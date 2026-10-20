@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"time"
 )
@@ -56,10 +55,13 @@ type Business struct {
 }
 
 // envReader collects every malformed value so a start-up failure lists all of them at once.
-type envReader struct{ errs []error }
+type envReader struct {
+	get  func(string) string
+	errs []error
+}
 
 func (r *envReader) integer(key string, def int) int {
-	v := os.Getenv(key)
+	v := r.get(key)
 	if v == "" {
 		return def
 	}
@@ -80,8 +82,8 @@ func (r *envReader) bytes(key string, defMB int) int64 {
 }
 
 // loadBusiness reads the BR-11 to BR-28 settings; the defaults are the values in brief.md section 4.3.
-func loadBusiness() (Business, error) {
-	var r envReader
+func loadBusiness(get func(string) string) (Business, error) {
+	r := envReader{get: get}
 	b := Business{
 		PendingTTL: r.duration("PENDING_TTL_HOURS", 24, time.Hour),
 		EditCutoff: r.duration("EDIT_CUTOFF_MIN", 60, time.Minute),
@@ -196,4 +198,15 @@ func (b Business) validate() error {
 		bad("POINTS_NO_SHOW, POINTS_NO_CHECKOUT and POINTS_LATE_CANCEL must each be at least 1")
 	}
 	return errors.Join(errs...)
+}
+
+// DefaultBusiness returns the documented defaults regardless of the process environment. Tests build
+// their Config from it so they do not depend on, or leak into, the developer's .env.
+func DefaultBusiness() Business {
+	b, err := loadBusiness(func(string) string { return "" })
+	if err != nil {
+		// The defaults are constants checked by TestBusinessDefaultsMatchBrief; failing here is a code bug.
+		panic(fmt.Sprintf("default business settings are invalid: %v", err))
+	}
+	return b
 }

@@ -15,6 +15,7 @@ import (
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
+	"classlab/api/internal/roomtypes"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -38,10 +39,11 @@ type Service struct {
 	store         *Storage
 	maxPhotoBytes int64
 	log           *slog.Logger
+	types         *roomtypes.Store
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, store *Storage, maxPhotoBytes int64, log *slog.Logger) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, store: store, maxPhotoBytes: maxPhotoBytes, log: log}
+func NewService(pool *db.Pool, clk clock.Clock, store *Storage, maxPhotoBytes int64, log *slog.Logger, types *roomtypes.Store) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, store: store, maxPhotoBytes: maxPhotoBytes, log: log, types: types}
 }
 
 type CreateInput struct {
@@ -57,15 +59,20 @@ type ListFilter struct {
 	PerPage int
 }
 
-// canViewAll covers the roles that see every report (brief section 6.2).
-func canViewAll(actor httpx.Principal) bool {
-	return actor.HasRole(httpx.RoleTUKalab, httpx.RoleKaprodi)
-}
-
-// visibleTo: handlers see everything, a reporter sees their own, and anyone else gets 404 so that
-// another person's report is indistinguishable from a missing one.
-func visibleTo(actor httpx.Principal, reporterID uuid.UUID) error {
-	if canViewAll(actor) || actor.UserID == reporterID {
+// visibleTo: a reporter sees their own report, TU and KALAB see the room types they approve, ADMIN
+// reads all, and anyone else (OB included) gets 404 so that another person's report is
+// indistinguishable from a missing one (brief section 3, BR-10).
+func (s *Service) visibleTo(ctx context.Context, actor httpx.Principal, reporterID uuid.UUID, roomType string) error {
+	if actor.UserID == reporterID || actor.Role == httpx.RoleAdmin {
+		return nil
+	}
+	if actor.HasRole(httpx.RoleTU, httpx.RoleKalab) {
+		if err := s.types.RequireApprover(ctx, actor, roomType); err != nil {
+			if errors.Is(err, httpx.ErrForbidden) {
+				return httpx.ErrNotFound
+			}
+			return err
+		}
 		return nil
 	}
 	return httpx.ErrNotFound
@@ -164,8 +171,21 @@ func (s *Service) discardPhoto(ctx context.Context, name string) {
 }
 
 func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter) ([]Report, int64, error) {
-	var reporter pgtype.UUID
-	if !canViewAll(actor) {
+	// Reporters without a managing role see only their own reports. TU and KALAB see the room types they
+	// approve plus their own; ADMIN sees all.
+	var reporter, viewer pgtype.UUID
+	var roomTypes []string
+	switch {
+	case actor.Role == httpx.RoleAdmin:
+	case actor.HasRole(httpx.RoleTU, httpx.RoleKalab):
+		types, err := s.types.ApprovableTypes(ctx, actor.Role)
+		if err != nil {
+			return nil, 0, err
+		}
+		// types is non-nil even when empty: an empty array matches no room type, NULL would match all of them.
+		roomTypes = types
+		viewer = pgtype.UUID{Bytes: actor.UserID, Valid: true}
+	default:
 		reporter = pgtype.UUID{Bytes: actor.UserID, Valid: true}
 	}
 	var status dbgen.NullReportStatus
@@ -178,13 +198,15 @@ func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter)
 	}
 
 	rows, err := s.q.ListReports(ctx, dbgen.ListReportsParams{
-		ReporterID: reporter, Status: status, RoomID: room,
+		ReporterID: reporter, Status: status, RoomID: room, RoomTypes: roomTypes, ViewerID: viewer,
 		PageLimit: int32(f.PerPage), PageOffset: int32((f.Page - 1) * f.PerPage),
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing reports: %w", err)
 	}
-	total, err := s.q.CountReports(ctx, dbgen.CountReportsParams{ReporterID: reporter, Status: status, RoomID: room})
+	total, err := s.q.CountReports(ctx, dbgen.CountReportsParams{
+		ReporterID: reporter, Status: status, RoomID: room, RoomTypes: roomTypes, ViewerID: viewer,
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting reports: %w", err)
 	}
@@ -220,7 +242,7 @@ func (s *Service) load(ctx context.Context, actor httpx.Principal, id uuid.UUID)
 	if err != nil {
 		return dbgen.GetReportRow{}, fmt.Errorf("reading report: %w", err)
 	}
-	if err := visibleTo(actor, row.ReporterID); err != nil {
+	if err := s.visibleTo(ctx, actor, row.ReporterID, string(row.RoomType)); err != nil {
 		return dbgen.GetReportRow{}, err
 	}
 	return row, nil
@@ -260,7 +282,7 @@ func (s *Service) Photo(ctx context.Context, actor httpx.Principal, id uuid.UUID
 // reporter, all in one transaction. The report row is locked first so that two concurrent updates
 // cannot both pass the one-step check.
 func (s *Service) UpdateStatus(ctx context.Context, actor httpx.Principal, id uuid.UUID, to, note string) (Report, error) {
-	if actor.Role != httpx.RoleTUKalab {
+	if !actor.HasRole(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin) {
 		return Report{}, httpx.ErrForbidden
 	}
 
@@ -273,8 +295,21 @@ func (s *Service) UpdateStatus(ctx context.Context, actor httpx.Principal, id uu
 		return Report{}, httpx.ValidationError(httpx.ErrorDetail{Field: "note", Message: fmt.Sprintf("Catatan maksimal %d karakter.", maxNoteRunes)})
 	}
 
+	// Only an approver of the room's type may move its reports along (BR-10). A report never changes room,
+	// so the type read here is the one the check needs.
+	peek, err := s.q.GetReport(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Report{}, httpx.ErrNotFound
+	}
+	if err != nil {
+		return Report{}, fmt.Errorf("reading report: %w", err)
+	}
+	if err := s.types.RequireApprover(ctx, actor, string(peek.RoomType)); err != nil {
+		return Report{}, err
+	}
+
 	var updated Report
-	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+	err = s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		now := s.clock.Now()
 

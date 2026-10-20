@@ -105,7 +105,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	business, err := loadBusiness()
+	business, err := loadBusiness(os.Getenv)
 	if err != nil {
 		return nil, fmt.Errorf("invalid business settings: %w", err)
 	}

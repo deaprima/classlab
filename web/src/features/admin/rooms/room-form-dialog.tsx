@@ -34,7 +34,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { type FormProblem, FormProblemAlert } from '@/components/form-problem'
-import { ROOM_TYPE_LABELS } from '@/features/rooms/labels'
+import { ROOM_TYPE_LABELS, ROOM_TYPES } from '@/features/rooms/labels'
 import { useCreateRoom, useUpdateRoom } from './api'
 import {
   type RoomFormValues,
@@ -180,12 +180,11 @@ function RoomFormContent({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value='KELAS'>
-                        {ROOM_TYPE_LABELS.KELAS}
-                      </SelectItem>
-                      <SelectItem value='LAB'>
-                        {ROOM_TYPE_LABELS.LAB}
-                      </SelectItem>
+                      {ROOM_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {ROOM_TYPE_LABELS[t]}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />

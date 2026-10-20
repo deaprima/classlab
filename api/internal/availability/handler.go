@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/platform/db/dbgen"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -34,8 +35,8 @@ func (h *Handler) Check(w http.ResponseWriter, r *http.Request) {
 	f := Filter{Start: start, End: end}
 	q := r.URL.Query()
 	if v := q.Get("type"); v != "" {
-		if v != "KELAS" && v != "LAB" {
-			httpx.WriteError(w, r, httpx.ValidationError(httpx.ErrorDetail{Field: "type", Message: "Tipe ruang harus KELAS atau LAB."}))
+		if !dbgen.RoomType(v).Valid() {
+			httpx.WriteError(w, r, httpx.ValidationError(httpx.ErrorDetail{Field: "type", Message: "Tipe ruang tidak dikenal."}))
 			return
 		}
 		f.Type = &v

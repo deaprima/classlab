@@ -3,22 +3,26 @@ import { useAuthStore } from '@/stores/auth-store'
 import { type User, type UserRole } from './api-types'
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  MAHASISWA: 'Mahasiswa/PJ',
-  TU_KALAB: 'TU / Kepala Lab',
+  MAHASISWA: 'Mahasiswa',
+  ORGANISASI: 'Organisasi',
+  TU: 'TU',
+  KALAB: 'Kepala Lab',
   OB: 'OB',
-  KAPRODI: 'Kaprodi',
+  ADMIN: 'Admin',
 }
 
 // Who may open which page (brief.md 3 and 7.2). The server enforces the same rules; this only shapes
 // navigation. OB has no booking list because GET /bookings answers 403 for OB (decisions.md, Phase 3).
 export const ACCESS = {
-  createBooking: ['MAHASISWA'],
-  viewBookings: ['MAHASISWA', 'TU_KALAB', 'KAPRODI'],
-  approveBookings: ['TU_KALAB'],
-  manageRooms: ['TU_KALAB', 'KAPRODI'],
-  manageSchedules: ['TU_KALAB', 'KAPRODI'],
-  manageUsers: ['KAPRODI'],
-  updateReportStatus: ['TU_KALAB'],
+  createBooking: ['MAHASISWA', 'ORGANISASI'],
+  viewBookings: ['MAHASISWA', 'ORGANISASI', 'TU', 'KALAB', 'ADMIN'],
+  // The server narrows approval by room type (TU: classrooms, halls, exam and defense rooms;
+  // Kalab: labs; Admin: only types that list ADMIN).
+  approveBookings: ['TU', 'KALAB', 'ADMIN'],
+  manageRooms: ['TU', 'KALAB', 'ADMIN'],
+  manageSchedules: ['TU', 'KALAB', 'ADMIN'],
+  manageUsers: ['ADMIN'],
+  updateReportStatus: ['TU', 'KALAB', 'ADMIN'],
 } as const satisfies Record<string, readonly UserRole[]>
 
 export function hasRole(

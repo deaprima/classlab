@@ -38,7 +38,7 @@ const route = getRouteApi('/_authenticated/reports/')
 const ALL = 'ALL'
 const PER_PAGE = 20
 // Who sees every report rather than only their own (brief.md 6.2).
-const SEES_ALL = ['TU_KALAB', 'KAPRODI'] as const
+const SEES_ALL = ['TU', 'KALAB', 'ADMIN'] as const
 
 export function Reports() {
   const search = route.useSearch()

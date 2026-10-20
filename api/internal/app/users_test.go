@@ -42,7 +42,7 @@ func fieldsOf(res response) map[string]bool {
 
 func TestCreateUser(t *testing.T) {
 	e := newEnv(t)
-	admin := e.login(kaprodiID)
+	admin := e.login(adminID)
 
 	res := e.do("POST", "/api/v1/users", e.newUserBody("2022202001"), bearer(admin.accessToken))
 	if res.Code != http.StatusCreated {
@@ -51,6 +51,10 @@ func TestCreateUser(t *testing.T) {
 	u := res.json()
 	if u["identifier"] != "2022202001" || u["role"] != "MAHASISWA" || u["is_active"] != true {
 		t.Errorf("unexpected user: %v", u)
+	}
+	// The password the administrator chose is temporary: the owner must replace it at first login (BR-24).
+	if u["must_change_password"] != true {
+		t.Errorf("must_change_password = %v; want true for an account made by an administrator", u["must_change_password"])
 	}
 	for _, leaked := range []string{"password", "password_hash"} {
 		if _, ok := u[leaked]; ok {
@@ -71,11 +75,22 @@ func TestCreateUser(t *testing.T) {
 	if login.Code != http.StatusOK {
 		t.Errorf("new user login: %d", login.Code)
 	}
+
+	// An organisation account carries its contact person (BR-18).
+	org := e.newUserBody("HIMA-SI")
+	org["role"] = "ORGANISASI"
+	org["pic_name"] = "Rizky Maulana"
+	org["pic_phone"] = "081234567890"
+	res = e.do("POST", "/api/v1/users", org, bearer(admin.accessToken))
+	mustStatus(t, res, http.StatusCreated)
+	if u := res.json(); u["role"] != "ORGANISASI" || u["pic_name"] != "Rizky Maulana" || u["pic_phone"] != "081234567890" {
+		t.Errorf("unexpected organisation account: %v", u)
+	}
 }
 
 func TestCreateUserValidation(t *testing.T) {
 	e := newEnv(t)
-	admin := e.login(kaprodiID)
+	admin := e.login(adminID)
 	post := func(mutate func(map[string]any)) response {
 		body := e.newUserBody("2022202002")
 		mutate(body)
@@ -88,6 +103,10 @@ func TestCreateUserValidation(t *testing.T) {
 		field  string
 	}{
 		{"short password", func(b map[string]any) { b["password"] = "short" }, "password"},
+		{"password one short of the minimum", func(b map[string]any) { b["password"] = "123456789" }, "password"},
+		{"organisation without contact person", func(b map[string]any) { b["role"] = "ORGANISASI" }, "pic_name"},
+		{"organisation without contact phone", func(b map[string]any) { b["role"] = "ORGANISASI"; b["pic_name"] = "Rizky" }, "pic_phone"},
+		{"contact person on a student", func(b map[string]any) { b["pic_name"] = "Rizky"; b["pic_phone"] = "081234567890" }, "pic_name"},
 		{"bad email", func(b map[string]any) { b["email"] = "not-an-email" }, "email"},
 		{"display-name email", func(b map[string]any) { b["email"] = "Budi <budi@kampus.test>" }, "email"},
 		{"bad identifier", func(b map[string]any) { b["identifier"] = "has space" }, "identifier"},
@@ -122,7 +141,7 @@ func TestCreateUserValidation(t *testing.T) {
 
 func TestListUsers(t *testing.T) {
 	e := newEnv(t)
-	admin := e.login(kaprodiID)
+	admin := e.login(adminID)
 	get := func(query string) (data []any, meta map[string]any, code int) {
 		res := e.do("GET", "/api/v1/users"+query, nil, bearer(admin.accessToken))
 		if res.Code != http.StatusOK {
@@ -135,7 +154,7 @@ func TestListUsers(t *testing.T) {
 	}
 
 	data, meta, _ := get("")
-	if len(data) != 8 || meta["total"] != float64(8) || meta["page"] != float64(1) || meta["per_page"] != float64(20) {
+	if len(data) != 10 || meta["total"] != float64(10) || meta["page"] != float64(1) || meta["per_page"] != float64(20) {
 		t.Errorf("default listing: %d items, meta %v", len(data), meta)
 	}
 	for _, item := range data {
@@ -144,9 +163,9 @@ func TestListUsers(t *testing.T) {
 		}
 	}
 
-	data, meta, _ = get("?per_page=3&page=3")
-	if len(data) != 2 || meta["total"] != float64(8) {
-		t.Errorf("page 3 of 3: %d items, meta %v; want 2 items of 8", len(data), meta)
+	data, meta, _ = get("?per_page=3&page=4")
+	if len(data) != 1 || meta["total"] != float64(10) {
+		t.Errorf("page 4 of 4: %d items, meta %v; want 1 item of 10", len(data), meta)
 	}
 
 	if data, meta, _ = get("?role=MAHASISWA"); len(data) != 5 || meta["total"] != float64(5) {
@@ -158,7 +177,7 @@ func TestListUsers(t *testing.T) {
 	if data, _, _ = get("?q=2021101003"); len(data) != 1 {
 		t.Errorf("q matches identifier: %d items; want 1", len(data))
 	}
-	if data, _, _ = get("?q=tukalab@"); len(data) != 1 {
+	if data, _, _ = get("?q=kalab@"); len(data) != 1 {
 		t.Errorf("q matches email: %d items; want 1", len(data))
 	}
 	// LIKE wildcards in user input must be literal, not "match everything".
@@ -188,7 +207,7 @@ func TestListUsers(t *testing.T) {
 
 func TestUpdateUser(t *testing.T) {
 	e := newEnv(t)
-	admin := e.login(kaprodiID)
+	admin := e.login(adminID)
 	target := e.login(mahasiswaA)
 	path := "/api/v1/users/" + target.userID
 
@@ -205,7 +224,7 @@ func TestUpdateUser(t *testing.T) {
 	if r := e.do("GET", "/api/v1/users", nil, bearer(target.accessToken)); r.Code != http.StatusForbidden {
 		t.Errorf("former role should not matter and OB must be forbidden: %d", r.Code)
 	}
-	if _, err := e.pool.Exec(t.Context(), "UPDATE users SET role = 'KAPRODI' WHERE id = $1", target.userID); err != nil {
+	if _, err := e.pool.Exec(t.Context(), "UPDATE users SET role = 'ADMIN' WHERE id = $1", target.userID); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.do("GET", "/api/v1/users", nil, bearer(target.accessToken)); r.Code != http.StatusOK {
@@ -215,7 +234,7 @@ func TestUpdateUser(t *testing.T) {
 
 func TestUpdateUserErrors(t *testing.T) {
 	e := newEnv(t)
-	admin := e.login(kaprodiID)
+	admin := e.login(adminID)
 	b := bearer(admin.accessToken)
 
 	if r := e.do("PATCH", "/api/v1/users/00000000-0000-4000-8000-000000000001", map[string]any{"name": "x"}, b); r.Code != http.StatusNotFound {
@@ -238,7 +257,7 @@ func TestUpdateUserErrors(t *testing.T) {
 	if r := e.do("PATCH", "/api/v1/users/"+admin.userID, map[string]any{"role": "MAHASISWA"}, b); r.Code != http.StatusUnprocessableEntity {
 		t.Errorf("self-demotion: %d; want 422", r.Code)
 	}
-	if r := e.do("PATCH", "/api/v1/users/"+admin.userID, map[string]any{"role": "KAPRODI", "name": "Tetap Kaprodi"}, b); r.Code != http.StatusOK {
+	if r := e.do("PATCH", "/api/v1/users/"+admin.userID, map[string]any{"role": "ADMIN", "name": "Tetap Admin"}, b); r.Code != http.StatusOK {
 		t.Errorf("a no-op role change on yourself is fine: %d", r.Code)
 	}
 
@@ -251,7 +270,7 @@ func TestUpdateUserErrors(t *testing.T) {
 
 func TestDeactivatingUserEndsTheirSessions(t *testing.T) {
 	e := newEnv(t)
-	admin := e.login(kaprodiID)
+	admin := e.login(adminID)
 	victim := e.login(mahasiswaA)
 
 	res := e.do("PATCH", "/api/v1/users/"+victim.userID, map[string]any{"is_active": false}, bearer(admin.accessToken))
@@ -276,16 +295,27 @@ func TestDeactivatingUserEndsTheirSessions(t *testing.T) {
 	}
 }
 
+// PATCH /users no longer takes a password (BR-24). An administrator, or a TU for a student, issues a
+// temporary one through POST /users/{id}/reset-password instead; that ends the account's sessions,
+// replaces the password and forces a change at the next login.
 func TestPasswordResetEndsSessionsAndSwitchesPassword(t *testing.T) {
 	e := newEnv(t)
-	admin := e.login(kaprodiID)
+	admin := e.login(adminID)
 	victim := e.login(mahasiswaA)
 
-	if r := e.do("PATCH", "/api/v1/users/"+victim.userID, map[string]any{"password": "short"}, bearer(admin.accessToken)); r.Code != http.StatusUnprocessableEntity {
-		t.Errorf("weak reset password: %d; want 422", r.Code)
+	// The old way is gone, and the refused request changes nothing.
+	if r := e.do("PATCH", "/api/v1/users/"+victim.userID, map[string]any{"password": "reset-password-9"}, bearer(admin.accessToken)); r.Code != http.StatusBadRequest {
+		t.Errorf("PATCH with a password: %d; want 400 (unknown field)", r.Code)
 	}
-	if r := e.do("PATCH", "/api/v1/users/"+victim.userID, map[string]any{"password": "reset-password-9"}, bearer(admin.accessToken)); r.Code != http.StatusOK {
-		t.Fatalf("reset: %d", r.Code)
+	if r := e.do("POST", "/api/v1/auth/login", map[string]string{"identifier": mahasiswaA, "password": seed.DevPassword}); r.Code != http.StatusOK {
+		t.Fatalf("the refused PATCH changed the password: login %d", r.Code)
+	}
+
+	res := e.do("POST", "/api/v1/users/"+victim.userID+"/reset-password", nil, bearer(admin.accessToken))
+	mustStatus(t, res, http.StatusOK)
+	temp, _ := res.json()["temporary_password"].(string)
+	if temp == "" || temp == seed.DevPassword {
+		t.Fatalf("temporary_password = %q", temp)
 	}
 
 	if r := e.do("POST", "/api/v1/auth/refresh", nil, refreshCookie(victim.refresh)); r.Code != http.StatusUnauthorized {
@@ -294,8 +324,9 @@ func TestPasswordResetEndsSessionsAndSwitchesPassword(t *testing.T) {
 	if r := e.do("POST", "/api/v1/auth/login", map[string]string{"identifier": mahasiswaA, "password": seed.DevPassword}); r.Code != http.StatusUnauthorized {
 		t.Errorf("old password still works: %d", r.Code)
 	}
-	if r := e.do("POST", "/api/v1/auth/login", map[string]string{"identifier": mahasiswaA, "password": "reset-password-9"}); r.Code != http.StatusOK {
-		t.Errorf("new password rejected: %d", r.Code)
+	login := e.do("POST", "/api/v1/auth/login", map[string]string{"identifier": mahasiswaA, "password": temp})
+	if login.Code != http.StatusOK || login.json()["must_change_password"] != true {
+		t.Errorf("temporary password login: %d %s; want 200 with must_change_password", login.Code, login.Body.String())
 	}
 }
 

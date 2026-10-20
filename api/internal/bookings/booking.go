@@ -37,20 +37,20 @@ type Booking struct {
 }
 
 type Event struct {
-	ID         uuid.UUID `json:"id"`
-	BookingID  uuid.UUID `json:"booking_id"`
-	ActorID    uuid.UUID `json:"actor_id"`
-	FromStatus *string   `json:"from_status,omitempty"`
-	ToStatus   string    `json:"to_status"`
-	Reason     *string   `json:"reason,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         uuid.UUID  `json:"id"`
+	BookingID  uuid.UUID  `json:"booking_id"`
+	ActorID    *uuid.UUID `json:"actor_id"` // null when the system made the change (job, auto-approval)
+	FromStatus *string    `json:"from_status,omitempty"`
+	ToStatus   string     `json:"to_status"`
+	Reason     *string    `json:"reason,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 func fromRow(r dbgen.GetBookingRow) Booking {
 	b := Booking{
 		ID:     r.ID,
 		RoomID: r.RoomID,
-		Room: rooms.FromRow(dbgen.Room{
+		Room: rooms.FromRow(rooms.Row{
 			ID: r.RoomID, OrgUnitID: r.RoomOrgUnitID, Code: r.RoomCode, Name: r.RoomName,
 			Type: r.RoomType, Capacity: r.RoomCapacity, Facilities: r.RoomFacilities, IsActive: r.RoomIsActive,
 		}),
@@ -85,8 +85,12 @@ func fromRow(r dbgen.GetBookingRow) Booking {
 
 func eventFromRow(r dbgen.BookingEvent) Event {
 	e := Event{
-		ID: r.ID, BookingID: r.BookingID, ActorID: r.ActorID,
+		ID: r.ID, BookingID: r.BookingID,
 		ToStatus: string(r.ToStatus), CreatedAt: clock.ToWIB(r.CreatedAt),
+	}
+	if r.ActorID.Valid {
+		id := uuid.UUID(r.ActorID.Bytes)
+		e.ActorID = &id
 	}
 	if r.FromStatus.Valid {
 		s := string(r.FromStatus.BookingStatus)

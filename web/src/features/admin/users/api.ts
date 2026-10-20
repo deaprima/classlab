@@ -7,6 +7,7 @@ import {
 import { api } from '@/lib/api-client'
 import {
   type CreateUserRequest,
+  type ResetPasswordResponse,
   type UpdateUserRequest,
   type User,
   type UserListQuery,
@@ -43,7 +44,6 @@ export function useCreateUser(options: MutationOptions = {}) {
   })
 }
 
-/** Also used to reset a password: deactivation and password resets end the user's sessions. */
 export function useUpdateUser(options: MutationOptions = {}) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -52,6 +52,25 @@ export function useUpdateUser(options: MutationOptions = {}) {
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.all })
       options.onSuccess?.(user)
+    },
+    ...(options.onError && { onError: options.onError }),
+  })
+}
+
+/**
+ * Replaces the password with a random temporary one and ends the user's sessions. The temporary
+ * password is returned only once; keep it in the mutation state only, never in a cache or storage.
+ */
+export function useResetPassword(
+  options: { onError?: (e: unknown) => void } = {}
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) =>
+      (await api.post<ResetPasswordResponse>(`/users/${id}/reset-password`))
+        .data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all })
     },
     ...(options.onError && { onError: options.onError }),
   })

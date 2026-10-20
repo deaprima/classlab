@@ -16,7 +16,7 @@ import (
 const countActiveBookingsForRequester = `-- name: CountActiveBookingsForRequester :one
 SELECT count(*)
 FROM bookings
-WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI') AND end_at > $2
+WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG') AND end_at > $2
 `
 
 type CountActiveBookingsForRequesterParams struct {
@@ -35,11 +35,13 @@ func (q *Queries) CountActiveBookingsForRequester(ctx context.Context, arg Count
 const countBookings = `-- name: CountBookings :one
 SELECT count(*)
 FROM bookings b
+JOIN rooms r ON r.id = b.room_id
 WHERE ($1::uuid IS NULL OR b.requester_id = $1::uuid)
   AND ($2::booking_status IS NULL OR b.status = $2::booking_status)
   AND ($3::uuid IS NULL OR b.room_id = $3::uuid)
   AND ($4::timestamptz IS NULL OR b.end_at > $4::timestamptz)
   AND ($5::timestamptz IS NULL OR b.start_at < $5::timestamptz)
+  AND ($6::text[] IS NULL OR r.type::text = ANY($6::text[]))
 `
 
 type CountBookingsParams struct {
@@ -48,6 +50,7 @@ type CountBookingsParams struct {
 	RoomID      pgtype.UUID        `json:"room_id"`
 	RangeStart  pgtype.Timestamptz `json:"range_start"`
 	RangeEnd    pgtype.Timestamptz `json:"range_end"`
+	RoomTypes   []string           `json:"room_types"`
 }
 
 func (q *Queries) CountBookings(ctx context.Context, arg CountBookingsParams) (int64, error) {
@@ -57,6 +60,7 @@ func (q *Queries) CountBookings(ctx context.Context, arg CountBookingsParams) (i
 		arg.RoomID,
 		arg.RangeStart,
 		arg.RangeEnd,
+		arg.RoomTypes,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -64,10 +68,9 @@ func (q *Queries) CountBookings(ctx context.Context, arg CountBookingsParams) (i
 }
 
 const createBooking = `-- name: CreateBooking :one
-INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, participants, notes, idempotency_key, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-          decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
+INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, participants, notes, idempotency_key, approval_mode, manual_reason, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MANUAL', 'ROOM_POLICY', $9, $9)
+RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number
 `
 
 type CreateBookingParams struct {
@@ -82,6 +85,7 @@ type CreateBookingParams struct {
 	CreatedAt      time.Time   `json:"created_at"`
 }
 
+// Every booking is still decided by a person until the approval policy lands (Phase 3).
 func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) (Booking, error) {
 	row := q.db.QueryRow(ctx, createBooking,
 		arg.RoomID,
@@ -111,20 +115,34 @@ func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) (B
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
 }
 
 const createBookingEvent = `-- name: CreateBookingEvent :exec
 INSERT INTO booking_events (booking_id, actor_id, from_status, to_status, reason, created_at)
-VALUES ($1, $2, $5::booking_status, $3, $6, $4)
+VALUES ($1, $4::uuid, $5::booking_status, $2, $6, $3)
 `
 
 type CreateBookingEventParams struct {
 	BookingID  uuid.UUID         `json:"booking_id"`
-	ActorID    uuid.UUID         `json:"actor_id"`
 	ToStatus   BookingStatus     `json:"to_status"`
 	CreatedAt  time.Time         `json:"created_at"`
+	ActorID    pgtype.UUID       `json:"actor_id"`
 	FromStatus NullBookingStatus `json:"from_status"`
 	Reason     pgtype.Text       `json:"reason"`
 }
@@ -132,9 +150,9 @@ type CreateBookingEventParams struct {
 func (q *Queries) CreateBookingEvent(ctx context.Context, arg CreateBookingEventParams) error {
 	_, err := q.db.Exec(ctx, createBookingEvent,
 		arg.BookingID,
-		arg.ActorID,
 		arg.ToStatus,
 		arg.CreatedAt,
+		arg.ActorID,
 		arg.FromStatus,
 		arg.Reason,
 	)
@@ -149,8 +167,7 @@ UPDATE bookings SET
   decision_reason = $4,
   updated_at      = $3
 WHERE id = $5
-RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-          decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
+RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number
 `
 
 type DecideBookingParams struct {
@@ -186,6 +203,20 @@ func (q *Queries) DecideBooking(ctx context.Context, arg DecideBookingParams) (B
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
 }
@@ -259,10 +290,7 @@ func (q *Queries) GetBooking(ctx context.Context, id uuid.UUID) (GetBookingRow, 
 }
 
 const getBookingByIdempotencyKey = `-- name: GetBookingByIdempotencyKey :one
-SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-       decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
-FROM bookings
-WHERE requester_id = $1 AND idempotency_key = $2
+SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number FROM bookings WHERE requester_id = $1 AND idempotency_key = $2
 `
 
 type GetBookingByIdempotencyKeyParams struct {
@@ -289,13 +317,26 @@ func (q *Queries) GetBookingByIdempotencyKey(ctx context.Context, arg GetBooking
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
 }
 
 const listBookingEvents = `-- name: ListBookingEvents :many
-SELECT id, booking_id, actor_id, from_status, to_status, reason, created_at
-FROM booking_events
+SELECT id, booking_id, actor_id, from_status, to_status, reason, created_at, kind, changes FROM booking_events
 WHERE booking_id = $1
 ORDER BY created_at,
          CASE from_status WHEN 'MENUNGGU' THEN 1 WHEN 'DISETUJUI' THEN 2 ELSE 0 END,
@@ -321,6 +362,8 @@ func (q *Queries) ListBookingEvents(ctx context.Context, bookingID uuid.UUID) ([
 			&i.ToStatus,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.Kind,
+			&i.Changes,
 		); err != nil {
 			return nil, err
 		}
@@ -346,8 +389,9 @@ WHERE ($1::uuid IS NULL OR b.requester_id = $1::uuid)
   AND ($3::uuid IS NULL OR b.room_id = $3::uuid)
   AND ($4::timestamptz IS NULL OR b.end_at > $4::timestamptz)
   AND ($5::timestamptz IS NULL OR b.start_at < $5::timestamptz)
+  AND ($6::text[] IS NULL OR r.type::text = ANY($6::text[]))
 ORDER BY b.created_at DESC, b.id
-LIMIT $7 OFFSET $6
+LIMIT $8 OFFSET $7
 `
 
 type ListBookingsParams struct {
@@ -356,6 +400,7 @@ type ListBookingsParams struct {
 	RoomID      pgtype.UUID        `json:"room_id"`
 	RangeStart  pgtype.Timestamptz `json:"range_start"`
 	RangeEnd    pgtype.Timestamptz `json:"range_end"`
+	RoomTypes   []string           `json:"room_types"`
 	PageOffset  int32              `json:"page_offset"`
 	PageLimit   int32              `json:"page_limit"`
 }
@@ -392,6 +437,7 @@ func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]L
 		arg.RoomID,
 		arg.RangeStart,
 		arg.RangeEnd,
+		arg.RoomTypes,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -437,10 +483,7 @@ func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]L
 }
 
 const loadBooking = `-- name: LoadBooking :one
-SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-       decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
-FROM bookings
-WHERE id = $1
+SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number FROM bookings WHERE id = $1
 `
 
 // Plain row, for the transition checks done after the room lock is held.
@@ -463,6 +506,20 @@ func (q *Queries) LoadBooking(ctx context.Context, id uuid.UUID) (Booking, error
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
 }

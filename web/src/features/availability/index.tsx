@@ -35,7 +35,7 @@ import { Switch } from '@/components/ui/switch'
 import { ConflictList } from '@/components/conflict-list'
 import { Page } from '@/components/layout/page'
 import { AvailabilityBadge } from '@/components/status-badge'
-import { ROOM_TYPE_LABELS } from '@/features/rooms/labels'
+import { ROOM_TYPE_LABELS, ROOM_TYPES } from '@/features/rooms/labels'
 import { useAvailability } from './api'
 import { defaultRange, isValidRange } from './range'
 
@@ -132,8 +132,11 @@ export function Availability() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Semua tipe</SelectItem>
-                <SelectItem value='KELAS'>{ROOM_TYPE_LABELS.KELAS}</SelectItem>
-                <SelectItem value='LAB'>{ROOM_TYPE_LABELS.LAB}</SelectItem>
+                {ROOM_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {ROOM_TYPE_LABELS[t]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

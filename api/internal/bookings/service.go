@@ -15,6 +15,7 @@ import (
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
+	"classlab/api/internal/roomtypes"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -43,10 +44,11 @@ type Service struct {
 	q     *dbgen.Queries
 	clock clock.Clock
 	rules config.BookingRules
+	types *roomtypes.Store
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, rules config.BookingRules) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, rules: rules}
+func NewService(pool *db.Pool, clk clock.Clock, rules config.BookingRules, types *roomtypes.Store) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, rules: rules, types: types}
 }
 
 type CreateInput struct {
@@ -74,7 +76,7 @@ type ListFilter struct {
 // stays behind all of that as the last guard. replayed is true when an Idempotency-Key matched an
 // earlier identical request, in which case nothing new is written.
 func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateInput) (created Booking, replayed bool, err error) {
-	if actor.Role != httpx.RoleMahasiswa {
+	if !isRequester(actor) {
 		return Booking{}, false, httpx.ErrForbidden
 	}
 
@@ -140,6 +142,14 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			created, replayed = b, ok
 			return err
 		}
+		// Who may request which type is policy data (BR-17, BR-20), not a role list in code.
+		policy, err := s.types.Get(ctx, string(room.Type))
+		if err != nil {
+			return fmt.Errorf("loading room type policy: %w", err)
+		}
+		if !policy.CanRequest(actor.Role) {
+			return httpx.ErrRoomTypeNotAllowed
+		}
 		active, err := q.CountActiveBookingsForRequester(ctx, dbgen.CountActiveBookingsForRequesterParams{RequesterID: actor.UserID, EndAt: now})
 		if err != nil {
 			return fmt.Errorf("counting active bookings: %w", err)
@@ -178,7 +188,7 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		}
 
 		if err := q.CreateBookingEvent(ctx, dbgen.CreateBookingEventParams{
-			BookingID: row.ID, ActorID: actor.UserID, ToStatus: dbgen.BookingStatusMENUNGGU, CreatedAt: now,
+			BookingID: row.ID, ActorID: pgtype.UUID{Bytes: actor.UserID, Valid: true}, ToStatus: dbgen.BookingStatusMENUNGGU, CreatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("recording booking event: %w", err)
 		}
@@ -303,27 +313,40 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%d menit", int(d/time.Minute))
 }
 
-// canViewAll covers the roles that see every booking (brief section 3).
-func canViewAll(actor httpx.Principal) bool {
-	return actor.HasRole(httpx.RoleTUKalab, httpx.RoleKaprodi)
+// / isRequester reports whether the role submits bookings: students and organisations.
+func isRequester(actor httpx.Principal) bool {
+	return actor.Role == httpx.RoleMahasiswa || actor.Role == httpx.RoleOrganisasi
+}
+
+// isManager reports whether the role can decide bookings at all. Which room types it may decide is
+// checked against each room type's policy (BR-10), never against the role alone.
+func isManager(actor httpx.Principal) bool {
+	return actor.HasRole(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin)
 }
 
 // canRead is the set of roles allowed to read bookings at all; OB is not among them.
 func canRead(actor httpx.Principal) bool {
-	return canViewAll(actor) || actor.Role == httpx.RoleMahasiswa
+	return isRequester(actor) || isManager(actor)
 }
 
-// visibleTo reports whether the actor may read a booking. A student's view is limited to their own;
-// anything else answers 404 so another student's booking is indistinguishable from a missing one.
-func visibleTo(actor httpx.Principal, requesterID uuid.UUID) error {
+// visibleTo reports whether the actor may read a booking. A requester sees their own, TU and KALAB see
+// the room types they approve, and ADMIN reads everything. Anything else answers 404, so a booking
+// outside the actor's reach is indistinguishable from a missing one (BR-10).
+func (s *Service) visibleTo(ctx context.Context, actor httpx.Principal, requesterID uuid.UUID, roomType string) error {
 	switch {
-	case canViewAll(actor):
+	case actor.Role == httpx.RoleAdmin:
 		return nil
-	case actor.Role == httpx.RoleMahasiswa:
+	case isRequester(actor):
 		if actor.UserID == requesterID {
 			return nil
 		}
 		return httpx.ErrNotFound
+	case isManager(actor):
+		err := s.types.RequireApprover(ctx, actor, roomType)
+		if errors.Is(err, httpx.ErrForbidden) {
+			return httpx.ErrNotFound
+		}
+		return err
 	default:
 		return httpx.ErrForbidden
 	}
@@ -340,7 +363,7 @@ func (s *Service) Get(ctx context.Context, actor httpx.Principal, id uuid.UUID) 
 	if err != nil {
 		return Booking{}, fmt.Errorf("reading booking: %w", err)
 	}
-	if err := visibleTo(actor, row.RequesterID); err != nil {
+	if err := s.visibleTo(ctx, actor, row.RequesterID, string(row.RoomType)); err != nil {
 		return Booking{}, err
 	}
 	return fromRow(row), nil
@@ -351,14 +374,14 @@ func (s *Service) Events(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	if !canRead(actor) {
 		return nil, httpx.ErrForbidden
 	}
-	row, err := s.q.LoadBooking(ctx, id)
+	row, err := s.q.GetBooking(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, httpx.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading booking: %w", err)
 	}
-	if err := visibleTo(actor, row.RequesterID); err != nil {
+	if err := s.visibleTo(ctx, actor, row.RequesterID, string(row.RoomType)); err != nil {
 		return nil, err
 	}
 	rows, err := s.q.ListBookingEvents(ctx, id)
@@ -377,10 +400,20 @@ func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter)
 		return nil, 0, httpx.ErrForbidden
 	}
 
-	// Students are pinned to their own bookings whatever they ask for; approvers may narrow with ?mine=.
+	// Requesters are pinned to their own bookings whatever they ask for. TU and KALAB see the room types
+	// they approve; ADMIN sees all (BR-10). Managers may narrow with ?mine=.
 	var requester pgtype.UUID
-	if actor.Role == httpx.RoleMahasiswa || f.Mine {
+	var roomTypes []string
+	switch {
+	case isRequester(actor) || f.Mine:
 		requester = pgtype.UUID{Bytes: actor.UserID, Valid: true}
+	case actor.Role != httpx.RoleAdmin:
+		types, err := s.types.ApprovableTypes(ctx, actor.Role)
+		if err != nil {
+			return nil, 0, err
+		}
+		// types is non-nil even when empty: an empty array matches no room type, NULL would match all of them.
+		roomTypes = types
 	}
 	var status dbgen.NullBookingStatus
 	if f.Status != nil {
@@ -399,14 +432,14 @@ func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter)
 	}
 
 	rows, err := s.q.ListBookings(ctx, dbgen.ListBookingsParams{
-		RequesterID: requester, Status: status, RoomID: room, RangeStart: from, RangeEnd: to,
+		RequesterID: requester, Status: status, RoomID: room, RangeStart: from, RangeEnd: to, RoomTypes: roomTypes,
 		PageLimit: int32(f.PerPage), PageOffset: int32((f.Page - 1) * f.PerPage),
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing bookings: %w", err)
 	}
 	total, err := s.q.CountBookings(ctx, dbgen.CountBookingsParams{
-		RequesterID: requester, Status: status, RoomID: room, RangeStart: from, RangeEnd: to,
+		RequesterID: requester, Status: status, RoomID: room, RangeStart: from, RangeEnd: to, RoomTypes: roomTypes,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting bookings: %w", err)
@@ -420,14 +453,16 @@ func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter)
 }
 
 // Approve moves MENUNGGU to DISETUJUI after re-checking the slot inside the transaction (brief 4.4).
+// Only an approver of the room's type may do it (BR-10).
 func (s *Service) Approve(ctx context.Context, actor httpx.Principal, id uuid.UUID) (Booking, error) {
-	if actor.Role != httpx.RoleTUKalab {
+	if !isManager(actor) {
 		return Booking{}, httpx.ErrForbidden
 	}
 	return s.decide(ctx, actor, id, decision{
-		to:      dbgen.BookingStatusDISETUJUI,
-		recheck: true,
-		check: func(cur dbgen.Booking, room dbgen.Room, now time.Time) error {
+		to:        dbgen.BookingStatusDISETUJUI,
+		recheck:   true,
+		asManager: true,
+		check: func(cur dbgen.Booking, room dbgen.LockRoomRow, now time.Time) error {
 			if cur.Status != dbgen.BookingStatusMENUNGGU {
 				return invalidState(fmt.Sprintf("Booking berstatus %s tidak dapat disetujui.", cur.Status))
 			}
@@ -444,7 +479,7 @@ func (s *Service) Approve(ctx context.Context, actor httpx.Principal, id uuid.UU
 
 // Reject moves MENUNGGU to DITOLAK; the reason is mandatory (BR-04).
 func (s *Service) Reject(ctx context.Context, actor httpx.Principal, id uuid.UUID, reason string) (Booking, error) {
-	if actor.Role != httpx.RoleTUKalab {
+	if !isManager(actor) {
 		return Booking{}, httpx.ErrForbidden
 	}
 	reason, err := requireReason(reason)
@@ -452,9 +487,10 @@ func (s *Service) Reject(ctx context.Context, actor httpx.Principal, id uuid.UUI
 		return Booking{}, err
 	}
 	return s.decide(ctx, actor, id, decision{
-		to:     dbgen.BookingStatusDITOLAK,
-		reason: reason,
-		check: func(cur dbgen.Booking, _ dbgen.Room, _ time.Time) error {
+		to:        dbgen.BookingStatusDITOLAK,
+		reason:    reason,
+		asManager: true,
+		check: func(cur dbgen.Booking, _ dbgen.LockRoomRow, _ time.Time) error {
 			if cur.Status != dbgen.BookingStatusMENUNGGU {
 				return invalidState(fmt.Sprintf("Booking berstatus %s tidak dapat ditolak.", cur.Status))
 			}
@@ -463,14 +499,14 @@ func (s *Service) Reject(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	})
 }
 
-// Cancel is allowed to the owner while the booking is MENUNGGU, and to TU/Kalab once it is DISETUJUI
-// (with a reason, BR-04). Any other combination is an invalid transition (brief 4.1).
+// Cancel is allowed to the owner while the booking is MENUNGGU, and to an approver of the room's type
+// once it is DISETUJUI (with a reason, BR-04). Any other combination is an invalid transition (brief 4.1).
 func (s *Service) Cancel(ctx context.Context, actor httpx.Principal, id uuid.UUID, reason string) (Booking, error) {
 	var err error
-	switch actor.Role {
-	case httpx.RoleTUKalab:
+	switch {
+	case isManager(actor):
 		reason, err = requireReason(reason)
-	case httpx.RoleMahasiswa:
+	case isRequester(actor):
 		reason, err = optionalReason(reason)
 	default:
 		return Booking{}, httpx.ErrForbidden
@@ -480,14 +516,15 @@ func (s *Service) Cancel(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	}
 
 	return s.decide(ctx, actor, id, decision{
-		to:     dbgen.BookingStatusDIBATALKAN,
-		reason: reason,
-		check: func(cur dbgen.Booking, _ dbgen.Room, _ time.Time) error {
+		to:        dbgen.BookingStatusDIBATALKAN,
+		reason:    reason,
+		asManager: isManager(actor),
+		check: func(cur dbgen.Booking, _ dbgen.LockRoomRow, _ time.Time) error {
 			switch {
-			case actor.Role == httpx.RoleMahasiswa && cur.Status != dbgen.BookingStatusMENUNGGU:
-				return invalidState("Pengajuan yang sudah diputuskan hanya dapat dibatalkan oleh TU/Kalab.")
-			case actor.Role == httpx.RoleTUKalab && cur.Status != dbgen.BookingStatusDISETUJUI:
-				return invalidState("TU/Kalab hanya dapat membatalkan booking yang sudah disetujui; tolak pengajuan yang masih menunggu.")
+			case isRequester(actor) && cur.Status != dbgen.BookingStatusMENUNGGU:
+				return invalidState("Pengajuan yang sudah diputuskan hanya dapat dibatalkan oleh pengelola.")
+			case isManager(actor) && cur.Status != dbgen.BookingStatusDISETUJUI:
+				return invalidState("Pengelola hanya dapat membatalkan booking yang sudah disetujui; tolak pengajuan yang masih menunggu.")
 			}
 			return nil
 		},
@@ -495,10 +532,11 @@ func (s *Service) Cancel(ctx context.Context, actor httpx.Principal, id uuid.UUI
 }
 
 type decision struct {
-	to      dbgen.BookingStatus
-	reason  string // stored as decision_reason when not empty
-	recheck bool   // re-run the overlap check, for approvals
-	check   func(cur dbgen.Booking, room dbgen.Room, now time.Time) error
+	to        dbgen.BookingStatus
+	reason    string // stored as decision_reason when not empty
+	recheck   bool   // re-run the overlap check, for approvals
+	asManager bool   // the actor must approve this booking's room type
+	check     func(cur dbgen.Booking, room dbgen.LockRoomRow, now time.Time) error
 }
 
 // decide is the one place a booking changes status: lock the room, re-read the booking under the
@@ -508,17 +546,18 @@ type decision struct {
 // Every writer of booking status takes the room lock first, so the re-read cannot go stale between
 // the check and the update and no separate row lock is needed.
 func (s *Service) decide(ctx context.Context, actor httpx.Principal, id uuid.UUID, d decision) (Booking, error) {
-	// An unlocked peek finds the room to lock and lets a student who does not own the booking get a
-	// 404 without ever contending for the lock.
-	peek, err := s.q.LoadBooking(ctx, id)
+	// An unlocked peek finds the room to lock and lets a requester who does not own the booking get a
+	// 404 without ever contending for the lock. A manager's authority is checked under the lock, against
+	// the room's current type.
+	peek, err := s.q.GetBooking(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Booking{}, httpx.ErrNotFound
 	}
 	if err != nil {
 		return Booking{}, fmt.Errorf("reading booking: %w", err)
 	}
-	if err := visibleTo(actor, peek.RequesterID); err != nil {
-		return Booking{}, err
+	if isRequester(actor) && peek.RequesterID != actor.UserID {
+		return Booking{}, httpx.ErrNotFound
 	}
 
 	var result Booking
@@ -532,6 +571,11 @@ func (s *Service) decide(ctx context.Context, actor httpx.Principal, id uuid.UUI
 				return httpx.ErrNotFound
 			}
 			return fmt.Errorf("locking room: %w", err)
+		}
+		if d.asManager {
+			if err := s.types.RequireApprover(ctx, actor, string(room.Type)); err != nil {
+				return err
+			}
 		}
 		cur, err := q.LoadBooking(ctx, id)
 		if err != nil {
@@ -563,7 +607,7 @@ func (s *Service) decide(ctx context.Context, actor httpx.Principal, id uuid.UUI
 			return fmt.Errorf("updating booking status: %w", err)
 		}
 		if err := q.CreateBookingEvent(ctx, dbgen.CreateBookingEventParams{
-			BookingID: id, ActorID: actor.UserID, ToStatus: d.to, CreatedAt: now, Reason: reason,
+			BookingID: id, ActorID: pgtype.UUID{Bytes: actor.UserID, Valid: true}, ToStatus: d.to, CreatedAt: now, Reason: reason,
 			FromStatus: dbgen.NullBookingStatus{BookingStatus: cur.Status, Valid: true},
 		}); err != nil {
 			return fmt.Errorf("recording booking event: %w", err)

@@ -57,7 +57,7 @@ func fromRow(r dbgen.GetReportRow) Report {
 	rep := Report{
 		ID:     r.ID,
 		RoomID: r.RoomID,
-		Room: rooms.FromRow(dbgen.Room{
+		Room: rooms.FromRow(rooms.Row{
 			ID: r.RoomID, OrgUnitID: r.RoomOrgUnitID, Code: r.RoomCode, Name: r.RoomName,
 			Type: r.RoomType, Capacity: r.RoomCapacity, Facilities: r.RoomFacilities, IsActive: r.RoomIsActive,
 		}),

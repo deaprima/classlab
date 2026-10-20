@@ -25,15 +25,17 @@ func NewHandler(svc *Service) *Handler {
 // Register mounts the booking routes on a router that is already behind httpx.Authenticate.
 // The role guards here are the coarse gate; the service re-checks roles and ownership itself.
 func (h *Handler) Register(r chi.Router) {
-	reader := httpx.RequireRoles(httpx.RoleMahasiswa, httpx.RoleTUKalab, httpx.RoleKaprodi)
+	reader := httpx.RequireRoles(httpx.RoleMahasiswa, httpx.RoleOrganisasi, httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin)
+	manager := httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin)
+	requester := httpx.RequireRoles(httpx.RoleMahasiswa, httpx.RoleOrganisasi)
 
-	r.With(httpx.RequireRoles(httpx.RoleMahasiswa)).Post("/", h.create)
+	r.With(requester).Post("/", h.create)
 	r.With(reader).Get("/", h.list)
 	r.With(reader).Get("/{id}", h.get)
 	r.With(reader).Get("/{id}/events", h.events)
-	r.With(httpx.RequireRoles(httpx.RoleTUKalab)).Post("/{id}/approve", h.approve)
-	r.With(httpx.RequireRoles(httpx.RoleTUKalab)).Post("/{id}/reject", h.reject)
-	r.With(httpx.RequireRoles(httpx.RoleMahasiswa, httpx.RoleTUKalab)).Post("/{id}/cancel", h.cancel)
+	r.With(manager).Post("/{id}/approve", h.approve)
+	r.With(manager).Post("/{id}/reject", h.reject)
+	r.With(reader).Post("/{id}/cancel", h.cancel)
 }
 
 type createRequest struct {
@@ -80,13 +82,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	if v := q.Get("status"); v != "" {
-		switch dbgen.BookingStatus(v) {
-		case dbgen.BookingStatusMENUNGGU, dbgen.BookingStatusDISETUJUI, dbgen.BookingStatusDITOLAK, dbgen.BookingStatusDIBATALKAN:
-			f.Status = &v
-		default:
-			httpx.WriteError(w, r, httpx.ValidationError(httpx.ErrorDetail{Field: "status", Message: "status harus MENUNGGU, DISETUJUI, DITOLAK, atau DIBATALKAN."}))
+		if !dbgen.BookingStatus(v).Valid() {
+			httpx.WriteError(w, r, httpx.ValidationError(httpx.ErrorDetail{Field: "status", Message: "Status booking tidak dikenal."}))
 			return
 		}
+		f.Status = &v
 	}
 	if v := q.Get("room_id"); v != "" {
 		id, err := uuid.Parse(v)

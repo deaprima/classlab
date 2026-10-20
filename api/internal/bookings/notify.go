@@ -23,10 +23,10 @@ const (
 // The notify helpers take the transaction's *dbgen.Queries on purpose: a notification must commit or
 // roll back together with the status change that caused it (brief section 5, "Tipe notifikasi").
 
-// notifyCreated tells every active TU/Kalab that a request awaits a decision.
+// notifyCreated tells every active approver of the room's type that a request awaits a decision.
 func notifyCreated(ctx context.Context, q *dbgen.Queries, b Booking, now time.Time) error {
-	err := q.CreateNotificationForRole(ctx, dbgen.CreateNotificationForRoleParams{
-		Role:      dbgen.UserRoleTUKALAB,
+	err := q.CreateNotificationForApprovers(ctx, dbgen.CreateNotificationForApproversParams{
+		RoomType:  dbgen.RoomType(b.Room.Type),
 		Type:      typeCreated,
 		Title:     "Pengajuan booking baru",
 		Body:      fmt.Sprintf("%s mengajukan %s pada %s.", b.Requester.Name, b.Room.Code, slotText(b)),

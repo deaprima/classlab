@@ -13,15 +13,17 @@ import (
 type Role string
 
 const (
-	RoleMahasiswa Role = "MAHASISWA"
-	RoleTUKalab   Role = "TU_KALAB"
-	RoleOB        Role = "OB"
-	RoleKaprodi   Role = "KAPRODI"
+	RoleMahasiswa  Role = "MAHASISWA"
+	RoleOrganisasi Role = "ORGANISASI"
+	RoleTU         Role = "TU"
+	RoleKalab      Role = "KALAB"
+	RoleOB         Role = "OB"
+	RoleAdmin      Role = "ADMIN"
 )
 
 func (r Role) Valid() bool {
 	switch r {
-	case RoleMahasiswa, RoleTUKalab, RoleOB, RoleKaprodi:
+	case RoleMahasiswa, RoleOrganisasi, RoleTU, RoleKalab, RoleOB, RoleAdmin:
 		return true
 	}
 	return false
@@ -31,6 +33,8 @@ func (r Role) Valid() bool {
 type Principal struct {
 	UserID uuid.UUID
 	Role   Role
+	// MustChangePassword is true while the account still holds a temporary password (BR-24).
+	MustChangePassword bool
 }
 
 func (p Principal) HasRole(roles ...Role) bool {
@@ -93,4 +97,16 @@ func RequireRoles(roles ...Role) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// RequirePasswordChanged refuses callers who still hold a temporary password (BR-24). Mount it after
+// Authenticate on every route except /auth/me, /auth/change-password and /auth/logout.
+func RequirePasswordChanged(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p, ok := PrincipalFrom(r.Context()); ok && p.MustChangePassword {
+			WriteError(w, r, ErrPasswordChangeRequired)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

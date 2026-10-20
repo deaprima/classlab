@@ -29,13 +29,13 @@ func NewHandler(svc *Service, maxPhotoBytes int64) *Handler {
 }
 
 // Register mounts the report routes on a router that is already behind httpx.Authenticate.
-// Any role may file and read their own reports; only TU/Kalab changes status.
+// Any role may file and read their own reports; only the approvers of the room type change status.
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/", h.create)
 	r.Get("/", h.list)
 	r.Get("/{id}", h.get)
 	r.Get("/{id}/photo", h.photo)
-	r.With(httpx.RequireRoles(httpx.RoleTUKalab)).Patch("/{id}/status", h.updateStatus)
+	r.With(httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin)).Patch("/{id}/status", h.updateStatus)
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {

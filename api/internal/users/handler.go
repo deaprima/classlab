@@ -18,13 +18,15 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Routes must be mounted behind httpx.Authenticate. Every route is Kaprodi-only.
+// Routes must be mounted behind httpx.Authenticate. Administrators and TU may reach them; the service
+// narrows TU to student accounts and keeps creation for administrators.
 func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(httpx.RequireRoles(httpx.RoleKaprodi))
+	r.Use(httpx.RequireRoles(httpx.RoleAdmin, httpx.RoleTU))
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Patch("/{id}", h.update)
+	r.Post("/{id}/reset-password", h.resetPassword)
 	return r
 }
 
@@ -73,6 +75,8 @@ type createRequest struct {
 	Email      string     `json:"email"`
 	Password   string     `json:"password"`
 	Role       httpx.Role `json:"role"`
+	PicName    string     `json:"pic_name"`
+	PicPhone   string     `json:"pic_phone"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -93,11 +97,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateRequest struct {
-	Name     *string     `json:"name"`
-	Email    *string     `json:"email"`
-	Role     *httpx.Role `json:"role"`
-	IsActive *bool       `json:"is_active"`
-	Password *string     `json:"password"`
+	Name              *string     `json:"name"`
+	Email             *string     `json:"email"`
+	Role              *httpx.Role `json:"role"`
+	IsActive          *bool       `json:"is_active"`
+	PicName           *string     `json:"pic_name"`
+	PicPhone          *string     `json:"pic_phone"`
+	ClearBookingBlock bool        `json:"clear_booking_block"`
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -122,4 +128,27 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, u)
+}
+
+type resetPasswordResponse struct {
+	TemporaryPassword string `json:"temporary_password"`
+}
+
+// resetPassword returns the new temporary password once. no-store keeps it out of every cache.
+func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, httpx.ErrNotFound)
+		return
+	}
+
+	temp, err := h.svc.ResetPassword(r.Context(), actor, id)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, resetPasswordResponse{TemporaryPassword: temp})
 }

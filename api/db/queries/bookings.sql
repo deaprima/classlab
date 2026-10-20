@@ -24,36 +24,33 @@ WHERE (sqlc.narg(requester_id)::uuid IS NULL OR b.requester_id = sqlc.narg(reque
   AND (sqlc.narg(room_id)::uuid IS NULL OR b.room_id = sqlc.narg(room_id)::uuid)
   AND (sqlc.narg(range_start)::timestamptz IS NULL OR b.end_at > sqlc.narg(range_start)::timestamptz)
   AND (sqlc.narg(range_end)::timestamptz IS NULL OR b.start_at < sqlc.narg(range_end)::timestamptz)
+  AND (sqlc.narg(room_types)::text[] IS NULL OR r.type::text = ANY(sqlc.narg(room_types)::text[]))
 ORDER BY b.created_at DESC, b.id
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
 -- name: CountBookings :one
 SELECT count(*)
 FROM bookings b
+JOIN rooms r ON r.id = b.room_id
 WHERE (sqlc.narg(requester_id)::uuid IS NULL OR b.requester_id = sqlc.narg(requester_id)::uuid)
   AND (sqlc.narg(status)::booking_status IS NULL OR b.status = sqlc.narg(status)::booking_status)
   AND (sqlc.narg(room_id)::uuid IS NULL OR b.room_id = sqlc.narg(room_id)::uuid)
   AND (sqlc.narg(range_start)::timestamptz IS NULL OR b.end_at > sqlc.narg(range_start)::timestamptz)
-  AND (sqlc.narg(range_end)::timestamptz IS NULL OR b.start_at < sqlc.narg(range_end)::timestamptz);
+  AND (sqlc.narg(range_end)::timestamptz IS NULL OR b.start_at < sqlc.narg(range_end)::timestamptz)
+  AND (sqlc.narg(room_types)::text[] IS NULL OR r.type::text = ANY(sqlc.narg(room_types)::text[]));
 
 -- Plain row, for the transition checks done after the room lock is held.
 -- name: LoadBooking :one
-SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-       decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
-FROM bookings
-WHERE id = $1;
+SELECT * FROM bookings WHERE id = $1;
 
 -- name: GetBookingByIdempotencyKey :one
-SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-       decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
-FROM bookings
-WHERE requester_id = $1 AND idempotency_key = $2;
+SELECT * FROM bookings WHERE requester_id = $1 AND idempotency_key = $2;
 
 -- name: CreateBooking :one
-INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, participants, notes, idempotency_key, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-          decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at;
+-- Every booking is still decided by a person until the approval policy lands (Phase 3).
+INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, participants, notes, idempotency_key, approval_mode, manual_reason, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MANUAL', 'ROOM_POLICY', $9, $9)
+RETURNING *;
 
 -- name: DecideBooking :one
 UPDATE bookings SET
@@ -63,16 +60,14 @@ UPDATE bookings SET
   decision_reason = sqlc.narg(decision_reason),
   updated_at      = sqlc.arg(now)
 WHERE id = sqlc.arg(id)
-RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-          decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at;
+RETURNING *;
 
 -- name: CreateBookingEvent :exec
 INSERT INTO booking_events (booking_id, actor_id, from_status, to_status, reason, created_at)
-VALUES ($1, $2, sqlc.narg(from_status)::booking_status, $3, sqlc.narg(reason), $4);
+VALUES ($1, sqlc.narg(actor_id)::uuid, sqlc.narg(from_status)::booking_status, $2, sqlc.narg(reason), $3);
 
 -- name: ListBookingEvents :many
-SELECT id, booking_id, actor_id, from_status, to_status, reason, created_at
-FROM booking_events
+SELECT * FROM booking_events
 WHERE booking_id = $1
 -- Events written in one instant would tie on created_at; the status they leave from follows the
 -- lifecycle (new -> MENUNGGU -> DISETUJUI -> final), which gives a stable order without a sequence column.
@@ -89,4 +84,4 @@ SELECT pg_advisory_xact_lock(hashtextextended('booking-quota:' || $1::text, 0));
 -- name: CountActiveBookingsForRequester :one
 SELECT count(*)
 FROM bookings
-WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI') AND end_at > $2;
+WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG') AND end_at > $2;

@@ -15,7 +15,7 @@ import (
 func TestLoginSuccess(t *testing.T) {
 	e := newEnv(t, func(c *config.Config) { c.CookieSecure = true })
 
-	res := e.do("POST", "/api/v1/auth/login", map[string]string{"identifier": tuKalabID, "password": seed.DevPassword})
+	res := e.do("POST", "/api/v1/auth/login", map[string]string{"identifier": tuID, "password": seed.DevPassword})
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", res.Code, res.Body.String())
 	}
@@ -28,7 +28,7 @@ func TestLoginSuccess(t *testing.T) {
 		t.Errorf("access_token is not a JWT: %q", tok)
 	}
 	user, _ := body["user"].(map[string]any)
-	if user["role"] != "TU_KALAB" || user["identifier"] != tuKalabID {
+	if user["role"] != "TU" || user["identifier"] != tuID {
 		t.Errorf("unexpected user: %v", user)
 	}
 	if !strings.HasSuffix(user["created_at"].(string), "+07:00") {
@@ -71,7 +71,7 @@ func TestLoginFailuresAreIndistinguishable(t *testing.T) {
 	}
 
 	cases := map[string]map[string]string{
-		"wrong password": {"identifier": tuKalabID, "password": "not-the-password"},
+		"wrong password": {"identifier": tuID, "password": "not-the-password"},
 		"unknown user":   {"identifier": "9999999999", "password": seed.DevPassword},
 		"inactive user":  {"identifier": mahasiswaB, "password": seed.DevPassword},
 	}

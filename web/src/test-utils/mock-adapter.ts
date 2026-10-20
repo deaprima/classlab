@@ -50,5 +50,9 @@ export const sampleUser = {
   email: 'budi@student.univ.ac.id',
   role: 'MAHASISWA',
   is_active: true,
+  booking_blocked_until: null,
+  pic_name: null,
+  pic_phone: null,
+  must_change_password: false,
   created_at: '2026-10-01T08:00:00+07:00',
 } as const

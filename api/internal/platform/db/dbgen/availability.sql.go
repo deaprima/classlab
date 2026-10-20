@@ -27,15 +27,29 @@ type ListBookableRoomsParams struct {
 	CapacityMin pgtype.Int4  `json:"capacity_min"`
 }
 
-func (q *Queries) ListBookableRooms(ctx context.Context, arg ListBookableRoomsParams) ([]Room, error) {
+type ListBookableRoomsRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+}
+
+func (q *Queries) ListBookableRooms(ctx context.Context, arg ListBookableRoomsParams) ([]ListBookableRoomsRow, error) {
 	rows, err := q.db.Query(ctx, listBookableRooms, arg.Type, arg.CapacityMin)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Room{}
+	items := []ListBookableRoomsRow{}
 	for rows.Next() {
-		var i Room
+		var i ListBookableRoomsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgUnitID,

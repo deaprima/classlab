@@ -142,3 +142,25 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRef
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, arg.UserID, arg.RevokedAt)
 	return err
 }
+
+const revokeUserTokensExceptFamilyOf = `-- name: RevokeUserTokensExceptFamilyOf :exec
+UPDATE refresh_tokens SET revoked_at = $1
+WHERE refresh_tokens.user_id = $2 AND refresh_tokens.revoked_at IS NULL
+  AND refresh_tokens.family_id IS DISTINCT FROM (
+    SELECT t.family_id FROM refresh_tokens t
+    WHERE t.token_hash = $3 AND t.user_id = $2
+  )
+`
+
+type RevokeUserTokensExceptFamilyOfParams struct {
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+	UserID    uuid.UUID          `json:"user_id"`
+	TokenHash string             `json:"token_hash"`
+}
+
+// After a password change every session except the one making the change ends. With no matching
+// token_hash the subquery is NULL and every session is revoked.
+func (q *Queries) RevokeUserTokensExceptFamilyOf(ctx context.Context, arg RevokeUserTokensExceptFamilyOfParams) error {
+	_, err := q.db.Exec(ctx, revokeUserTokensExceptFamilyOf, arg.RevokedAt, arg.UserID, arg.TokenHash)
+	return err
+}

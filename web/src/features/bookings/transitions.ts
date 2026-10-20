@@ -1,4 +1,5 @@
 import { type Booking, type UserRole } from '@/lib/api-types'
+import { ACCESS, hasRole } from '@/lib/rbac'
 
 /** Whether the booking's time is over; approving it then makes no sense (the API answers 409). */
 export function hasEnded(booking: Pick<Booking, 'end_at'>, now: number) {
@@ -14,7 +15,7 @@ export function availableActions(
   user: { id: string; role: UserRole } | null,
   now: number
 ) {
-  const isApprover = user?.role === 'TU_KALAB'
+  const isApprover = hasRole(user, ACCESS.approveBookings)
   const isOwner = !!user && booking.requester_id === user.id
   const pending = booking.status === 'MENUNGGU'
   return {

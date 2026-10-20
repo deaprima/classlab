@@ -9,11 +9,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"classlab/api/internal/audit"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/overlap"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
+	"classlab/api/internal/roomtypes"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -34,7 +36,21 @@ type Schedule struct {
 	CreatedBy uuid.UUID `json:"created_by"`
 }
 
-func fromRow(r dbgen.RoomSchedule) Schedule {
+// scheduleRow is the set of room_schedules columns the queries return; each sqlc row type with these
+// fields converts to it directly.
+type scheduleRow struct {
+	ID        uuid.UUID
+	RoomID    uuid.UUID
+	Title     string
+	StartAt   time.Time
+	EndAt     time.Time
+	Source    dbgen.ScheduleSource
+	CreatedBy uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func fromRow(r scheduleRow) Schedule {
 	return Schedule{
 		ID: r.ID, RoomID: r.RoomID, Title: r.Title,
 		StartAt: clock.ToWIB(r.StartAt), EndAt: clock.ToWIB(r.EndAt),
@@ -67,24 +83,17 @@ type Service struct {
 	pool  *db.Pool
 	q     *dbgen.Queries
 	clock clock.Clock
+	types *roomtypes.Store
 }
 
-func NewService(pool *db.Pool, clk clock.Clock) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk}
-}
-
-func canManage(actor httpx.Principal) bool {
-	return actor.HasRole(httpx.RoleTUKalab, httpx.RoleKaprodi)
+func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types}
 }
 
 // Create inserts one schedule, or one per week when Repeat is set (BR-09). Everything happens in a
 // single transaction under the room lock: if any session collides, nothing is written and the
 // response lists every collision.
 func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateInput) ([]Schedule, error) {
-	if !canManage(actor) {
-		return nil, httpx.ErrForbidden
-	}
-
 	in.Title = strings.TrimSpace(in.Title)
 	source := dbgen.ScheduleSourceMANUAL
 	var problems []httpx.ErrorDetail
@@ -123,11 +132,16 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	var created []Schedule
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if _, err := q.LockRoom(ctx, in.RoomID); err != nil {
+		room, err := q.LockRoom(ctx, in.RoomID)
+		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return httpx.ValidationError(httpx.ErrorDetail{Field: "room_id", Message: "Ruang tidak ditemukan."})
 			}
 			return fmt.Errorf("locking room: %w", err)
+		}
+		// Schedules follow the same authority as rooms: the approvers of the room's type and administrators.
+		if err := s.types.RequireRoomManager(ctx, actor, string(room.Type)); err != nil {
+			return err
 		}
 
 		conflicts, err := overlap.Find(ctx, q, in.RoomID, windows, uuid.Nil, uuid.Nil)
@@ -147,9 +161,13 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			if err != nil {
 				return err
 			}
-			created = append(created, fromRow(row))
+			created = append(created, fromRow(scheduleRow(row)))
 		}
-		return nil
+		// One line for the whole request; a weekly series is one decision, not 26.
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionScheduleCreated, EntityType: audit.EntitySchedule,
+			EntityID: created[0].ID, After: created, At: now,
+		})
 	})
 	if err != nil {
 		return nil, mapWriteError(err, "creating schedule")
@@ -158,9 +176,6 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 }
 
 func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUID, in UpdateInput) (Schedule, error) {
-	if !canManage(actor) {
-		return Schedule{}, httpx.ErrForbidden
-	}
 	if in.Title == nil && in.StartAt == nil && in.EndAt == nil {
 		return Schedule{}, httpx.ValidationError(httpx.ErrorDetail{Message: "Tidak ada field yang diubah."})
 	}
@@ -186,12 +201,17 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 		if err != nil {
 			return err
 		}
-		if _, err := q.LockRoom(ctx, cur.RoomID); err != nil {
+		room, err := q.LockRoom(ctx, cur.RoomID)
+		if err != nil {
+			return err
+		}
+		if err := s.types.RequireRoomManager(ctx, actor, string(room.Type)); err != nil {
 			return err
 		}
 		if cur, err = q.GetSchedule(ctx, id); err != nil {
 			return err
 		}
+		before := fromRow(scheduleRow(cur))
 
 		start, end := cur.StartAt, cur.EndAt
 		if in.StartAt != nil {
@@ -212,15 +232,19 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 			return conflictError(conflicts)
 		}
 
+		now := s.clock.Now()
 		row, err := q.UpdateSchedule(ctx, dbgen.UpdateScheduleParams{
 			ID: id, Title: pgtype.Text{String: deref(title), Valid: title != nil},
-			StartAt: start, EndAt: end, UpdatedAt: s.clock.Now(),
+			StartAt: start, EndAt: end, UpdatedAt: now,
 		})
 		if err != nil {
 			return err
 		}
-		updated = fromRow(row)
-		return nil
+		updated = fromRow(scheduleRow(row))
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionScheduleUpdated, EntityType: audit.EntitySchedule,
+			EntityID: id, Before: before, After: updated, At: now,
+		})
 	})
 	if err != nil {
 		return Schedule{}, mapWriteError(err, "updating schedule")
@@ -229,15 +253,34 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 }
 
 func (s *Service) Delete(ctx context.Context, actor httpx.Principal, id uuid.UUID) error {
-	if !canManage(actor) {
-		return httpx.ErrForbidden
-	}
-	n, err := s.q.DeleteSchedule(ctx, id)
+	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+
+		cur, err := q.GetSchedule(ctx, id)
+		if err != nil {
+			return err
+		}
+		room, err := q.LockRoom(ctx, cur.RoomID)
+		if err != nil {
+			return err
+		}
+		if err := s.types.RequireRoomManager(ctx, actor, string(room.Type)); err != nil {
+			return err
+		}
+		n, err := q.DeleteSchedule(ctx, id)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return pgx.ErrNoRows
+		}
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionScheduleDeleted, EntityType: audit.EntitySchedule,
+			EntityID: id, Before: fromRow(scheduleRow(cur)), At: s.clock.Now(),
+		})
+	})
 	if err != nil {
-		return fmt.Errorf("deleting schedule: %w", err)
-	}
-	if n == 0 {
-		return httpx.ErrNotFound
+		return mapWriteError(err, "deleting schedule")
 	}
 	return nil
 }

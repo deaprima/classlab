@@ -10,15 +10,17 @@ WITH n AS (
 )
 SELECT pg_notify('classlab_notifications', user_id::text || ':' || id::text) FROM n;
 
--- One statement for every active holder of a role, so a new booking cannot reach only some approvers.
+-- One statement for every active approver of a room type (the roles in its policy's approver_roles, BR-10),
+-- so a new booking cannot reach only some approvers.
 -- exclude_user_id keeps people from being notified about what they did themselves.
--- name: CreateNotificationForRole :exec
+-- name: CreateNotificationForApprovers :exec
 WITH n AS (
   INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id, created_at)
-  SELECT id, sqlc.arg(type), sqlc.arg(title), sqlc.arg(body), sqlc.arg(ref_type), sqlc.arg(ref_id), sqlc.arg(created_at)
-  FROM users
-  WHERE role = sqlc.arg(role)::user_role AND is_active
-    AND (sqlc.narg(exclude_user_id)::uuid IS NULL OR id <> sqlc.narg(exclude_user_id)::uuid)
+  SELECT u.id, sqlc.arg(type), sqlc.arg(title), sqlc.arg(body), sqlc.arg(ref_type), sqlc.arg(ref_id), sqlc.arg(created_at)
+  FROM users u
+  JOIN room_type_policies p ON p.room_type = sqlc.arg(room_type)::room_type
+  WHERE u.is_active AND u.role = ANY(p.approver_roles)
+    AND (sqlc.narg(exclude_user_id)::uuid IS NULL OR u.id <> sqlc.narg(exclude_user_id)::uuid)
   RETURNING id, user_id
 )
 SELECT pg_notify('classlab_notifications', user_id::text || ':' || id::text) FROM n;

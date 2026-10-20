@@ -7,7 +7,17 @@ import { Bookings } from '@/features/bookings'
 const searchSchema = z.object({
   page: positiveIntParam,
   status: z
-    .enum(['MENUNGGU', 'DISETUJUI', 'DITOLAK', 'DIBATALKAN'])
+    .enum([
+      'MENUNGGU',
+      'DISETUJUI',
+      'DITOLAK',
+      'DIBATALKAN',
+      'BERLANGSUNG',
+      'SELESAI',
+      'TIDAK_HADIR',
+      'TANPA_CHECKOUT',
+      'KEDALUWARSA',
+    ])
     .optional()
     .catch(undefined),
   room_id: uuidParam,

@@ -22,10 +22,10 @@ const (
 // The notify helpers take the transaction's *dbgen.Queries on purpose: a notification must commit or
 // roll back together with the change that caused it (brief section 5, "Tipe notifikasi").
 
-// notifyCreated tells every active TU/Kalab about a new report, except the reporter if they are one.
+// notifyCreated tells every active approver of the room's type about a new report, except the reporter if they are one.
 func notifyCreated(ctx context.Context, q *dbgen.Queries, r Report, now time.Time) error {
-	err := q.CreateNotificationForRole(ctx, dbgen.CreateNotificationForRoleParams{
-		Role:          dbgen.UserRoleTUKALAB,
+	err := q.CreateNotificationForApprovers(ctx, dbgen.CreateNotificationForApproversParams{
+		RoomType:      dbgen.RoomType(r.Room.Type),
 		Type:          typeCreated,
 		Title:         "Laporan kerusakan baru",
 		Body:          fmt.Sprintf("%s melaporkan kerusakan di %s: %s", r.Reporter.Name, r.Room.Code, excerpt(r.Description)),

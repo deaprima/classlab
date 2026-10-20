@@ -15,6 +15,11 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   DISETUJUI: 'Disetujui',
   DITOLAK: 'Ditolak',
   DIBATALKAN: 'Dibatalkan',
+  BERLANGSUNG: 'Berlangsung',
+  SELESAI: 'Selesai',
+  TIDAK_HADIR: 'Tidak hadir',
+  TANPA_CHECKOUT: 'Tanpa check-out',
+  KEDALUWARSA: 'Kedaluwarsa',
 }
 
 export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
