@@ -81,7 +81,7 @@ func (s *Service) Authenticate(ctx context.Context, bearer string) (httpx.Princi
 	if !u.IsActive {
 		return httpx.Principal{}, httpx.ErrUnauthenticated
 	}
-	return httpx.Principal{UserID: u.ID, Role: httpx.Role(u.Role)}, nil
+	return httpx.Principal{UserID: u.ID, Role: httpx.Role(u.Role), MustChangePassword: u.MustChangePassword}, nil
 }
 
 // Login verifies credentials. clientIP only feeds the rate-limit key.
@@ -146,16 +146,14 @@ func (s *Service) Login(ctx context.Context, identifier, plainPassword, clientIP
 		return nil, err
 	}
 
+	user := users.FromLoginRow(u)
 	s.log.InfoContext(ctx, "login succeeded", slog.String("user_id", u.ID.String()))
 	return &Session{
 		AccessToken:      access,
 		ExpiresIn:        int(s.tokens.TTL().Seconds()),
 		RefreshToken:     raw,
 		RefreshExpiresAt: expiresAt,
-		User: &users.User{
-			ID: u.ID, OrgUnitID: u.OrgUnitID, Identifier: u.Identifier, Name: u.Name, Email: u.Email,
-			Role: string(u.Role), IsActive: u.IsActive, CreatedAt: clock.ToWIB(u.CreatedAt),
-		},
+		User:             &user,
 	}, nil
 }
 
@@ -263,7 +261,7 @@ func (s *Service) Logout(ctx context.Context, actor httpx.Principal, rawToken st
 }
 
 func (s *Service) Me(ctx context.Context, actor httpx.Principal) (users.User, error) {
-	return s.users.Get(ctx, actor.UserID)
+	return s.users.Profile(ctx, actor.UserID)
 }
 
 // identifierRef is a short, stable stand-in for an identifier in logs. The raw value is not logged:
@@ -272,4 +270,74 @@ func (s *Service) Me(ctx context.Context, actor httpx.Principal) (users.User, er
 func identifierRef(identifier string) string {
 	sum := sha256.Sum256([]byte(strings.ToLower(identifier)))
 	return hex.EncodeToString(sum[:4])
+}
+
+// ChangePassword replaces the caller's password after checking the current one (BR-24). Every other
+// session ends; the one that made the change, identified by its refresh token, stays. A temporary
+// password stops being temporary here: must_change_password is cleared.
+func (s *Service) ChangePassword(ctx context.Context, actor httpx.Principal, rawRefreshToken, current, next string) error {
+	var problems []httpx.ErrorDetail
+	if current == "" {
+		problems = append(problems, httpx.ErrorDetail{Field: "current_password", Message: "Password saat ini wajib diisi."})
+	}
+	problems = append(problems, s.users.ValidatePassword(next)...)
+	if current != "" && current == next {
+		problems = append(problems, httpx.ErrorDetail{Field: "new_password", Message: "Password baru harus berbeda dari password saat ini."})
+	}
+	// Field names in the details follow the request body, not the service's internal names.
+	for i := range problems {
+		if problems[i].Field == "password" {
+			problems[i].Field = "new_password"
+		}
+	}
+	if len(problems) > 0 {
+		return httpx.ValidationError(problems...)
+	}
+
+	// Someone holding a stolen access token could otherwise guess the current password at full speed.
+	limitKey := "change-password|" + actor.UserID.String()
+	if retryAfter, ok := s.limiter.Allow(limitKey); !ok {
+		return &RateLimitedError{RetryAfter: retryAfter}
+	}
+
+	stored, err := s.q.GetPasswordHash(ctx, actor.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return httpx.ErrUnauthenticated
+	}
+	if err != nil {
+		return fmt.Errorf("loading password hash: %w", err)
+	}
+	match, err := s.hasher.Verify(current, stored)
+	if err != nil {
+		return fmt.Errorf("verifying current password for user %s: %w", actor.UserID, err)
+	}
+	if !match {
+		// 422, not 401: the session is fine, and the client treats 401 as "log in again".
+		return httpx.ValidationError(httpx.ErrorDetail{Field: "current_password", Message: "Password saat ini salah."})
+	}
+	s.limiter.Reset(limitKey)
+
+	hash, err := s.hasher.Hash(next)
+	if err != nil {
+		return fmt.Errorf("hashing new password: %w", err)
+	}
+	err = s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		now := s.clock.Now()
+		if err := q.SetUserPassword(ctx, dbgen.SetUserPasswordParams{
+			ID: actor.UserID, PasswordHash: hash, MustChangePassword: false, UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("storing new password: %w", err)
+		}
+		return q.RevokeUserTokensExceptFamilyOf(ctx, dbgen.RevokeUserTokensExceptFamilyOfParams{
+			RevokedAt: pgtype.Timestamptz{Time: now, Valid: true},
+			UserID:    actor.UserID,
+			TokenHash: hashRefreshToken(rawRefreshToken),
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("changing password: %w", err)
+	}
+	s.log.InfoContext(ctx, "password changed", slog.String("user_id", actor.UserID.String()))
+	return nil
 }

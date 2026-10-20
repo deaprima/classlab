@@ -9,17 +9,20 @@ import (
 	"net/http"
 	"time"
 
+	"classlab/api/internal/audit"
 	"classlab/api/internal/auth"
 	"classlab/api/internal/availability"
 	"classlab/api/internal/bookings"
 	"classlab/api/internal/config"
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/imports"
 	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/password"
 	"classlab/api/internal/reports"
 	"classlab/api/internal/rooms"
+	"classlab/api/internal/roomtypes"
 	"classlab/api/internal/schedules"
 	"classlab/api/internal/users"
 
@@ -46,17 +49,28 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 
 	hasher := password.NewHasher(cfg.Argon2MemoryKiB, cfg.Argon2Iterations, cfg.Argon2Parallelism)
 
-	usersSvc := users.NewService(pool, hasher, clk)
+	types := roomtypes.NewStore(pool)
+
+	usersSvc := users.NewService(pool, hasher, clk, users.Options{
+		MinPasswordLength:  cfg.Business.MinPasswordLength,
+		TempPasswordLength: cfg.Business.TempPasswordLength,
+		ViolationWindow:    cfg.Business.ViolationWindow,
+	})
 	tokens := auth.NewTokenIssuer(cfg.JWTSecret, cfg.JWTAccessExpiry, clk)
 	limiter := auth.NewLoginLimiter(loginMaxAttempts, loginWindow, clk)
 	authSvc := auth.NewService(pool, usersSvc, hasher, tokens, limiter, clk, cfg.RefreshTokenExpiry, log)
 
 	authenticate := httpx.Authenticate(authSvc)
 
-	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk))
-	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk))
+	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk, types))
+	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk, types))
 	availabilityHandler := availability.NewHandler(availability.NewService(pool))
-	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, rules))
+	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, rules, types))
+
+	importsHandler := imports.NewHandler(imports.NewService(pool, hasher, clk, imports.Options{
+		Limits:             imports.Limits{MaxBytes: cfg.Business.ImportMaxBytes, MaxRows: cfg.Business.ImportMaxRows},
+		TempPasswordLength: cfg.Business.TempPasswordLength,
+	}, log))
 
 	notificationsHandler := notifications.NewHandler(
 		notifications.NewService(pool, clk),
@@ -66,13 +80,14 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 		log,
 	)
 	reportsHandler := reports.NewHandler(
-		reports.NewService(pool, clk, reports.NewStorage(cfg.UploadDir), cfg.UploadMaxBytes, log),
+		reports.NewService(pool, clk, reports.NewStorage(cfg.UploadDir), cfg.UploadMaxBytes, log, types),
 		cfg.UploadMaxBytes,
 	)
 
 	r := chi.NewRouter()
 	r.Use(httpx.RequestID)
 	r.Use(httpx.RequestLogger(log))
+	r.Use(httpx.WithClientInfo)
 	r.Use(httpx.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
@@ -94,9 +109,11 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(httpx.NoStore)
 		r.Mount("/auth", auth.NewHandler(authSvc, cfg.CookieSecure).Routes(authenticate))
-		r.With(authenticate).Mount("/users", users.NewHandler(usersSvc).Routes())
+		r.With(authenticate, httpx.RequirePasswordChanged).Mount("/users", users.NewHandler(usersSvc).Routes())
+		r.With(authenticate, httpx.RequirePasswordChanged).Mount("/imports", importsHandler.Routes())
+		r.With(authenticate, httpx.RequirePasswordChanged, httpx.RequireRoles(httpx.RoleAdmin)).Get("/audit-logs", audit.NewHandler(audit.NewService(pool)).List)
 		r.Group(func(r chi.Router) {
-			r.Use(authenticate)
+			r.Use(authenticate, httpx.RequirePasswordChanged)
 			r.Route("/rooms", func(r chi.Router) {
 				roomsHandler.Register(r)
 				r.Get("/{id}/schedule", availabilityHandler.Timeline)

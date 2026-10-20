@@ -112,7 +112,7 @@ func (s *Service) Check(ctx context.Context, f Filter) ([]RoomAvailability, erro
 	out := make([]RoomAvailability, len(roomRows))
 	index := make(map[uuid.UUID]int, len(roomRows))
 	for i, r := range roomRows {
-		out[i] = RoomAvailability{Room: rooms.FromRow(r), Status: StatusTersedia, Conflicts: []Conflict{}}
+		out[i] = RoomAvailability{Room: rooms.FromRow(rooms.Row(r)), Status: StatusTersedia, Conflicts: []Conflict{}}
 		index[r.ID] = i
 	}
 	for _, c := range scheds {

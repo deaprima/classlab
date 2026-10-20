@@ -19,12 +19,13 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // Register mounts the room routes on a router that is already behind httpx.Authenticate.
-// Reads are open to every role; writes are limited to TU_KALAB and KAPRODI.
+// Reads are open to every role. Writes need TU, KALAB or ADMIN here, and the service then requires the
+// actor to manage the specific room type (brief BR-10).
 func (h *Handler) Register(r chi.Router) {
 	r.Get("/", h.list)
 	r.Get("/{id}", h.get)
 	r.Group(func(r chi.Router) {
-		r.Use(httpx.RequireRoles(httpx.RoleTUKalab, httpx.RoleKaprodi))
+		r.Use(httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin))
 		r.Post("/", h.create)
 		r.Patch("/{id}", h.update)
 		r.Delete("/{id}", h.delete)

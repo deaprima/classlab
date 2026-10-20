@@ -29,8 +29,10 @@ func TestMain(m *testing.M) {
 
 // Seed account identifiers (see internal/seed). All share seed.DevPassword.
 const (
-	kaprodiID  = "197501012000011001"
-	tuKalabID  = "198203152008012002"
+	adminID    = "197501012000011001"
+	tuID       = "198203152008012002"
+	kalabID    = "197805202005011003"
+	orgID      = "HIMA-TI"
 	obID       = "199001102015011003"
 	mahasiswaA = "2021101001"
 	mahasiswaB = "2021101002"
@@ -88,6 +90,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		BookingMaxFutureDays:      30,
 		// High on purpose: most tests make many bookings for one student. Quota tests set it to 5, the real default.
 		BookingMaxActivePerUser: 100,
+
+		Business: config.DefaultBusiness(),
 
 		UploadDir:      t.TempDir(),
 		UploadMaxBytes: 5 << 20,

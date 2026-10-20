@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"classlab/api/internal/platform/password"
+	"classlab/api/internal/seed"
 )
 
 // at builds an ISO 8601 timestamp in WIB, e.g. at("2026-10-20", "08:00").
@@ -17,9 +20,34 @@ const (
 	wed = "2026-10-21"
 )
 
-func (e *env) adminToken() string {
+// Tokens by role. Authority depends on the room type (BR-10): TU approves KELAS, KALAB approves LAB, and ADMIN
+// manages rooms and schedules of every type but approves only the special rooms. approverToken picks the right one.
+func (e *env) adminToken() string { e.t.Helper(); return e.login(adminID).accessToken }
+func (e *env) tuToken() string    { e.t.Helper(); return e.login(tuID).accessToken }
+func (e *env) kalabToken() string { e.t.Helper(); return e.login(kalabID).accessToken }
+func (e *env) obToken() string    { e.t.Helper(); return e.login(obID).accessToken }
+func (e *env) orgToken() string   { e.t.Helper(); return e.login(orgID).accessToken }
+
+// approverToken returns the token of the role that approves the type of the room: TU for KELAS, KALAB for LAB.
+func (e *env) approverToken(roomID string) string {
 	e.t.Helper()
-	return e.login(tuKalabID).accessToken
+	switch typ := e.roomTypeOf(roomID); typ {
+	case "KELAS":
+		return e.tuToken()
+	case "LAB":
+		return e.kalabToken()
+	default:
+		return e.tuToken() // special rooms: TU and ADMIN both approve
+	}
+}
+
+func (e *env) roomTypeOf(roomID string) string {
+	e.t.Helper()
+	var typ string
+	if err := e.pool.QueryRow(e.t.Context(), "SELECT type::text FROM rooms WHERE id = $1", roomID).Scan(&typ); err != nil {
+		e.t.Fatal(err)
+	}
+	return typ
 }
 
 // insertRoom creates a room straight in the database, bypassing the API and its rules.
@@ -27,7 +55,7 @@ func (e *env) insertRoom(code, typ string, capacity int) string {
 	e.t.Helper()
 	var id string
 	err := e.pool.QueryRow(e.t.Context(),
-		`INSERT INTO rooms (org_unit_id, code, name, type, capacity) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		`INSERT INTO rooms (org_unit_id, code, name, type, capacity, qr_token) VALUES ($1, $2, $3, $4, $5, replace(gen_random_uuid()::text, '-', '')) RETURNING id`,
 		e.orgUnitID(), code, "Ruang "+code, typ, capacity).Scan(&id)
 	if err != nil {
 		e.t.Fatalf("inserting room %s: %v", code, err)
@@ -41,7 +69,7 @@ func (e *env) insertSchedule(roomID, title, start, end string) string {
 	err := e.pool.QueryRow(e.t.Context(),
 		`INSERT INTO room_schedules (room_id, title, start_at, end_at, created_by)
 		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		roomID, title, start, end, e.userIDOf(tuKalabID)).Scan(&id)
+		roomID, title, start, end, e.userIDOf(tuID)).Scan(&id)
 	if err != nil {
 		e.t.Fatalf("inserting schedule %q: %v", title, err)
 	}
@@ -53,8 +81,8 @@ func (e *env) insertBooking(roomID, requester, status, purpose, start, end strin
 	e.t.Helper()
 	var id string
 	err := e.pool.QueryRow(e.t.Context(),
-		`INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, status)
-		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		`INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, status, approval_mode, manual_reason)
+		 VALUES ($1, $2, $3, $4, $5, $6, 'MANUAL', 'ROOM_POLICY') RETURNING id`,
 		roomID, e.userIDOf(requester), start, end, purpose, status).Scan(&id)
 	if err != nil {
 		e.t.Fatalf("inserting booking %q: %v", purpose, err)
@@ -106,3 +134,29 @@ func dataOf(res response) []any {
 }
 
 var _ = http.StatusOK
+
+// insertUser creates an account straight in the database with the dev password and
+// must_change_password = false, so a test can log in as it without going through the first-login flow.
+// Accounts made through POST /users start with a temporary password and are blocked until it is changed.
+func (e *env) insertUser(identifier, name, role string) string {
+	e.t.Helper()
+	hasher := password.NewHasher(e.cfg.Argon2MemoryKiB, e.cfg.Argon2Iterations, e.cfg.Argon2Parallelism)
+	hash, err := hasher.Hash(seed.DevPassword)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var picName, picPhone *string
+	if role == "ORGANISASI" { // users_org_pic_check
+		n, p := "Penanggung Jawab", "081200000000"
+		picName, picPhone = &n, &p
+	}
+	var id string
+	err = e.pool.QueryRow(e.t.Context(),
+		`INSERT INTO users (org_unit_id, identifier, name, email, password_hash, role, pic_name, pic_phone, must_change_password)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false) RETURNING id`,
+		e.orgUnitID(), identifier, name, strings.ToLower(identifier)+"@kampus.test", hash, role, picName, picPhone).Scan(&id)
+	if err != nil {
+		e.t.Fatalf("inserting user %s: %v", identifier, err)
+	}
+	return id
+}

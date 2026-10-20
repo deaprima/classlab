@@ -20,7 +20,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Register mounts the schedule routes on a router that is already behind httpx.Authenticate.
 func (h *Handler) Register(r chi.Router) {
-	r.Use(httpx.RequireRoles(httpx.RoleTUKalab, httpx.RoleKaprodi))
+	r.Use(httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin))
 	r.Post("/", h.create)
 	r.Patch("/{id}", h.update)
 	r.Delete("/{id}", h.delete)

@@ -7,19 +7,199 @@ package dbgen
 import (
 	"database/sql/driver"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ApprovalMode string
+
+const (
+	ApprovalModeAUTO   ApprovalMode = "AUTO"
+	ApprovalModeMANUAL ApprovalMode = "MANUAL"
+)
+
+func (e *ApprovalMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ApprovalMode(s)
+	case string:
+		*e = ApprovalMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ApprovalMode: %T", src)
+	}
+	return nil
+}
+
+type NullApprovalMode struct {
+	ApprovalMode ApprovalMode `json:"approval_mode"`
+	Valid        bool         `json:"valid"` // Valid is true if ApprovalMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullApprovalMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.ApprovalMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ApprovalMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullApprovalMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ApprovalMode), nil
+}
+
+func (e ApprovalMode) Valid() bool {
+	switch e {
+	case ApprovalModeAUTO,
+		ApprovalModeMANUAL:
+		return true
+	}
+	return false
+}
+
+func AllApprovalModeValues() []ApprovalMode {
+	return []ApprovalMode{
+		ApprovalModeAUTO,
+		ApprovalModeMANUAL,
+	}
+}
+
+type ApprovalPolicy string
+
+const (
+	ApprovalPolicyAUTOIFELIGIBLE ApprovalPolicy = "AUTO_IF_ELIGIBLE"
+	ApprovalPolicyALWAYSMANUAL   ApprovalPolicy = "ALWAYS_MANUAL"
+)
+
+func (e *ApprovalPolicy) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ApprovalPolicy(s)
+	case string:
+		*e = ApprovalPolicy(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ApprovalPolicy: %T", src)
+	}
+	return nil
+}
+
+type NullApprovalPolicy struct {
+	ApprovalPolicy ApprovalPolicy `json:"approval_policy"`
+	Valid          bool           `json:"valid"` // Valid is true if ApprovalPolicy is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullApprovalPolicy) Scan(value interface{}) error {
+	if value == nil {
+		ns.ApprovalPolicy, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ApprovalPolicy.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullApprovalPolicy) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ApprovalPolicy), nil
+}
+
+func (e ApprovalPolicy) Valid() bool {
+	switch e {
+	case ApprovalPolicyAUTOIFELIGIBLE,
+		ApprovalPolicyALWAYSMANUAL:
+		return true
+	}
+	return false
+}
+
+func AllApprovalPolicyValues() []ApprovalPolicy {
+	return []ApprovalPolicy{
+		ApprovalPolicyAUTOIFELIGIBLE,
+		ApprovalPolicyALWAYSMANUAL,
+	}
+}
+
+type AttachmentKind string
+
+const (
+	AttachmentKindPHOTO  AttachmentKind = "PHOTO"
+	AttachmentKindLETTER AttachmentKind = "LETTER"
+)
+
+func (e *AttachmentKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AttachmentKind(s)
+	case string:
+		*e = AttachmentKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AttachmentKind: %T", src)
+	}
+	return nil
+}
+
+type NullAttachmentKind struct {
+	AttachmentKind AttachmentKind `json:"attachment_kind"`
+	Valid          bool           `json:"valid"` // Valid is true if AttachmentKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAttachmentKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.AttachmentKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AttachmentKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAttachmentKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AttachmentKind), nil
+}
+
+func (e AttachmentKind) Valid() bool {
+	switch e {
+	case AttachmentKindPHOTO,
+		AttachmentKindLETTER:
+		return true
+	}
+	return false
+}
+
+func AllAttachmentKindValues() []AttachmentKind {
+	return []AttachmentKind{
+		AttachmentKindPHOTO,
+		AttachmentKindLETTER,
+	}
+}
+
 type BookingStatus string
 
 const (
-	BookingStatusMENUNGGU   BookingStatus = "MENUNGGU"
-	BookingStatusDISETUJUI  BookingStatus = "DISETUJUI"
-	BookingStatusDITOLAK    BookingStatus = "DITOLAK"
-	BookingStatusDIBATALKAN BookingStatus = "DIBATALKAN"
+	BookingStatusMENUNGGU      BookingStatus = "MENUNGGU"
+	BookingStatusDISETUJUI     BookingStatus = "DISETUJUI"
+	BookingStatusDITOLAK       BookingStatus = "DITOLAK"
+	BookingStatusDIBATALKAN    BookingStatus = "DIBATALKAN"
+	BookingStatusBERLANGSUNG   BookingStatus = "BERLANGSUNG"
+	BookingStatusSELESAI       BookingStatus = "SELESAI"
+	BookingStatusTIDAKHADIR    BookingStatus = "TIDAK_HADIR"
+	BookingStatusTANPACHECKOUT BookingStatus = "TANPA_CHECKOUT"
+	BookingStatusKEDALUWARSA   BookingStatus = "KEDALUWARSA"
 )
 
 func (e *BookingStatus) Scan(src interface{}) error {
@@ -55,6 +235,213 @@ func (ns NullBookingStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.BookingStatus), nil
+}
+
+func (e BookingStatus) Valid() bool {
+	switch e {
+	case BookingStatusMENUNGGU,
+		BookingStatusDISETUJUI,
+		BookingStatusDITOLAK,
+		BookingStatusDIBATALKAN,
+		BookingStatusBERLANGSUNG,
+		BookingStatusSELESAI,
+		BookingStatusTIDAKHADIR,
+		BookingStatusTANPACHECKOUT,
+		BookingStatusKEDALUWARSA:
+		return true
+	}
+	return false
+}
+
+func AllBookingStatusValues() []BookingStatus {
+	return []BookingStatus{
+		BookingStatusMENUNGGU,
+		BookingStatusDISETUJUI,
+		BookingStatusDITOLAK,
+		BookingStatusDIBATALKAN,
+		BookingStatusBERLANGSUNG,
+		BookingStatusSELESAI,
+		BookingStatusTIDAKHADIR,
+		BookingStatusTANPACHECKOUT,
+		BookingStatusKEDALUWARSA,
+	}
+}
+
+type CheckoutCondition string
+
+const (
+	CheckoutConditionNORMAL     CheckoutCondition = "NORMAL"
+	CheckoutConditionADAMASALAH CheckoutCondition = "ADA_MASALAH"
+)
+
+func (e *CheckoutCondition) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CheckoutCondition(s)
+	case string:
+		*e = CheckoutCondition(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CheckoutCondition: %T", src)
+	}
+	return nil
+}
+
+type NullCheckoutCondition struct {
+	CheckoutCondition CheckoutCondition `json:"checkout_condition"`
+	Valid             bool              `json:"valid"` // Valid is true if CheckoutCondition is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCheckoutCondition) Scan(value interface{}) error {
+	if value == nil {
+		ns.CheckoutCondition, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CheckoutCondition.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCheckoutCondition) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CheckoutCondition), nil
+}
+
+func (e CheckoutCondition) Valid() bool {
+	switch e {
+	case CheckoutConditionNORMAL,
+		CheckoutConditionADAMASALAH:
+		return true
+	}
+	return false
+}
+
+func AllCheckoutConditionValues() []CheckoutCondition {
+	return []CheckoutCondition{
+		CheckoutConditionNORMAL,
+		CheckoutConditionADAMASALAH,
+	}
+}
+
+type ImportKind string
+
+const (
+	ImportKindSCHEDULES ImportKind = "SCHEDULES"
+	ImportKindUSERS     ImportKind = "USERS"
+)
+
+func (e *ImportKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ImportKind(s)
+	case string:
+		*e = ImportKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ImportKind: %T", src)
+	}
+	return nil
+}
+
+type NullImportKind struct {
+	ImportKind ImportKind `json:"import_kind"`
+	Valid      bool       `json:"valid"` // Valid is true if ImportKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullImportKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.ImportKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ImportKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullImportKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ImportKind), nil
+}
+
+func (e ImportKind) Valid() bool {
+	switch e {
+	case ImportKindSCHEDULES,
+		ImportKindUSERS:
+		return true
+	}
+	return false
+}
+
+func AllImportKindValues() []ImportKind {
+	return []ImportKind{
+		ImportKindSCHEDULES,
+		ImportKindUSERS,
+	}
+}
+
+type ManualReason string
+
+const (
+	ManualReasonROOMPOLICY       ManualReason = "ROOM_POLICY"
+	ManualReasonORGANIZATION     ManualReason = "ORGANIZATION"
+	ManualReasonVIOLATIONHISTORY ManualReason = "VIOLATION_HISTORY"
+)
+
+func (e *ManualReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ManualReason(s)
+	case string:
+		*e = ManualReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ManualReason: %T", src)
+	}
+	return nil
+}
+
+type NullManualReason struct {
+	ManualReason ManualReason `json:"manual_reason"`
+	Valid        bool         `json:"valid"` // Valid is true if ManualReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullManualReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.ManualReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ManualReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullManualReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ManualReason), nil
+}
+
+func (e ManualReason) Valid() bool {
+	switch e {
+	case ManualReasonROOMPOLICY,
+		ManualReasonORGANIZATION,
+		ManualReasonVIOLATIONHISTORY:
+		return true
+	}
+	return false
+}
+
+func AllManualReasonValues() []ManualReason {
+	return []ManualReason{
+		ManualReasonROOMPOLICY,
+		ManualReasonORGANIZATION,
+		ManualReasonVIOLATIONHISTORY,
+	}
 }
 
 type OrgUnitType string
@@ -98,6 +485,24 @@ func (ns NullOrgUnitType) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.OrgUnitType), nil
+}
+
+func (e OrgUnitType) Valid() bool {
+	switch e {
+	case OrgUnitTypeFAKULTAS,
+		OrgUnitTypePRODI,
+		OrgUnitTypeRUMPUN:
+		return true
+	}
+	return false
+}
+
+func AllOrgUnitTypeValues() []OrgUnitType {
+	return []OrgUnitType{
+		OrgUnitTypeFAKULTAS,
+		OrgUnitTypePRODI,
+		OrgUnitTypeRUMPUN,
+	}
 }
 
 type ReportStatus string
@@ -144,11 +549,34 @@ func (ns NullReportStatus) Value() (driver.Value, error) {
 	return string(ns.ReportStatus), nil
 }
 
+func (e ReportStatus) Valid() bool {
+	switch e {
+	case ReportStatusBARU,
+		ReportStatusDITERIMA,
+		ReportStatusDIPROSES,
+		ReportStatusSELESAI:
+		return true
+	}
+	return false
+}
+
+func AllReportStatusValues() []ReportStatus {
+	return []ReportStatus{
+		ReportStatusBARU,
+		ReportStatusDITERIMA,
+		ReportStatusDIPROSES,
+		ReportStatusSELESAI,
+	}
+}
+
 type RoomType string
 
 const (
-	RoomTypeKELAS RoomType = "KELAS"
-	RoomTypeLAB   RoomType = "LAB"
+	RoomTypeKELAS       RoomType = "KELAS"
+	RoomTypeLAB         RoomType = "LAB"
+	RoomTypeAUDITORIUM  RoomType = "AUDITORIUM"
+	RoomTypeRUANGUJIAN  RoomType = "RUANG_UJIAN"
+	RoomTypeRUANGSIDANG RoomType = "RUANG_SIDANG"
 )
 
 func (e *RoomType) Scan(src interface{}) error {
@@ -184,6 +612,28 @@ func (ns NullRoomType) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.RoomType), nil
+}
+
+func (e RoomType) Valid() bool {
+	switch e {
+	case RoomTypeKELAS,
+		RoomTypeLAB,
+		RoomTypeAUDITORIUM,
+		RoomTypeRUANGUJIAN,
+		RoomTypeRUANGSIDANG:
+		return true
+	}
+	return false
+}
+
+func AllRoomTypeValues() []RoomType {
+	return []RoomType{
+		RoomTypeKELAS,
+		RoomTypeLAB,
+		RoomTypeAUDITORIUM,
+		RoomTypeRUANGUJIAN,
+		RoomTypeRUANGSIDANG,
+	}
 }
 
 type ScheduleSource string
@@ -228,13 +678,31 @@ func (ns NullScheduleSource) Value() (driver.Value, error) {
 	return string(ns.ScheduleSource), nil
 }
 
+func (e ScheduleSource) Valid() bool {
+	switch e {
+	case ScheduleSourceAKADEMIK,
+		ScheduleSourceMANUAL:
+		return true
+	}
+	return false
+}
+
+func AllScheduleSourceValues() []ScheduleSource {
+	return []ScheduleSource{
+		ScheduleSourceAKADEMIK,
+		ScheduleSourceMANUAL,
+	}
+}
+
 type UserRole string
 
 const (
-	UserRoleMAHASISWA UserRole = "MAHASISWA"
-	UserRoleTUKALAB   UserRole = "TU_KALAB"
-	UserRoleOB        UserRole = "OB"
-	UserRoleKAPRODI   UserRole = "KAPRODI"
+	UserRoleMAHASISWA  UserRole = "MAHASISWA"
+	UserRoleORGANISASI UserRole = "ORGANISASI"
+	UserRoleTU         UserRole = "TU"
+	UserRoleKALAB      UserRole = "KALAB"
+	UserRoleOB         UserRole = "OB"
+	UserRoleADMIN      UserRole = "ADMIN"
 )
 
 func (e *UserRole) Scan(src interface{}) error {
@@ -272,32 +740,160 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+func (e UserRole) Valid() bool {
+	switch e {
+	case UserRoleMAHASISWA,
+		UserRoleORGANISASI,
+		UserRoleTU,
+		UserRoleKALAB,
+		UserRoleOB,
+		UserRoleADMIN:
+		return true
+	}
+	return false
+}
+
+func AllUserRoleValues() []UserRole {
+	return []UserRole{
+		UserRoleMAHASISWA,
+		UserRoleORGANISASI,
+		UserRoleTU,
+		UserRoleKALAB,
+		UserRoleOB,
+		UserRoleADMIN,
+	}
+}
+
+type ViolationKind string
+
+const (
+	ViolationKindTIDAKHADIR     ViolationKind = "TIDAK_HADIR"
+	ViolationKindTANPACHECKOUT  ViolationKind = "TANPA_CHECKOUT"
+	ViolationKindBATALTERLAMBAT ViolationKind = "BATAL_TERLAMBAT"
+)
+
+func (e *ViolationKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ViolationKind(s)
+	case string:
+		*e = ViolationKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ViolationKind: %T", src)
+	}
+	return nil
+}
+
+type NullViolationKind struct {
+	ViolationKind ViolationKind `json:"violation_kind"`
+	Valid         bool          `json:"valid"` // Valid is true if ViolationKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullViolationKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.ViolationKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ViolationKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullViolationKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ViolationKind), nil
+}
+
+func (e ViolationKind) Valid() bool {
+	switch e {
+	case ViolationKindTIDAKHADIR,
+		ViolationKindTANPACHECKOUT,
+		ViolationKindBATALTERLAMBAT:
+		return true
+	}
+	return false
+}
+
+func AllViolationKindValues() []ViolationKind {
+	return []ViolationKind{
+		ViolationKindTIDAKHADIR,
+		ViolationKindTANPACHECKOUT,
+		ViolationKindBATALTERLAMBAT,
+	}
+}
+
+type Attachment struct {
+	ID           uuid.UUID          `json:"id"`
+	UploadedBy   uuid.UUID          `json:"uploaded_by"`
+	Kind         AttachmentKind     `json:"kind"`
+	OriginalName pgtype.Text        `json:"original_name"`
+	StoragePath  string             `json:"storage_path"`
+	ContentType  string             `json:"content_type"`
+	SizeBytes    int32              `json:"size_bytes"`
+	PurgedAt     pgtype.Timestamptz `json:"purged_at"`
+	CreatedAt    time.Time          `json:"created_at"`
+}
+
+type AuditLog struct {
+	ID         uuid.UUID    `json:"id"`
+	ActorID    pgtype.UUID  `json:"actor_id"`
+	ActorRole  NullUserRole `json:"actor_role"`
+	Action     string       `json:"action"`
+	EntityType string       `json:"entity_type"`
+	EntityID   pgtype.UUID  `json:"entity_id"`
+	Before     []byte       `json:"before"`
+	After      []byte       `json:"after"`
+	Ip         *netip.Addr  `json:"ip"`
+	UserAgent  pgtype.Text  `json:"user_agent"`
+	RequestID  pgtype.Text  `json:"request_id"`
+	CreatedAt  time.Time    `json:"created_at"`
+}
+
 type Booking struct {
-	ID             uuid.UUID          `json:"id"`
-	RoomID         uuid.UUID          `json:"room_id"`
-	RequesterID    uuid.UUID          `json:"requester_id"`
-	StartAt        time.Time          `json:"start_at"`
-	EndAt          time.Time          `json:"end_at"`
-	Purpose        string             `json:"purpose"`
-	Participants   pgtype.Int4        `json:"participants"`
-	Notes          pgtype.Text        `json:"notes"`
-	Status         BookingStatus      `json:"status"`
-	DecidedBy      pgtype.UUID        `json:"decided_by"`
-	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
-	DecisionReason pgtype.Text        `json:"decision_reason"`
-	IdempotencyKey pgtype.Text        `json:"idempotency_key"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	ID                   uuid.UUID             `json:"id"`
+	RoomID               uuid.UUID             `json:"room_id"`
+	RequesterID          uuid.UUID             `json:"requester_id"`
+	StartAt              time.Time             `json:"start_at"`
+	EndAt                time.Time             `json:"end_at"`
+	Purpose              string                `json:"purpose"`
+	Participants         pgtype.Int4           `json:"participants"`
+	Notes                pgtype.Text           `json:"notes"`
+	Status               BookingStatus         `json:"status"`
+	DecidedBy            pgtype.UUID           `json:"decided_by"`
+	DecidedAt            pgtype.Timestamptz    `json:"decided_at"`
+	DecisionReason       pgtype.Text           `json:"decision_reason"`
+	IdempotencyKey       pgtype.Text           `json:"idempotency_key"`
+	CreatedAt            time.Time             `json:"created_at"`
+	UpdatedAt            time.Time             `json:"updated_at"`
+	Details              []byte                `json:"details"`
+	GroupID              pgtype.UUID           `json:"group_id"`
+	OccurrenceNo         pgtype.Int4           `json:"occurrence_no"`
+	ExpiresAt            pgtype.Timestamptz    `json:"expires_at"`
+	EditedAt             pgtype.Timestamptz    `json:"edited_at"`
+	CheckedInAt          pgtype.Timestamptz    `json:"checked_in_at"`
+	CheckedOutAt         pgtype.Timestamptz    `json:"checked_out_at"`
+	CheckoutCondition    NullCheckoutCondition `json:"checkout_condition"`
+	CheckoutNote         pgtype.Text           `json:"checkout_note"`
+	CheckoutAttachmentID pgtype.UUID           `json:"checkout_attachment_id"`
+	ApprovalMode         ApprovalMode          `json:"approval_mode"`
+	ManualReason         NullManualReason      `json:"manual_reason"`
+	LetterAttachmentID   pgtype.UUID           `json:"letter_attachment_id"`
+	LetterNumber         pgtype.Text           `json:"letter_number"`
 }
 
 type BookingEvent struct {
 	ID         uuid.UUID         `json:"id"`
 	BookingID  uuid.UUID         `json:"booking_id"`
-	ActorID    uuid.UUID         `json:"actor_id"`
+	ActorID    pgtype.UUID       `json:"actor_id"`
 	FromStatus NullBookingStatus `json:"from_status"`
 	ToStatus   BookingStatus     `json:"to_status"`
 	Reason     pgtype.Text       `json:"reason"`
 	CreatedAt  time.Time         `json:"created_at"`
+	Kind       string            `json:"kind"`
+	Changes    []byte            `json:"changes"`
 }
 
 type DamageReport struct {
@@ -310,6 +906,20 @@ type DamageReport struct {
 	HandledBy   pgtype.UUID  `json:"handled_by"`
 	CreatedAt   time.Time    `json:"created_at"`
 	UpdatedAt   time.Time    `json:"updated_at"`
+}
+
+type Import struct {
+	ID           uuid.UUID          `json:"id"`
+	Kind         ImportKind         `json:"kind"`
+	UploadedBy   uuid.UUID          `json:"uploaded_by"`
+	FileName     pgtype.Text        `json:"file_name"`
+	FileSha256   string             `json:"file_sha256"`
+	Semester     pgtype.Text        `json:"semester"`
+	Status       string             `json:"status"`
+	Summary      []byte             `json:"summary"`
+	CreatedAt    time.Time          `json:"created_at"`
+	RolledBackAt pgtype.Timestamptz `json:"rolled_back_at"`
+	RolledBackBy pgtype.UUID        `json:"rolled_back_by"`
 }
 
 type Notification struct {
@@ -354,17 +964,21 @@ type ReportEvent struct {
 }
 
 type Room struct {
-	ID         uuid.UUID          `json:"id"`
-	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
-	Code       string             `json:"code"`
-	Name       string             `json:"name"`
-	Type       RoomType           `json:"type"`
-	Capacity   int32              `json:"capacity"`
-	Facilities []string           `json:"facilities"`
-	IsActive   bool               `json:"is_active"`
-	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
-	CreatedAt  time.Time          `json:"created_at"`
-	UpdatedAt  time.Time          `json:"updated_at"`
+	ID          uuid.UUID          `json:"id"`
+	OrgUnitID   uuid.UUID          `json:"org_unit_id"`
+	Code        string             `json:"code"`
+	Name        string             `json:"name"`
+	Type        RoomType           `json:"type"`
+	Capacity    int32              `json:"capacity"`
+	Facilities  []string           `json:"facilities"`
+	IsActive    bool               `json:"is_active"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+	OpenTime    pgtype.Time        `json:"open_time"`
+	CloseTime   pgtype.Time        `json:"close_time"`
+	QrToken     string             `json:"qr_token"`
+	QrRotatedAt time.Time          `json:"qr_rotated_at"`
 }
 
 type RoomSchedule struct {
@@ -377,17 +991,60 @@ type RoomSchedule struct {
 	CreatedBy uuid.UUID      `json:"created_by"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
+	ImportID  pgtype.UUID    `json:"import_id"`
+}
+
+type RoomTypePolicy struct {
+	RoomType       RoomType       `json:"room_type"`
+	Label          string         `json:"label"`
+	ApproverRoles  []UserRole     `json:"approver_roles"`
+	RequesterRoles []UserRole     `json:"requester_roles"`
+	ApprovalPolicy ApprovalPolicy `json:"approval_policy"`
+	LetterRequired bool           `json:"letter_required"`
+	OpenTime       pgtype.Time    `json:"open_time"`
+	CloseTime      pgtype.Time    `json:"close_time"`
+	MinDurationMin int32          `json:"min_duration_min"`
+	MaxDurationMin int32          `json:"max_duration_min"`
+	MaxAdvanceDays int32          `json:"max_advance_days"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type User struct {
-	ID           uuid.UUID `json:"id"`
-	OrgUnitID    uuid.UUID `json:"org_unit_id"`
-	Identifier   string    `json:"identifier"`
-	Name         string    `json:"name"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash"`
-	Role         UserRole  `json:"role"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgUnitID           uuid.UUID          `json:"org_unit_id"`
+	Identifier          string             `json:"identifier"`
+	Name                string             `json:"name"`
+	Email               pgtype.Text        `json:"email"`
+	PasswordHash        string             `json:"password_hash"`
+	Role                UserRole           `json:"role"`
+	IsActive            bool               `json:"is_active"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+	BookingBlockedUntil pgtype.Timestamptz `json:"booking_blocked_until"`
+	PicName             pgtype.Text        `json:"pic_name"`
+	PicPhone            pgtype.Text        `json:"pic_phone"`
+	MustChangePassword  bool               `json:"must_change_password"`
+}
+
+type UserCourse struct {
+	ID         uuid.UUID   `json:"id"`
+	UserID     uuid.UUID   `json:"user_id"`
+	ImportID   uuid.UUID   `json:"import_id"`
+	Semester   string      `json:"semester"`
+	CourseCode pgtype.Text `json:"course_code"`
+	CourseName pgtype.Text `json:"course_name"`
+	ClassName  pgtype.Text `json:"class_name"`
+	CreatedAt  time.Time   `json:"created_at"`
+}
+
+type Violation struct {
+	ID          uuid.UUID          `json:"id"`
+	UserID      uuid.UUID          `json:"user_id"`
+	BookingID   uuid.UUID          `json:"booking_id"`
+	Kind        ViolationKind      `json:"kind"`
+	Points      int32              `json:"points"`
+	AnnulledAt  pgtype.Timestamptz `json:"annulled_at"`
+	AnnulledBy  pgtype.UUID        `json:"annulled_by"`
+	AnnulReason pgtype.Text        `json:"annul_reason"`
+	CreatedAt   time.Time          `json:"created_at"`
 }

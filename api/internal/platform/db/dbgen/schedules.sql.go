@@ -29,7 +29,19 @@ type CreateScheduleParams struct {
 	CreatedAt time.Time      `json:"created_at"`
 }
 
-func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) (RoomSchedule, error) {
+type CreateScheduleRow struct {
+	ID        uuid.UUID      `json:"id"`
+	RoomID    uuid.UUID      `json:"room_id"`
+	Title     string         `json:"title"`
+	StartAt   time.Time      `json:"start_at"`
+	EndAt     time.Time      `json:"end_at"`
+	Source    ScheduleSource `json:"source"`
+	CreatedBy uuid.UUID      `json:"created_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) (CreateScheduleRow, error) {
 	row := q.db.QueryRow(ctx, createSchedule,
 		arg.RoomID,
 		arg.Title,
@@ -39,7 +51,7 @@ func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) 
 		arg.CreatedBy,
 		arg.CreatedAt,
 	)
-	var i RoomSchedule
+	var i CreateScheduleRow
 	err := row.Scan(
 		&i.ID,
 		&i.RoomID,
@@ -72,9 +84,21 @@ FROM room_schedules
 WHERE id = $1
 `
 
-func (q *Queries) GetSchedule(ctx context.Context, id uuid.UUID) (RoomSchedule, error) {
+type GetScheduleRow struct {
+	ID        uuid.UUID      `json:"id"`
+	RoomID    uuid.UUID      `json:"room_id"`
+	Title     string         `json:"title"`
+	StartAt   time.Time      `json:"start_at"`
+	EndAt     time.Time      `json:"end_at"`
+	Source    ScheduleSource `json:"source"`
+	CreatedBy uuid.UUID      `json:"created_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+func (q *Queries) GetSchedule(ctx context.Context, id uuid.UUID) (GetScheduleRow, error) {
 	row := q.db.QueryRow(ctx, getSchedule, id)
-	var i RoomSchedule
+	var i GetScheduleRow
 	err := row.Scan(
 		&i.ID,
 		&i.RoomID,
@@ -139,7 +163,19 @@ type UpdateScheduleParams struct {
 	ID        uuid.UUID   `json:"id"`
 }
 
-func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) (RoomSchedule, error) {
+type UpdateScheduleRow struct {
+	ID        uuid.UUID      `json:"id"`
+	RoomID    uuid.UUID      `json:"room_id"`
+	Title     string         `json:"title"`
+	StartAt   time.Time      `json:"start_at"`
+	EndAt     time.Time      `json:"end_at"`
+	Source    ScheduleSource `json:"source"`
+	CreatedBy uuid.UUID      `json:"created_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) (UpdateScheduleRow, error) {
 	row := q.db.QueryRow(ctx, updateSchedule,
 		arg.Title,
 		arg.StartAt,
@@ -147,7 +183,7 @@ func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) 
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	var i RoomSchedule
+	var i UpdateScheduleRow
 	err := row.Scan(
 		&i.ID,
 		&i.RoomID,

@@ -68,40 +68,42 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	return err
 }
 
-const createNotificationForRole = `-- name: CreateNotificationForRole :exec
+const createNotificationForApprovers = `-- name: CreateNotificationForApprovers :exec
 WITH n AS (
   INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id, created_at)
-  SELECT id, $1, $2, $3, $4, $5, $6
-  FROM users
-  WHERE role = $7::user_role AND is_active
-    AND ($8::uuid IS NULL OR id <> $8::uuid)
+  SELECT u.id, $1, $2, $3, $4, $5, $6
+  FROM users u
+  JOIN room_type_policies p ON p.room_type = $7::room_type
+  WHERE u.is_active AND u.role = ANY(p.approver_roles)
+    AND ($8::uuid IS NULL OR u.id <> $8::uuid)
   RETURNING id, user_id
 )
 SELECT pg_notify('classlab_notifications', user_id::text || ':' || id::text) FROM n
 `
 
-type CreateNotificationForRoleParams struct {
+type CreateNotificationForApproversParams struct {
 	Type          string      `json:"type"`
 	Title         string      `json:"title"`
 	Body          string      `json:"body"`
 	RefType       pgtype.Text `json:"ref_type"`
 	RefID         pgtype.UUID `json:"ref_id"`
 	CreatedAt     time.Time   `json:"created_at"`
-	Role          UserRole    `json:"role"`
+	RoomType      RoomType    `json:"room_type"`
 	ExcludeUserID pgtype.UUID `json:"exclude_user_id"`
 }
 
-// One statement for every active holder of a role, so a new booking cannot reach only some approvers.
+// One statement for every active approver of a room type (the roles in its policy's approver_roles, BR-10),
+// so a new booking cannot reach only some approvers.
 // exclude_user_id keeps people from being notified about what they did themselves.
-func (q *Queries) CreateNotificationForRole(ctx context.Context, arg CreateNotificationForRoleParams) error {
-	_, err := q.db.Exec(ctx, createNotificationForRole,
+func (q *Queries) CreateNotificationForApprovers(ctx context.Context, arg CreateNotificationForApproversParams) error {
+	_, err := q.db.Exec(ctx, createNotificationForApprovers,
 		arg.Type,
 		arg.Title,
 		arg.Body,
 		arg.RefType,
 		arg.RefID,
 		arg.CreatedAt,
-		arg.Role,
+		arg.RoomType,
 		arg.ExcludeUserID,
 	)
 	return err

@@ -2,13 +2,14 @@ package config
 
 import (
 	"github.com/joho/godotenv"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestBusinessDefaultsMatchBrief(t *testing.T) {
-	got, err := loadBusiness()
+	got, err := loadBusiness(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestBusinessReadsEnvironmentWithUnits(t *testing.T) {
 	t.Setenv("MAX_ACTIVE_BOOKINGS", "4")
 	t.Setenv("POINTS_NO_SHOW", "3")
 
-	got, err := loadBusiness()
+	got, err := loadBusiness(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func TestBusinessRejectsMalformedValues(t *testing.T) {
 	} {
 		t.Run(key, func(t *testing.T) {
 			t.Setenv(key, value)
-			_, err := loadBusiness()
+			_, err := loadBusiness(os.Getenv)
 			if err == nil {
 				t.Fatalf("%s=%q accepted", key, value)
 			}
@@ -117,7 +118,7 @@ func TestBusinessRejectsOutOfRangeValues(t *testing.T) {
 	} {
 		t.Run(key, func(t *testing.T) {
 			t.Setenv(key, value)
-			_, err := loadBusiness()
+			_, err := loadBusiness(os.Getenv)
 			if err == nil {
 				t.Fatalf("%s=%q accepted", key, value)
 			}
@@ -131,7 +132,7 @@ func TestBusinessRejectsOutOfRangeValues(t *testing.T) {
 func TestBusinessReportsEveryProblemAtOnce(t *testing.T) {
 	t.Setenv("MAX_OCCURRENCES", "banyak")
 	t.Setenv("BLOCK_DAYS", "tujuh")
-	_, err := loadBusiness()
+	_, err := loadBusiness(os.Getenv)
 	if err == nil {
 		t.Fatal("accepted")
 	}
@@ -144,7 +145,7 @@ func TestBusinessReportsEveryProblemAtOnce(t *testing.T) {
 
 func TestBusinessAllowsZeroAutoApprovePoints(t *testing.T) {
 	t.Setenv("AUTO_APPROVE_MAX_POINTS", "0")
-	got, err := loadBusiness()
+	got, err := loadBusiness(os.Getenv)
 	if err != nil || got.AutoApproveMaxPoints != 0 {
 		t.Errorf("AUTO_APPROVE_MAX_POINTS=0: %+v, %v", got, err)
 	}
@@ -169,7 +170,7 @@ func TestEnvExampleLoadsAndMatchesDefaults(t *testing.T) {
 	for k := range values {
 		t.Setenv(k, "")
 	}
-	clean, err := loadBusiness()
+	clean, err := loadBusiness(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,25 @@ openapi: 3.1.0
 info:
   title: ClassLab.io API
   version: 1.0.0
-  description: Sistem Web Peminjaman Ruang Kelas dan Laboratorium Kampus (MVP Rumpun TI).
+  description: |
+    Sistem Web Peminjaman Ruang Kelas dan Laboratorium Kampus (MVP Rumpun TI).
+
+    **Peran**: MAHASISWA, ORGANISASI, TU, KALAB, OB, ADMIN.
+
+    **Kewenangan per tipe ruang.** Tiap tipe ruang (KELAS, LAB, AUDITORIUM, RUANG_UJIAN, RUANG_SIDANG)
+    punya kebijakan dengan `approver_roles` dan `requester_roles`. Awalnya: KELAS disetujui TU, LAB oleh KALAB,
+    AUDITORIUM/RUANG_UJIAN/RUANG_SIDANG oleh TU dan ADMIN. Menyetujui, menolak, atau membatalkan booking sebagai
+    pengelola, mengubah status laporan kerusakan, serta mengelola ruang dan jadwal membutuhkan peran yang menjadi
+    approver tipe ruang tersebut. ADMIN dapat mengelola ruang dan jadwal semua tipe, tetapi hanya menyetujui tipe
+    yang mencantumkan ADMIN. Pembacaan: peminta (MAHASISWA, ORGANISASI) hanya melihat booking miliknya; TU dan KALAB
+    melihat booking dan laporan tipe ruang yang mereka setujui (di luar itu dijawab 404); ADMIN membaca semuanya;
+    OB tidak dapat membaca booking dan hanya melihat laporan miliknya sendiri.
+
+    **Password sementara.** Akun dengan `must_change_password: true` hanya dapat memakai `GET /auth/me`,
+    `POST /auth/logout`, dan `POST /auth/change-password`. Semua endpoint terautentikasi lainnya dijawab
+    403 dengan kode `PASSWORD_CHANGE_REQUIRED` (lihat respons `ForbiddenResponse`).
+
+    Semua respons API membawa `Cache-Control: no-store`.
 servers:
   - url: /api/v1
     description: Base API v1 endpoint
@@ -28,7 +46,8 @@ paths:
       summary: Login pengguna
       description: >
         Refresh token dikirim hanya lewat cookie `refresh_token` (httpOnly, SameSite=Strict, Path=/api/v1/auth),
-        tidak pernah di body. Maksimal 5 percobaan per 15 menit per (identifier + IP).
+        tidak pernah di body. Maksimal 5 percobaan per 15 menit per (identifier + IP). Bila `must_change_password`
+        bernilai `true`, klien harus mengarahkan pengguna ke `POST /auth/change-password` sebelum memakai endpoint lain.
       requestBody:
         required: true
         content:
@@ -50,11 +69,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [access_token, expires_in, user]
+                required: [access_token, expires_in, user, must_change_password]
                 properties:
                   access_token: { type: string }
                   expires_in: { type: integer, example: 900 }
                   user: { $ref: '#/components/schemas/User' }
+                  must_change_password:
+                    type: boolean
+                    description: Sama dengan `user.must_change_password`; `true` bila akun masih memakai password sementara.
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
@@ -94,6 +116,7 @@ paths:
   /auth/logout:
     post:
       summary: Logout dan cabut refresh token
+      description: Tetap dapat dipakai saat `must_change_password` bernilai `true`.
       security:
         - BearerAuth: []
       responses:
@@ -104,6 +127,9 @@ paths:
   /auth/me:
     get:
       summary: Dapatkan profil pengguna saat ini
+      description: >
+        Tetap dapat dipakai saat `must_change_password` bernilai `true`. Untuk MAHASISWA dan ORGANISASI,
+        respons memuat `active_points` (poin pelanggaran aktif).
       security:
         - BearerAuth: []
       responses:
@@ -115,9 +141,42 @@ paths:
                 $ref: '#/components/schemas/User'
         '401': { $ref: '#/components/responses/ErrorResponse' }
 
+  /auth/change-password:
+    post:
+      summary: Ganti password sendiri
+      description: >
+        Mengganti password setelah memverifikasi password saat ini; `must_change_password` menjadi `false`.
+        Seluruh sesi lain pengguna dicabut, sesi yang dipakai (refresh token pada cookie) tetap hidup.
+        Password saat ini yang salah dijawab 422 pada field `current_password` (bukan 401). Tetap dapat dipakai
+        saat `must_change_password` bernilai `true`. Percobaan dibatasi per pengguna; melebihi batas dijawab 429
+        dengan `Retry-After`.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string }
+                new_password:
+                  type: string
+                  maxLength: 128
+                  description: Panjang minimal sesuai konfigurasi (`MIN_PASSWORD_LENGTH`, default 10) dan harus berbeda dari password saat ini.
+      responses:
+        '204': { description: Password berhasil diganti (tanpa body) }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimitedResponse' }
+
   /users:
     get:
-      summary: Daftar pengguna (Kaprodi)
+      summary: Daftar pengguna (ADMIN, TU)
+      description: >
+        ADMIN melihat semua akun. TU hanya melihat akun MAHASISWA: memfilter `role` selain MAHASISWA dijawab 403.
       security:
         - BearerAuth: []
       parameters:
@@ -147,10 +206,13 @@ paths:
                     items: { $ref: '#/components/schemas/User' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
-      summary: Buat pengguna baru (Kaprodi)
+      summary: Buat pengguna baru (ADMIN)
+      description: >
+        Hanya ADMIN. Password yang diberikan bersifat sementara: akun dibuat dengan `must_change_password: true`.
+        `pic_name` dan `pic_phone` wajib untuk role ORGANISASI dan ditolak (422) untuk role lain.
       security:
         - BearerAuth: []
       requestBody:
@@ -159,14 +221,19 @@ paths:
           application/json:
             schema:
               type: object
-              required: [org_unit_id, identifier, name, email, password, role]
+              required: [org_unit_id, identifier, name, password, role]
               properties:
                 org_unit_id: { type: string, format: uuid }
                 identifier: { type: string }
                 name: { type: string }
-                email: { type: string, format: email }
-                password: { type: string, minLength: 8, maxLength: 128 }
+                email: { type: string, format: email, description: Opsional }
+                password:
+                  type: string
+                  maxLength: 128
+                  description: Password sementara; panjang minimal sesuai konfigurasi (`MIN_PASSWORD_LENGTH`, default 10).
                 role: { $ref: '#/components/schemas/UserRole' }
+                pic_name: { type: string, description: Nama penanggung jawab; wajib untuk ORGANISASI }
+                pic_phone: { type: string, description: Telepon penanggung jawab; wajib untuk ORGANISASI }
       responses:
         '201':
           description: Pengguna dibuat
@@ -175,15 +242,17 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /users/{id}:
     patch:
-      summary: Perbarui data/peran/status/password pengguna (Kaprodi)
+      summary: Perbarui data/peran/status pengguna (ADMIN, TU)
       description: >
-        Menonaktifkan pengguna atau mereset password mencabut semua sesi refresh miliknya.
-        Kaprodi tidak dapat menonaktifkan atau mengubah peran akunnya sendiri.
+        Menonaktifkan pengguna mencabut semua sesi refresh miliknya. ADMIN tidak dapat menonaktifkan atau mengubah
+        peran akunnya sendiri, dan harus tersisa minimal satu ADMIN aktif. TU hanya boleh mengubah akun MAHASISWA
+        (selain itu 403) dan hanya field `name`, `email`, `is_active`; mengirim `role`, `pic_name`, `pic_phone`, atau
+        `clear_booking_block` dijawab 403. Mengganti password dilakukan lewat `POST /users/{id}/reset-password`.
       security:
         - BearerAuth: []
       parameters:
@@ -203,7 +272,11 @@ paths:
                 email: { type: string, format: email }
                 role: { $ref: '#/components/schemas/UserRole' }
                 is_active: { type: boolean }
-                password: { type: string, minLength: 8, maxLength: 128 }
+                pic_name: { type: string }
+                pic_phone: { type: string }
+                clear_booking_block:
+                  type: boolean
+                  description: "`true` menghapus blokir booking (`booking_blocked_until` menjadi null)"
       responses:
         '200':
           description: Pengguna diperbarui
@@ -212,9 +285,41 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /users/{id}/reset-password:
+    post:
+      summary: Reset password pengguna (ADMIN, TU)
+      description: >
+        Mengganti password akun dengan password sementara acak dan mengembalikannya satu kali; semua sesi refresh akun
+        dicabut dan `must_change_password` menjadi `true`. TU hanya boleh untuk akun MAHASISWA (selain itu 403).
+        Respons membawa `Cache-Control: no-store`.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Password sementara baru (hanya tampil sekali)
+          headers:
+            Cache-Control:
+              description: Selalu `no-store`
+              schema: { type: string, enum: [no-store] }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [temporary_password]
+                properties:
+                  temporary_password: { type: string }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /rooms:
     get:
@@ -252,10 +357,14 @@ paths:
                     items: { $ref: '#/components/schemas/Room' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
-      summary: Tambah ruang baru (TU_KALAB, KAPRODI)
-      description: Kode disimpan dalam huruf besar dan harus unik di antara ruang yang belum dihapus dalam satu unit.
+      summary: Tambah ruang baru (TU, KALAB, ADMIN)
+      description: >
+        Kode disimpan dalam huruf besar dan harus unik di antara ruang yang belum dihapus dalam satu unit.
+        Peran harus TU, KALAB, atau ADMIN pada route, dan memegang kewenangan atas tipe ruang tersebut
+        (approver tipe itu, atau ADMIN); selain itu 403.
       security:
         - BearerAuth: []
       requestBody:
@@ -282,7 +391,7 @@ paths:
               schema: { $ref: '#/components/schemas/Room' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /rooms/{id}:
@@ -302,10 +411,14 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Room' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
     patch:
-      summary: Ubah data ruang (TU_KALAB, KAPRODI)
-      description: Kode ruang tidak dapat diubah. Mengirim `facilities` menggantikan seluruh daftar (`[]` mengosongkan).
+      summary: Ubah data ruang (TU, KALAB, ADMIN)
+      description: >
+        Kode ruang tidak dapat diubah. Mengirim `facilities` menggantikan seluruh daftar (`[]` mengosongkan).
+        Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang (juga tipe tujuan bila `type`
+        diubah); selain itu 403.
       security:
         - BearerAuth: []
       parameters:
@@ -334,13 +447,13 @@ paths:
               schema: { $ref: '#/components/schemas/Room' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
     delete:
-      summary: Soft delete ruang (TU_KALAB, KAPRODI)
+      summary: Soft delete ruang (TU, KALAB, ADMIN)
       description: >
-        Ditolak dengan `ROOM_HAS_ACTIVE_BOOKINGS` bila masih ada booking MENUNGGU/DISETUJUI yang belum berakhir (BR-07).
+        Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang (selain itu 403). Ditolak dengan `ROOM_HAS_ACTIVE_BOOKINGS` bila masih ada booking MENUNGGU/DISETUJUI yang belum berakhir (BR-07).
         Jadwal dan riwayat booking tetap tersimpan.
       security:
         - BearerAuth: []
@@ -352,7 +465,7 @@ paths:
       responses:
         '204': { description: Ruang berhasil dihapus }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
 
@@ -390,13 +503,15 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/TimelineItem' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /schedules:
     post:
-      summary: Buat jadwal manual / akademik, opsional berulang mingguan (TU_KALAB, KAPRODI)
+      summary: Buat jadwal manual / akademik, opsional berulang mingguan (TU, KALAB, ADMIN)
       description: >
+        Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang jadwal (selain itu 403).
         Dengan `repeat`, dibuat satu sesi per minggu dari `start_at` sampai `repeat.until` (tanggal WIB, inklusif),
         maksimal 26 sesi. Semua atau tidak sama sekali: bila satu sesi bentrok, tidak ada yang dibuat dan
         `details` memuat seluruh bentrokan. Jadwal harus berada pada satu hari WIB. `source` default `MANUAL`.
@@ -435,14 +550,16 @@ paths:
                     items: { $ref: '#/components/schemas/Schedule' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /schedules/{id}:
     patch:
-      summary: Ubah jadwal (TU_KALAB, KAPRODI)
-      description: Ruang tidak dapat dipindah. Pengecekan bentrok mengabaikan jadwal itu sendiri.
+      summary: Ubah jadwal (TU, KALAB, ADMIN)
+      description: >
+        Ruang tidak dapat dipindah. Pengecekan bentrok mengabaikan jadwal itu sendiri. Pemanggil harus TU, KALAB,
+        atau ADMIN dan memegang kewenangan atas tipe ruang jadwal (selain itu 403).
       security:
         - BearerAuth: []
       parameters:
@@ -469,12 +586,13 @@ paths:
               schema: { $ref: '#/components/schemas/Schedule' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
     delete:
-      summary: Hapus jadwal (TU_KALAB, KAPRODI)
+      summary: Hapus jadwal (TU, KALAB, ADMIN)
+      description: Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang jadwal (selain itu 403).
       security:
         - BearerAuth: []
       parameters:
@@ -485,7 +603,7 @@ paths:
       responses:
         '204': { description: Jadwal dihapus }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /availability:
@@ -525,17 +643,22 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/AvailabilityRoom' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings:
     get:
-      summary: Daftar pengajuan booking
+      summary: Daftar pengajuan booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
+      description: >
+        MAHASISWA dan ORGANISASI hanya melihat booking miliknya. TU dan KALAB melihat booking tipe ruang yang
+        mereka setujui; ADMIN melihat semua. `mine=true` mempersempit ke booking milik sendiri. OB dijawab 403.
       security:
         - BearerAuth: []
       parameters:
         - name: status
           in: query
-          schema: { $ref: '#/components/schemas/BookingStatus' }
+          description: Filter status booking.
+          schema: { $ref: "#/components/schemas/BookingStatus" }
         - name: room_id
           in: query
           schema: { type: string, format: uuid }
@@ -564,13 +687,15 @@ paths:
                     items: { $ref: '#/components/schemas/Booking' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
-      summary: Ajukan booking baru (MAHASISWA)
+      summary: Ajukan booking baru (MAHASISWA, ORGANISASI)
       description: >-
-        Satu mahasiswa maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu
+        Satu pemohon maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu
         `MENUNGGU` atau `DISETUJUI` yang belum berakhir. Melebihi batas dijawab 422 tanpa `field`.
+        Peran selain MAHASISWA dan ORGANISASI dijawab 403 `FORBIDDEN`; bila `requester_roles` tipe ruang tidak
+        memuat peran pemohon, dijawab 403 `ROOM_TYPE_NOT_ALLOWED`.
       security:
         - BearerAuth: []
       parameters:
@@ -605,13 +730,16 @@ paths:
               schema: { $ref: '#/components/schemas/Booking' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}:
     get:
-      summary: Detail pengajuan booking
+      summary: Detail pengajuan booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
+      description: >
+        Pemohon hanya dapat membaca booking miliknya; TU dan KALAB hanya booking tipe ruang yang mereka setujui;
+        ADMIN semuanya. Di luar jangkauan dijawab 404. OB dijawab 403.
       security:
         - BearerAuth: []
       parameters:
@@ -626,12 +754,15 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/events:
     get:
-      summary: Jejak riwayat audit status booking
+      summary: Jejak riwayat audit status booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
+      description: >
+        Aturan akses sama dengan detail booking. `actor_id` bernilai null bila perubahan dilakukan sistem
+        (mis. job otomatis).
       security:
         - BearerAuth: []
       parameters:
@@ -652,12 +783,15 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/BookingEvent' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/approve:
     post:
-      summary: Setujui peminjaman ruang (TU_KALAB)
+      summary: Setujui peminjaman ruang (TU, KALAB, ADMIN)
+      description: >
+        Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang booking (selain itu 403).
+        Booking di luar jangkauan approver dijawab 404.
       security:
         - BearerAuth: []
       parameters:
@@ -672,13 +806,15 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/reject:
     post:
-      summary: Tolak peminjaman ruang (TU_KALAB)
+      summary: Tolak peminjaman ruang (TU, KALAB, ADMIN)
+      description: >
+        Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang booking (selain itu 403).
       security:
         - BearerAuth: []
       parameters:
@@ -703,14 +839,18 @@ paths:
               schema: { $ref: '#/components/schemas/Booking' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /bookings/{id}/cancel:
     post:
-      summary: Batalkan booking (Pemilik atau TU_KALAB)
+      summary: Batalkan booking (pemilik, atau TU/KALAB/ADMIN approver tipe ruang)
+      description: >
+        Pemilik (MAHASISWA atau ORGANISASI) dapat membatalkan booking `MENUNGGU` miliknya; alasan opsional.
+        Pengelola (TU, KALAB, ADMIN dengan kewenangan atas tipe ruang) membatalkan booking `DISETUJUI` dan wajib
+        menyertakan `reason`.
       security:
         - BearerAuth: []
       parameters:
@@ -733,7 +873,7 @@ paths:
               schema: { $ref: '#/components/schemas/Booking' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
@@ -763,6 +903,7 @@ paths:
                     items: { $ref: '#/components/schemas/Notification' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /notifications/{id}/read:
@@ -782,6 +923,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /notifications/read-all:
@@ -800,6 +942,7 @@ paths:
                 properties:
                   updated: { type: integer, description: Jumlah notifikasi yang berubah dari belum dibaca menjadi dibaca }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
 
   /notifications/stream:
     get:
@@ -821,11 +964,15 @@ paths:
             text/event-stream:
               schema: { type: string }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '429': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports:
     get:
       summary: Daftar laporan kerusakan
+      description: >
+        Pelapor (peran apa pun, termasuk OB) melihat laporan miliknya. TU dan KALAB juga melihat laporan tipe ruang
+        yang mereka setujui; ADMIN melihat semua.
       security:
         - BearerAuth: []
       parameters:
@@ -851,6 +998,7 @@ paths:
                     items: { $ref: '#/components/schemas/DamageReport' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
     post:
       summary: Buat laporan kerusakan baru (multipart/form-data)
@@ -878,6 +1026,7 @@ paths:
               schema: { $ref: '#/components/schemas/DamageReport' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports/{id}:
@@ -905,12 +1054,13 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/ReportEvent' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports/{id}/photo:
     get:
-      summary: Foto laporan kerusakan (pelapor, TU_KALAB, KAPRODI)
-      description: Foto disimpan di luar webroot dan hanya disajikan lewat endpoint ini.
+      summary: Foto laporan kerusakan (pelapor, TU/KALAB approver tipe ruang, ADMIN)
+      description: Foto disimpan di luar webroot dan hanya disajikan lewat endpoint ini. Laporan di luar jangkauan dijawab 404.
       security:
         - BearerAuth: []
       parameters:
@@ -926,12 +1076,15 @@ paths:
             image/png: { schema: { type: string, format: binary } }
             image/webp: { schema: { type: string, format: binary } }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /reports/{id}/status:
     patch:
-      summary: Perbarui status laporan kerusakan (TU_KALAB)
-      description: Status hanya maju satu langkah (BARU, DITERIMA, DIPROSES, SELESAI); selain itu 409 `INVALID_STATE`.
+      summary: Perbarui status laporan kerusakan (TU, KALAB, ADMIN)
+      description: >
+        Status hanya maju satu langkah (BARU, DITERIMA, DIPROSES, SELESAI); selain itu 409 `INVALID_STATE`.
+        Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang laporan (selain itu 403).
       security:
         - BearerAuth: []
       parameters:
@@ -957,10 +1110,145 @@ paths:
               schema: { $ref: '#/components/schemas/DamageReport' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /audit-logs:
+    get:
+      summary: Daftar audit log (ADMIN)
+      description: >
+        Hanya ADMIN (peran lain 403). Baca-saja, terbaru lebih dulu. Nilai `before` dan `after` sudah
+        disamarkan dari rahasia (password, token).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: actor_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: action
+          in: query
+          description: Nama aksi persis, mis. `USER_CREATED`
+          schema: { type: string }
+        - name: entity_type
+          in: query
+          schema: { type: string }
+        - name: entity_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          description: Batas bawah `created_at` (RFC 3339 dengan offset)
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Batas atas `created_at` (RFC 3339 dengan offset)
+          schema: { type: string, format: date-time }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditLog' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /imports:
+    get:
+      summary: Riwayat impor (TU, ADMIN)
+      description: Daftar impor terbaru lebih dulu. Peran selain TU dan ADMIN dijawab 403.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/ImportKind' }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Import' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /imports/users:
+    post:
+      summary: Impor akun mahasiswa dari CSV (TU, ADMIN; multipart/form-data)
+      description: >
+        Dua langkah. Dengan `?dry_run=true` berkas hanya diperiksa dan rencananya dikembalikan beserta `plan_hash`
+        (tidak ada yang disimpan). Tanpa `dry_run`, impor diterapkan dalam satu transaksi dan wajib menyertakan
+        `plan_hash` dari pratinjau untuk berkas dan semester yang sama; bila data berubah sejak pratinjau dijawab
+        409 `IMPORT_PLAN_CHANGED`, dan berkas yang sama yang sudah pernah diterapkan dijawab 409
+        `IMPORT_ALREADY_APPLIED`. CSV wajib berkolom `identifier` dan `name`; kolom opsional `email`,
+        `course_code`, `course_name`, `class_name`. Berkas tidak valid dijawab 422 `IMPORT_INVALID` dengan `details`
+        per baris (`line`, `column`); baris 1 adalah header. Respons penerapan memuat password sementara akun baru
+        satu kali dan membawa `Cache-Control: no-store`.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: dry_run
+          in: query
+          description: "`true` untuk pratinjau tanpa menyimpan"
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, semester]
+              properties:
+                file: { type: string, format: binary, description: Berkas CSV }
+                semester: { type: string, pattern: '^[0-9]{4}-(GANJIL|GENAP)$', example: 2026-GANJIL }
+                plan_hash: { type: string, description: "Wajib saat menerapkan (tanpa `dry_run`); diambil dari respons pratinjau" }
+      responses:
+        '200':
+          description: Pratinjau (`dry_run=true`) atau hasil penerapan
+          headers:
+            Cache-Control:
+              description: "`no-store` pada hasil penerapan (memuat password sementara)"
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/ImportUsersPreview' }
+                  - { $ref: '#/components/schemas/ImportUsersResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '409':
+          description: "`IMPORT_PLAN_CHANGED` atau `IMPORT_ALREADY_APPLIED`"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+        '422':
+          description: "`VALIDATION_ERROR` (mis. `semester`, `plan_hash`, `file`) atau `IMPORT_INVALID` (isi berkas bermasalah; `details` memuat `line` dan `column`)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
 
 components:
   securitySchemes:
@@ -985,8 +1273,70 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorBody' }
+    ForbiddenResponse:
+      description: >-
+        Akses ditolak (403). `error.code` adalah `FORBIDDEN` (peran atau kewenangan atas tipe ruang tidak cukup),
+        `ROOM_TYPE_NOT_ALLOWED` (hanya `POST /bookings`: peran pemohon tidak termasuk `requester_roles` tipe ruang),
+        atau `PASSWORD_CHANGE_REQUIRED` (akun masih memakai password sementara; berlaku untuk setiap endpoint
+        terautentikasi kecuali `GET /auth/me`, `POST /auth/logout`, dan `POST /auth/change-password`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    RateLimitedResponse:
+      description: Terlalu banyak percobaan (`RATE_LIMITED`)
+      headers:
+        Retry-After:
+          description: Detik sampai percobaan berikutnya diizinkan
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
 
   schemas:
+    ErrorCode:
+      type: string
+      description: >-
+        Kode error mesin-baca. 400 BAD_REQUEST; 401 UNAUTHENTICATED; 403 FORBIDDEN, PASSWORD_CHANGE_REQUIRED,
+        ROOM_TYPE_NOT_ALLOWED; 404 NOT_FOUND; 405 METHOD_NOT_ALLOWED; 409 BOOKING_CONFLICT, INVALID_STATE,
+        ROOM_INACTIVE, ROOM_HAS_ACTIVE_BOOKINGS, IMPORT_PLAN_CHANGED, IMPORT_ALREADY_APPLIED; 422 VALIDATION_ERROR,
+        IMPORT_INVALID; 429 RATE_LIMITED; 500 INTERNAL_SERVER_ERROR; 503 SERVICE_BUSY.
+      enum:
+        - BAD_REQUEST
+        - UNAUTHENTICATED
+        - FORBIDDEN
+        - PASSWORD_CHANGE_REQUIRED
+        - ROOM_TYPE_NOT_ALLOWED
+        - NOT_FOUND
+        - METHOD_NOT_ALLOWED
+        - BOOKING_CONFLICT
+        - INVALID_STATE
+        - ROOM_INACTIVE
+        - ROOM_HAS_ACTIVE_BOOKINGS
+        - IMPORT_PLAN_CHANGED
+        - IMPORT_ALREADY_APPLIED
+        - VALIDATION_ERROR
+        - IMPORT_INVALID
+        - RATE_LIMITED
+        - INTERNAL_SERVER_ERROR
+        - SERVICE_BUSY
+
+    ErrorDetail:
+      type: object
+      required: [message]
+      properties:
+        field: { type: string }
+        message: { type: string }
+        kind: { type: string }
+        status: { type: string }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        line:
+          type: integer
+          description: Nomor baris pada berkas CSV yang diunggah (baris 1 adalah header). Hanya pada galat impor.
+        column:
+          type: string
+          description: Nama kolom CSV yang bermasalah. Hanya pada galat impor.
+
     ErrorBody:
       type: object
       required: [error]
@@ -995,32 +1345,24 @@ components:
           type: object
           required: [code, message, details, request_id]
           properties:
-            code: { type: string, example: BOOKING_CONFLICT }
+            code: { $ref: '#/components/schemas/ErrorCode' }
             message: { type: string, example: Ruang sudah terpakai pada rentang waktu tersebut. }
             details:
               type: array
-              items:
-                type: object
-                properties:
-                  field: { type: string }
-                  message: { type: string }
-                  kind: { type: string }
-                  status: { type: string }
-                  start_at: { type: string, format: date-time }
-                  end_at: { type: string, format: date-time }
+              items: { $ref: '#/components/schemas/ErrorDetail' }
             request_id: { type: string, example: req_123456 }
 
     UserRole:
       type: string
-      enum: [MAHASISWA, TU_KALAB, OB, KAPRODI]
+      enum: [MAHASISWA, ORGANISASI, TU, KALAB, OB, ADMIN]
 
     RoomType:
       type: string
-      enum: [KELAS, LAB]
+      enum: [KELAS, LAB, AUDITORIUM, RUANG_UJIAN, RUANG_SIDANG]
 
     BookingStatus:
       type: string
-      enum: [MENUNGGU, DISETUJUI, DITOLAK, DIBATALKAN]
+      enum: [MENUNGGU, DISETUJUI, DITOLAK, DIBATALKAN, BERLANGSUNG, SELESAI, TIDAK_HADIR, TANPA_CHECKOUT, KEDALUWARSA]
 
     ReportStatus:
       type: string
@@ -1035,16 +1377,122 @@ components:
 
     User:
       type: object
-      required: [id, org_unit_id, identifier, name, email, role, is_active, created_at]
+      required: [id, org_unit_id, identifier, name, email, role, is_active, booking_blocked_until, pic_name, pic_phone, must_change_password, created_at]
       properties:
         id: { type: string, format: uuid }
         org_unit_id: { type: string, format: uuid }
         identifier: { type: string }
         name: { type: string }
-        email: { type: string, format: email }
+        email: { type: [string, 'null'], format: email }
         role: { $ref: '#/components/schemas/UserRole' }
         is_active: { type: boolean }
+        booking_blocked_until:
+          type: [string, 'null']
+          format: date-time
+          description: Akun tidak dapat mengajukan booking sampai waktu ini; null bila tidak diblokir.
+        pic_name:
+          type: [string, 'null']
+          description: Nama penanggung jawab; terisi untuk akun ORGANISASI.
+        pic_phone:
+          type: [string, 'null']
+          description: Telepon penanggung jawab; terisi untuk akun ORGANISASI.
+        must_change_password:
+          type: boolean
+          description: "`true` bila akun masih memakai password sementara dan harus menggantinya."
+        active_points:
+          type: integer
+          description: Poin pelanggaran aktif. Hanya ada pada `GET /auth/me` untuk MAHASISWA dan ORGANISASI.
         created_at: { type: string, format: date-time }
+
+    AuditLog:
+      type: object
+      required: [id, actor_id, actor_role, actor_identifier, actor_name, action, entity_type, entity_id, before, after, ip, user_agent, request_id, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        actor_id: { type: [string, 'null'], format: uuid, description: Null bila dilakukan sistem }
+        actor_role:
+          oneOf:
+            - { $ref: '#/components/schemas/UserRole' }
+            - { type: 'null' }
+        actor_identifier: { type: [string, 'null'] }
+        actor_name: { type: [string, 'null'] }
+        action: { type: string, example: USER_CREATED }
+        entity_type: { type: string, example: USER }
+        entity_id: { type: [string, 'null'], format: uuid }
+        before:
+          type: [object, array, string, number, boolean, 'null']
+          description: Keadaan sebelum perubahan (JSON bebas, rahasia sudah disamarkan); null bila tidak ada.
+        after:
+          type: [object, array, string, number, boolean, 'null']
+          description: Keadaan sesudah perubahan (JSON bebas, rahasia sudah disamarkan); null bila tidak ada.
+        ip: { type: [string, 'null'] }
+        user_agent: { type: [string, 'null'] }
+        request_id: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+
+    ImportKind:
+      type: string
+      enum: [SCHEDULES, USERS]
+
+    Import:
+      type: object
+      required: [id, kind, uploaded_by, file_name, semester, status, summary, created_at, rolled_back_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/ImportKind' }
+        uploaded_by:
+          type: object
+          required: [id, identifier, name]
+          properties:
+            id: { type: string, format: uuid }
+            identifier: { type: string }
+            name: { type: string }
+        file_name: { type: [string, 'null'] }
+        semester: { type: [string, 'null'], example: 2026-GANJIL }
+        status: { type: string, enum: [COMMITTED, ROLLED_BACK] }
+        summary:
+          type: object
+          additionalProperties: true
+          description: Ringkasan hasil impor (isi bergantung pada `kind`).
+        created_at: { type: string, format: date-time }
+        rolled_back_at: { type: [string, 'null'], format: date-time }
+
+    ImportRowError:
+      type: object
+      required: [line, message]
+      properties:
+        line: { type: integer, description: Nomor baris CSV (baris 1 adalah header) }
+        column: { type: string }
+        message: { type: string }
+
+    ImportUsersPreview:
+      type: object
+      required: [rows, to_create, to_update, errors, plan_hash]
+      properties:
+        rows: { type: integer, description: Jumlah baris data pada berkas }
+        to_create: { type: integer }
+        to_update: { type: integer }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/ImportRowError' }
+        plan_hash: { type: string, description: Dikirim kembali saat menerapkan impor }
+
+    ImportUsersResult:
+      type: object
+      required: [import_id, created, updated, credentials]
+      properties:
+        import_id: { type: string, format: uuid }
+        created: { type: integer }
+        updated: { type: integer }
+        credentials:
+          type: array
+          description: Password sementara akun baru; hanya tampil pada respons ini.
+          items:
+            type: object
+            required: [identifier, temporary_password]
+            properties:
+              identifier: { type: string }
+              temporary_password: { type: string }
 
     Room:
       type: object
@@ -1137,7 +1585,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         booking_id: { type: string, format: uuid }
-        actor_id: { type: string, format: uuid }
+        actor_id: { type: [string, 'null'], format: uuid, description: Null bila perubahan dilakukan sistem }
         from_status: { $ref: '#/components/schemas/BookingStatus' }
         to_status: { $ref: '#/components/schemas/BookingStatus' }
         reason: { type: string }

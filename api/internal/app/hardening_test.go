@@ -25,7 +25,7 @@ import (
 func TestBookingQuotaPerStudent(t *testing.T) {
 	e := newEnv(t, func(c *config.Config) { c.BookingMaxActivePerUser = 5 })
 	a, b := e.login(mahasiswaA).accessToken, e.login(mahasiswaB).accessToken
-	admin := e.adminToken()
+	tu := e.tuToken()
 
 	book := func(tok string) response {
 		return e.postBooking(tok, e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil)
@@ -58,13 +58,13 @@ func TestBookingQuotaPerStudent(t *testing.T) {
 	if res := book(a); res.Code != http.StatusUnprocessableEntity {
 		t.Errorf("after refilling: %d; want 422", res.Code)
 	}
-	mustStatus(t, e.action(admin, mine[1], "approve", nil), http.StatusOK)
+	mustStatus(t, e.action(tu, mine[1], "approve", nil), http.StatusOK)
 	if res := book(a); res.Code != http.StatusUnprocessableEntity {
 		t.Errorf("an approved booking must still count: %d; want 422", res.Code)
 	}
 
 	// Rejection frees a place too.
-	mustStatus(t, e.action(admin, mine[2], "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
+	mustStatus(t, e.action(tu, mine[2], "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
 	mustStatus(t, book(a), http.StatusCreated)
 
 	// Bookings that are over do not count. Student B already holds one live booking.
@@ -76,6 +76,19 @@ func TestBookingQuotaPerStudent(t *testing.T) {
 	}
 	if res := book(b); res.Code != http.StatusUnprocessableEntity {
 		t.Errorf("student B's fifth live booking was allowed to be followed by a sixth: %d", res.Code)
+	}
+}
+
+// A booking in progress still holds a place: BERLANGSUNG counts towards the quota like MENUNGGU and DISETUJUI.
+func TestBookingInProgressCountsTowardsTheQuota(t *testing.T) {
+	e := newEnv(t, func(c *config.Config) { c.BookingMaxActivePerUser = 2 })
+	tok := e.login(mahasiswaA).accessToken
+
+	// 09:00-12:00 WIB today, so it has not ended at the test clock's 10:00 WIB.
+	e.insertBooking(e.freshRoom(), mahasiswaA, "BERLANGSUNG", "Sedang dipakai", at("2026-10-14", "09:00"), at("2026-10-14", "12:00"))
+	mustStatus(t, e.postBooking(tok, e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil), http.StatusCreated)
+	if res := e.postBooking(tok, e.freshRoom(), at(tue, "10:00"), at(tue, "11:00"), nil); res.Code != http.StatusUnprocessableEntity {
+		t.Errorf("a third live booking, one of them in progress: %d %s; want 422", res.Code, res.Body.String())
 	}
 }
 
@@ -146,20 +159,19 @@ func TestBookingQuotaHoldsUnderConcurrency(t *testing.T) {
 
 func TestPageIsCapped(t *testing.T) {
 	e := newEnv(t)
-	tu := bearer(e.adminToken())
+	admin := bearer(e.adminToken())
 
 	for _, path := range []string{"bookings", "rooms", "reports", "notifications"} {
-		if res := e.do("GET", "/api/v1/"+path+"?page=10000&per_page=100", nil, tu); res.Code != http.StatusOK {
+		if res := e.do("GET", "/api/v1/"+path+"?page=10000&per_page=100", nil, admin); res.Code != http.StatusOK {
 			t.Errorf("%s page 10000: %d; want 200", path, res.Code)
 		}
 		for _, page := range []string{"10001", "999999999999", "99999999999999999999"} {
-			res := e.do("GET", "/api/v1/"+path+"?page="+page, nil, tu)
+			res := e.do("GET", "/api/v1/"+path+"?page="+page, nil, admin)
 			if res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)["page"] {
 				t.Errorf("%s page %s: %d %s; want 422 naming page (this used to be a 500)", path, page, res.Code, res.Body.String())
 			}
 		}
 	}
-	admin := bearer(e.login(kaprodiID).accessToken)
 	if res := e.do("GET", "/api/v1/users?page=999999999999", nil, admin); res.Code != http.StatusUnprocessableEntity {
 		t.Errorf("users with a huge page: %d; want 422", res.Code)
 	}
@@ -420,18 +432,18 @@ func TestLockTimeoutBecomesServiceBusy(t *testing.T) {
 	}
 }
 
-// --- last Kaprodi ------------------------------------------------------------------------------------
+// --- last Admin ------------------------------------------------------------------------------------
 
-// Two Kaprodi deactivating each other at the same moment would each pass the per-request self check.
-// The test holds the guard lock so the first request is stuck on it, lets "the other Kaprodi" win in
+// Two admins deactivating each other at the same moment would each pass the per-request self check.
+// The test holds the guard lock so the first request is stuck on it, lets "the other admin" win in
 // the meantime, and then checks that the stuck request refuses to remove the last one.
-func TestTheLastKaprodiCannotBeRemovedByAConcurrentChange(t *testing.T) {
+func TestTheLastAdminCannotBeRemovedByAConcurrentChange(t *testing.T) {
 	e := newEnv(t)
-	aTok := e.login(kaprodiID).accessToken
-	aID := e.userIDOf(kaprodiID)
+	aTok := e.login(adminID).accessToken
+	aID := e.userIDOf(adminID)
 
 	body := e.newUserBody("197501012000011002")
-	body["role"] = "KAPRODI"
+	body["role"] = "ADMIN"
 	res := e.do("POST", "/api/v1/users", body, bearer(aTok))
 	mustStatus(t, res, http.StatusCreated)
 	bID := res.json()["id"].(string)
@@ -445,7 +457,7 @@ func TestTheLastKaprodiCannotBeRemovedByAConcurrentChange(t *testing.T) {
 			t.Logf("rollback: %v", err) // already committed below
 		}
 	}()
-	if _, err := hold.Exec(t.Context(), "SELECT pg_advisory_xact_lock(hashtextextended('kaprodi-guard', 0))"); err != nil {
+	if _, err := hold.Exec(t.Context(), "SELECT pg_advisory_xact_lock(hashtextextended('admin-guard', 0))"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -462,7 +474,7 @@ func TestTheLastKaprodiCannotBeRemovedByAConcurrentChange(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	// The other Kaprodi's request wins first: A is deactivated.
+	// The other Admin's request wins first: A is deactivated.
 	if _, err := hold.Exec(t.Context(), "UPDATE users SET is_active = false WHERE id = $1", aID); err != nil {
 		t.Fatal(err)
 	}
@@ -471,11 +483,11 @@ func TestTheLastKaprodiCannotBeRemovedByAConcurrentChange(t *testing.T) {
 	}
 
 	got := <-done
-	if got.Code != http.StatusUnprocessableEntity || !strings.Contains(got.Body.String(), "minimal satu Kaprodi aktif") {
-		t.Fatalf("second removal: %d %s; want 422 refusing to remove the last Kaprodi", got.Code, got.Body.String())
+	if got.Code != http.StatusUnprocessableEntity || !strings.Contains(got.Body.String(), "minimal satu Admin aktif") {
+		t.Fatalf("second removal: %d %s; want 422 refusing to remove the last Admin", got.Code, got.Body.String())
 	}
-	if n := e.countRows("SELECT count(*) FROM users WHERE role = 'KAPRODI' AND is_active"); n != 1 {
-		t.Errorf("%d active Kaprodi left; want exactly 1", n)
+	if n := e.countRows("SELECT count(*) FROM users WHERE role = 'ADMIN' AND is_active"); n != 1 {
+		t.Errorf("%d active Admin left; want exactly 1", n)
 	}
 	if n := e.countRows("SELECT count(*) FROM users WHERE id = $1 AND is_active", bID); n != 1 {
 		t.Error("the refused request still deactivated the account")
@@ -483,18 +495,18 @@ func TestTheLastKaprodiCannotBeRemovedByAConcurrentChange(t *testing.T) {
 }
 
 // Demoting works as long as someone else stays.
-func TestKaprodiMayBeDemotedWhileAnotherRemains(t *testing.T) {
+func TestAdminMayBeDemotedWhileAnotherRemains(t *testing.T) {
 	e := newEnv(t)
-	aTok := e.login(kaprodiID).accessToken
+	aTok := e.login(adminID).accessToken
 	body := e.newUserBody("197501012000011003")
-	body["role"] = "KAPRODI"
+	body["role"] = "ADMIN"
 	res := e.do("POST", "/api/v1/users", body, bearer(aTok))
 	mustStatus(t, res, http.StatusCreated)
 	bID := res.json()["id"].(string)
 
-	mustStatus(t, e.do("PATCH", "/api/v1/users/"+bID, map[string]any{"role": "TU_KALAB"}, bearer(aTok)), http.StatusOK)
-	if n := e.countRows("SELECT count(*) FROM users WHERE role = 'KAPRODI' AND is_active"); n != 1 {
-		t.Errorf("%d active Kaprodi; want 1", n)
+	mustStatus(t, e.do("PATCH", "/api/v1/users/"+bID, map[string]any{"role": "TU"}, bearer(aTok)), http.StatusOK)
+	if n := e.countRows("SELECT count(*) FROM users WHERE role = 'ADMIN' AND is_active"); n != 1 {
+		t.Errorf("%d active Admin; want 1", n)
 	}
 }
 
@@ -502,7 +514,7 @@ func TestKaprodiMayBeDemotedWhileAnotherRemains(t *testing.T) {
 
 func TestNotificationStreamsArePerUserLimited(t *testing.T) {
 	e := newEnv(t)
-	tu, student := e.adminToken(), e.login(mahasiswaA).accessToken
+	tu, student := e.tuToken(), e.login(mahasiswaA).accessToken
 
 	var open []*stream
 	for range 5 {

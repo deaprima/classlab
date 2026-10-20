@@ -278,12 +278,12 @@ func (f sseFrame) json() map[string]any {
 
 func TestNotificationStreamDeliversOnlyToTheRecipient(t *testing.T) {
 	e := newEnv(t)
-	e.insertNotification(e.userIDOf(tuKalabID), "lama", startTime, false)
-	e.insertNotification(e.userIDOf(tuKalabID), "lama 2", startTime, true)
+	e.insertNotification(e.userIDOf(tuID), "lama", startTime, false)
+	e.insertNotification(e.userIDOf(tuID), "lama 2", startTime, true)
 	student := e.login(mahasiswaA).accessToken
-	admin := e.adminToken()
+	tuTok := e.tuToken()
 
-	tu := e.openStream(admin)
+	tu := e.openStream(tuTok)
 	if f := tu.nextEvent(); f.event != "ready" || f.json()["unread"] != float64(1) {
 		t.Fatalf("first frame = %+v; want ready with 1 unread", f)
 	}
@@ -299,7 +299,7 @@ func TestNotificationStreamDeliversOnlyToTheRecipient(t *testing.T) {
 		t.Fatalf("approver's frame = %+v; want BOOKING_CREATED for %s", f, booking)
 	}
 	var dbID string
-	if err := e.pool.QueryRow(t.Context(), "SELECT id FROM notifications WHERE type = 'BOOKING_CREATED' AND user_id = $1", e.userIDOf(tuKalabID)).Scan(&dbID); err != nil {
+	if err := e.pool.QueryRow(t.Context(), "SELECT id FROM notifications WHERE type = 'BOOKING_CREATED' AND user_id = $1", e.userIDOf(tuID)).Scan(&dbID); err != nil {
 		t.Fatal(err)
 	}
 	if f.id != dbID || f.json()["id"] != dbID {
@@ -307,7 +307,7 @@ func TestNotificationStreamDeliversOnlyToTheRecipient(t *testing.T) {
 	}
 
 	// The decision reaches the student; had the earlier notification leaked to them, it would arrive first.
-	mustStatus(t, e.action(admin, booking, "approve", nil), http.StatusOK)
+	mustStatus(t, e.action(tuTok, booking, "approve", nil), http.StatusOK)
 	if f := stu.nextEvent(); f.event != "notification" || f.json()["type"] != "BOOKING_APPROVED" {
 		t.Fatalf("student's frame = %+v; want BOOKING_APPROVED as the first notification", f)
 	}
@@ -316,7 +316,7 @@ func TestNotificationStreamDeliversOnlyToTheRecipient(t *testing.T) {
 func TestNotificationStreamIgnoresRolledBackNotifications(t *testing.T) {
 	e := newEnv(t)
 	student := e.login(mahasiswaA).accessToken
-	tu := e.openStream(e.adminToken())
+	tu := e.openStream(e.tuToken())
 	tu.nextEvent() // ready
 
 	// With the notification insert failing, the whole booking rolls back and nothing is announced.
@@ -377,7 +377,7 @@ func TestNotificationStreamKeepAliveAndLifetime(t *testing.T) {
 func TestNotificationStreamResyncsAfterListenerRecovers(t *testing.T) {
 	e := newEnv(t)
 	student := e.login(mahasiswaA).accessToken
-	tu := e.openStream(e.adminToken())
+	tu := e.openStream(e.tuToken())
 	tu.nextEvent() // ready
 
 	var killed int
