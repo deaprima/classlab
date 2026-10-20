@@ -8,16 +8,12 @@ import (
 	"fmt"
 	"time"
 
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db/dbgen"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-)
-
-const (
-	typeBlocked    = "BOOKING_BLOCKED"
-	refTypeBooking = "BOOKING"
 )
 
 // Settings are the BR-14 values from configuration.
@@ -30,7 +26,7 @@ type Settings struct {
 // Record stores one violation of kind for a booking. Recording the same kind for the same booking again
 // does nothing, so a job that runs twice cannot double the points. When the user's active points reach
 // the threshold the user is blocked and told, once; a block that already stands is not extended.
-func Record(ctx context.Context, q *dbgen.Queries, s Settings, userID, bookingID uuid.UUID, kind dbgen.ViolationKind, points int, now time.Time) error {
+func Record(ctx context.Context, q *dbgen.Queries, notifier *notifications.Notifier, s Settings, userID, bookingID uuid.UUID, kind dbgen.ViolationKind, points int, now time.Time) error {
 	n, err := q.InsertViolation(ctx, dbgen.InsertViolationParams{
 		UserID: userID, BookingID: bookingID, Kind: kind, Points: int32(points), CreatedAt: now,
 	})
@@ -57,14 +53,12 @@ func Record(ctx context.Context, q *dbgen.Queries, s Settings, userID, bookingID
 	if started == 0 {
 		return nil
 	}
-	return q.CreateNotification(ctx, dbgen.CreateNotificationParams{
-		UserID: userID, Type: typeBlocked, Title: "Pengajuan booking diblokir sementara",
+	return notifier.ToUser(ctx, q, userID, notifications.Message{
+		Type: notifications.TypeBookingBlocked, Title: "Pengajuan booking diblokir sementara",
 		Body: fmt.Sprintf("Poin pelanggaran Anda mencapai %d. Anda tidak dapat mengajukan booking baru sampai %s WIB; booking yang sudah disetujui tetap berlaku.",
 			total, clock.ToWIB(until).Format("02/01/2006 15:04")),
-		RefType:   pgtype.Text{String: refTypeBooking, Valid: true},
-		RefID:     pgtype.UUID{Bytes: bookingID, Valid: true},
-		CreatedAt: now,
-	})
+		RefType: notifications.RefBooking, RefID: bookingID,
+	}, now)
 }
 
 // ActivePoints sums the points that are not annulled and still inside the window.

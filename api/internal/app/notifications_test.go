@@ -24,7 +24,7 @@ func (e *env) insertNotification(userID, title string, createdAt time.Time, read
 	var id string
 	err := e.pool.QueryRow(e.t.Context(),
 		`INSERT INTO notifications (user_id, type, title, body, read_at, created_at)
-		 VALUES ($1, 'TEST', $2, 'isi', $3, $4) RETURNING id`, userID, title, readAt, createdAt).Scan(&id)
+		 VALUES ($1, 'BOOKING_EXPIRED', $2, 'isi', $3, $4) RETURNING id`, userID, title, readAt, createdAt).Scan(&id)
 	if err != nil {
 		e.t.Fatalf("inserting notification: %v", err)
 	}

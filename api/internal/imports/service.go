@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
@@ -36,10 +37,12 @@ type Service struct {
 	clock  clock.Clock
 	opts   Options
 	log    *slog.Logger
+
+	notifier *notifications.Notifier
 }
 
-func NewService(pool *db.Pool, hasher *password.Hasher, clk clock.Clock, opts Options, log *slog.Logger) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), hasher: hasher, clock: clk, opts: opts, log: log}
+func NewService(pool *db.Pool, hasher *password.Hasher, clk clock.Clock, notifier *notifications.Notifier, opts Options, log *slog.Logger) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), hasher: hasher, clock: clk, opts: opts, log: log, notifier: notifier}
 }
 
 // Limits returns the upload limits so the HTTP layer can bound the request body.

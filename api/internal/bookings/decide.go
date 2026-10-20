@@ -167,7 +167,7 @@ func (s *Service) decideWaiting(ctx context.Context, actor httpx.Principal, id u
 			return fmt.Errorf("reading updated booking: %w", err)
 		}
 		result = fromRow(view)
-		return notifyDecided(ctx, q, result, len(waiting), actor.UserID, reason, now)
+		return s.notifyDecided(ctx, q, result, len(waiting), actor.UserID, reason, now)
 	})
 	if err != nil {
 		return Booking{}, s.mapWriteError(err, "updating booking")
@@ -269,7 +269,7 @@ func (s *Service) Cancel(ctx context.Context, actor httpx.Principal, id uuid.UUI
 			}
 			// Cancelling an approved booking close to its start wastes the slot; the owner pays a point.
 			if !asManager && r.Status == dbgen.BookingStatusDISETUJUI && r.StartAt.Sub(now) < s.settings.LateCancel {
-				if err := violations.Record(ctx, q, s.settings.Violations, r.RequesterID, r.ID,
+				if err := violations.Record(ctx, q, s.notifier, s.settings.Violations, r.RequesterID, r.ID,
 					dbgen.ViolationKindBATALTERLAMBAT, s.settings.PointsLateCancel, now); err != nil {
 					return err
 				}
@@ -282,7 +282,7 @@ func (s *Service) Cancel(ctx context.Context, actor httpx.Principal, id uuid.UUI
 		}
 		result = fromRow(view)
 		if asManager {
-			return notifyDecided(ctx, q, result, len(cancel), actor.UserID, reason, now)
+			return s.notifyDecided(ctx, q, result, len(cancel), actor.UserID, reason, now)
 		}
 		return nil
 	})
