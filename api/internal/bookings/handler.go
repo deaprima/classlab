@@ -16,11 +16,12 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	svc           *Service
+	maxPhotoBytes int64 // bounds the check-out upload
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, maxPhotoBytes int64) *Handler {
+	return &Handler{svc: svc, maxPhotoBytes: maxPhotoBytes}
 }
 
 // Register mounts the booking routes on a router that is already behind httpx.Authenticate.
@@ -38,6 +39,13 @@ func (h *Handler) Register(r chi.Router) {
 	r.With(manager).Post("/{id}/approve", h.approve)
 	r.With(manager).Post("/{id}/reject", h.reject)
 	r.With(reader).Post("/{id}/cancel", h.cancel)
+	r.With(requester).Post("/{id}/check-out", h.checkOut)
+}
+
+// RegisterRoot mounts the routes that sit beside /bookings: the QR check-in and the check-out feed.
+func (h *Handler) RegisterRoot(r chi.Router) {
+	r.With(httpx.RequireRoles(httpx.RoleMahasiswa, httpx.RoleOrganisasi)).Post("/check-in", h.checkIn)
+	r.With(httpx.RequireRoles(httpx.RoleOB, httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin)).Get("/checkouts", h.checkouts)
 }
 
 type occurrenceRequest struct {

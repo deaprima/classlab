@@ -37,10 +37,12 @@ type Service struct {
 	q     *dbgen.Queries
 	clock clock.Clock
 	types *roomtypes.Store
+	// publicBaseURL is the frontend address the QR links to (the first CORS origin; see app.NewRouter).
+	publicBaseURL string
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types}
+func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store, publicBaseURL string) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types, publicBaseURL: strings.TrimRight(publicBaseURL, "/")}
 }
 
 type ListFilter struct {

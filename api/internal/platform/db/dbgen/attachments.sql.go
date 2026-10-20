@@ -203,3 +203,76 @@ func (q *Queries) ListAttachmentsByUploader(ctx context.Context, arg ListAttachm
 	}
 	return items, nil
 }
+
+const lockPurgeableAttachments = `-- name: LockPurgeableAttachments :many
+SELECT a.id, a.storage_path
+FROM attachments a
+WHERE a.purged_at IS NULL
+  AND (
+    (a.created_at < $1
+      AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.letter_attachment_id = a.id OR b.checkout_attachment_id = a.id)
+      AND NOT EXISTS (SELECT 1 FROM damage_reports d WHERE d.attachment_id = a.id))
+    OR (a.kind = 'PHOTO' AND a.created_at < $2
+      AND NOT EXISTS (SELECT 1 FROM damage_reports d WHERE d.attachment_id = a.id AND d.status <> 'SELESAI'))
+    OR (a.kind = 'LETTER' AND a.created_at < $3
+      AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.letter_attachment_id = a.id AND b.status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG')))
+  )
+ORDER BY a.created_at, a.id
+LIMIT $4
+FOR UPDATE OF a SKIP LOCKED
+`
+
+type LockPurgeableAttachmentsParams struct {
+	OrphanBefore time.Time `json:"orphan_before"`
+	PhotoBefore  time.Time `json:"photo_before"`
+	LetterBefore time.Time `json:"letter_before"`
+	Batch        int32     `json:"batch"`
+}
+
+type LockPurgeableAttachmentsRow struct {
+	ID          uuid.UUID `json:"id"`
+	StoragePath string    `json:"storage_path"`
+}
+
+// Files due for deletion (BR-13 c, BR-16, BR-19), locked so two instances of the job do not both take them.
+//   - orphans: older than orphan_before and referred to by nothing;
+//   - photos older than photo_before, unless a report that is not SELESAI still shows them;
+//   - letters older than letter_before, unless a live booking (MENUNGGU, DISETUJUI, BERLANGSUNG) still needs them.
+func (q *Queries) LockPurgeableAttachments(ctx context.Context, arg LockPurgeableAttachmentsParams) ([]LockPurgeableAttachmentsRow, error) {
+	rows, err := q.db.Query(ctx, lockPurgeableAttachments,
+		arg.OrphanBefore,
+		arg.PhotoBefore,
+		arg.LetterBefore,
+		arg.Batch,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockPurgeableAttachmentsRow{}
+	for rows.Next() {
+		var i LockPurgeableAttachmentsRow
+		if err := rows.Scan(&i.ID, &i.StoragePath); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markAttachmentsPurged = `-- name: MarkAttachmentsPurged :exec
+UPDATE attachments SET purged_at = $1 WHERE id = ANY($2::uuid[])
+`
+
+type MarkAttachmentsPurgedParams struct {
+	Now pgtype.Timestamptz `json:"now"`
+	Ids []uuid.UUID        `json:"ids"`
+}
+
+func (q *Queries) MarkAttachmentsPurged(ctx context.Context, arg MarkAttachmentsPurgedParams) error {
+	_, err := q.db.Exec(ctx, markAttachmentsPurged, arg.Now, arg.Ids)
+	return err
+}

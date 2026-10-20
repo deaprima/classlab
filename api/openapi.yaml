@@ -1125,6 +1125,240 @@ paths:
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
 
+  /rooms/{id}/qr:
+    get:
+      summary: QR ruang untuk dicetak (pengelola tipe ruang, ADMIN)
+      description: >
+        Mengembalikan `url` yang dikodekan pada QR (`<frontend>/check-in?room=<kode>&t=<token>`), tokennya, dan waktu
+        penggantian terakhir. Token rahasia: hanya TU/KALAB yang mengelola tipe ruang itu dan ADMIN yang boleh
+        melihatnya (403 selain itu), tidak pernah ada di respons ruang lain, dan tidak masuk log atau audit log.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoomQR' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /rooms/{id}/qr/rotate:
+    post:
+      summary: Ganti token QR ruang (pengelola tipe ruang, ADMIN)
+      description: >
+        Membuat token baru; token lama langsung tidak berlaku (check-in dengan token lama dijawab 422 `QR_INVALID`).
+        Dicatat di audit log (`ROOM_QR_ROTATED`) tanpa token.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoomQR' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /check-in:
+    post:
+      summary: Check-in lewat QR ruang (MAHASISWA, ORGANISASI)
+      description: >
+        Mencari booking `DISETUJUI` milik pengguna di ruang itu yang jendela check-in-nya memuat waktu server
+        (`start_at - CHECKIN_EARLY_MIN` sampai `start_at + CHECKIN_LATE_MIN`, batas termasuk). Bila ada lebih dari
+        satu, yang mulai paling awal dipakai. Hasilnya booking `BERLANGSUNG` dan `previous_checkout` (kondisi ruang
+        saat ditinggalkan pengguna sebelumnya, atau null). `room_code` yang tidak dikenal dan token yang salah
+        sama-sama dijawab 422 `QR_INVALID`. Tidak ada booking yang memenuhi syarat (bukan milik pengguna, bukan
+        `DISETUJUI`, di luar jendela, atau sudah check-in) dijawab 409 `NO_ELIGIBLE_BOOKING`; bila pengguna punya
+        booking berikutnya di ruang itu, `details` memuat `next_window.opens_at` dan `next_window.closes_at`.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [room_code, qr_token]
+              properties:
+                room_code: { type: string }
+                qr_token: { type: string }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckInResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /bookings/{id}/check-out:
+    post:
+      summary: Check-out dengan foto kondisi ruang (pemilik)
+      description: >
+        `multipart/form-data`: `condition` (`NORMAL` atau `ADA_MASALAH`), `photo` (wajib; JPEG, PNG, atau WebP
+        sampai `MAX_UPLOAD_MB`, didekode lalu disimpan ulang sebagai JPEG tanpa metadata), `note` (wajib bila
+        `ADA_MASALAH`, maksimal 2000 karakter). Waktu check-out dari server. Booking harus `BERLANGSUNG` (409
+        `INVALID_STATE` selain itu); booking milik orang lain dijawab 404. Check-out sebelum `end_at` melepas sisa
+        slot. Bila `ADA_MASALAH`, dalam transaksi yang sama dibuat laporan kerusakan (status `BARU`, memakai foto
+        yang sama) dan notifikasi `REPORT_CREATED` ke approver tipe ruang; `report_id` berisi id laporan itu.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [condition, photo]
+              properties:
+                condition: { $ref: '#/components/schemas/CheckoutCondition' }
+                note: { type: string, maxLength: 2000 }
+                photo: { type: string, format: binary }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckOutResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /checkouts:
+    get:
+      summary: Daftar check-out terbaru (OB, TU, KALAB, ADMIN)
+      description: >
+        Gambaran bagaimana ruang ditinggalkan, terbaru lebih dulu. OB dan ADMIN melihat semua ruang; TU dan KALAB
+        hanya tipe ruang yang mereka setujui. Fotonya dibuka dengan `GET /attachments/{id}`.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: room_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          description: Check-out pada atau setelah waktu ini (RFC 3339)
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Check-out sebelum waktu ini (RFC 3339)
+          schema: { type: string, format: date-time }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Checkout' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /users/{id}/violations:
+    get:
+      summary: Riwayat pelanggaran pemohon (TU, KALAB, ADMIN)
+      description: >
+        Pelanggaran satu pemohon (MAHASISWA atau ORGANISASI), terbaru lebih dulu, beserta total poin aktif
+        (tidak di-annul dan di dalam `VIOLATION_WINDOW_DAYS`) dan `booking_blocked_until` bila masih berlaku.
+        Akun yang bukan pemohon dijawab 404.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta, active_points, booking_blocked_until]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Violation' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+                  active_points: { type: integer }
+                  booking_blocked_until: { type: [string, 'null'], format: date-time }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /violations/{id}/annul:
+    post:
+      summary: Batalkan (annul) satu pelanggaran (ADMIN)
+      description: >
+        Poinnya tidak dihitung lagi. Tidak mencabut blokir yang sudah berjalan; itu dilakukan lewat
+        `PATCH /users/{id}` (`clear_booking_block`). `reason` 5 sampai 500 karakter. Pelanggaran yang sudah di-annul
+        dijawab 409 `INVALID_STATE`. Dicatat di audit log (`VIOLATION_ANNULLED`).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Violation' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
   /notifications:
     get:
       summary: Daftar notifikasi pengguna
@@ -1723,10 +1957,12 @@ components:
         Kode error mesin-baca. 400 BAD_REQUEST; 401 UNAUTHENTICATED; 403 FORBIDDEN, PASSWORD_CHANGE_REQUIRED,
         ROOM_TYPE_NOT_ALLOWED, BOOKING_BLOCKED (pemohon diblokir karena poin pelanggaran; `details[0]` adalah
         `{field: blocked_until, message: <date-time>}`); 404 NOT_FOUND; 405 METHOD_NOT_ALLOWED; 409 BOOKING_CONFLICT,
-        INVALID_STATE, QUOTA_EXCEEDED (batas pengajuan aktif terlampaui), EDIT_WINDOW_CLOSED (lewat batas
+        INVALID_STATE, NO_ELIGIBLE_BOOKING (check-in: tidak ada booking `DISETUJUI` milik pengguna di jendela
+        check-in; `details` dapat memuat `next_window.opens_at` dan `next_window.closes_at`),
+        QUOTA_EXCEEDED (batas pengajuan aktif terlampaui), EDIT_WINDOW_CLOSED (lewat batas
         pengubahan booking), ROOM_INACTIVE, ROOM_HAS_ACTIVE_BOOKINGS, IMPORT_PLAN_CHANGED, IMPORT_ALREADY_APPLIED;
         410 GONE (berkas sudah dihapus oleh kebijakan retensi); 422 VALIDATION_ERROR,
-        IMPORT_INVALID, OUTSIDE_OPERATING_HOURS (booking di luar jam operasional ruang; `details` berisi
+        IMPORT_INVALID, QR_INVALID (token QR tidak cocok dengan ruang), OUTSIDE_OPERATING_HOURS (booking di luar jam operasional ruang; `details` berisi
         `open_time` dan `close_time` efektif); 429 RATE_LIMITED; 500 INTERNAL_SERVER_ERROR; 503 SERVICE_BUSY.
       enum:
         - BAD_REQUEST
@@ -1739,6 +1975,7 @@ components:
         - METHOD_NOT_ALLOWED
         - BOOKING_CONFLICT
         - INVALID_STATE
+        - NO_ELIGIBLE_BOOKING
         - QUOTA_EXCEEDED
         - EDIT_WINDOW_CLOSED
         - GONE
@@ -1748,6 +1985,7 @@ components:
         - IMPORT_ALREADY_APPLIED
         - VALIDATION_ERROR
         - IMPORT_INVALID
+        - QR_INVALID
         - OUTSIDE_OPERATING_HOURS
         - RATE_LIMITED
         - INTERNAL_SERVER_ERROR
@@ -1796,6 +2034,73 @@ components:
     RoomType:
       type: string
       enum: [KELAS, LAB, AUDITORIUM, RUANG_UJIAN, RUANG_SIDANG]
+
+    CheckoutCondition:
+      type: string
+      enum: [NORMAL, ADA_MASALAH]
+
+    RoomQR:
+      type: object
+      required: [url, qr_token, rotated_at]
+      properties:
+        url: { type: string, description: 'Alamat yang dikodekan pada QR: `<frontend>/check-in?room=<kode>&t=<token>`' }
+        qr_token: { type: string }
+        rotated_at: { type: string, format: date-time }
+
+    PreviousCheckout:
+      type: object
+      required: [checked_out_at, condition, attachment_id]
+      properties:
+        checked_out_at: { type: string, format: date-time }
+        condition: { $ref: '#/components/schemas/CheckoutCondition' }
+        attachment_id: { type: string, format: uuid, description: 'Foto check-out; dibuka lewat `GET /attachments/{id}` (410 bila sudah dihapus retensi)' }
+
+    CheckInResult:
+      type: object
+      required: [booking, previous_checkout]
+      properties:
+        booking: { $ref: '#/components/schemas/Booking' }
+        previous_checkout:
+          oneOf:
+            - { $ref: '#/components/schemas/PreviousCheckout' }
+            - { type: 'null' }
+
+    CheckOutResult:
+      type: object
+      required: [booking, report_id]
+      properties:
+        booking: { $ref: '#/components/schemas/Booking' }
+        report_id: { type: [string, 'null'], format: uuid, description: 'Terisi bila `condition` `ADA_MASALAH`' }
+
+    Checkout:
+      type: object
+      required: [booking_id, room_id, room_code, room_name, room_type, checked_out_at, condition, note, attachment_id]
+      properties:
+        booking_id: { type: string, format: uuid }
+        room_id: { type: string, format: uuid }
+        room_code: { type: string }
+        room_name: { type: string }
+        room_type: { $ref: '#/components/schemas/RoomType' }
+        checked_out_at: { type: string, format: date-time }
+        condition: { $ref: '#/components/schemas/CheckoutCondition' }
+        note: { type: [string, 'null'] }
+        attachment_id: { type: string, format: uuid }
+
+    Violation:
+      type: object
+      required: [id, booking_id, kind, points, active, annulled_at, annulled_by, annul_reason, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        booking_id: { type: string, format: uuid }
+        kind: { type: string, enum: [TIDAK_HADIR, TANPA_CHECKOUT, BATAL_TERLAMBAT] }
+        points: { type: integer, minimum: 1 }
+        active: { type: boolean, description: Poinnya masih dihitung (tidak di-annul dan di dalam jendela waktu) }
+        annulled_at: { type: [string, 'null'], format: date-time }
+        annulled_by: { type: [string, 'null'], format: uuid }
+        annul_reason: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        room_code: { type: string, description: Hanya pada daftar }
+        booking_start_at: { type: string, format: date-time, description: Hanya pada daftar }
 
     BookingStatus:
       type: string
@@ -2179,6 +2484,14 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/BookingLetter' }
             - { type: 'null' }
+        checked_in_at: { type: [string, 'null'], format: date-time, description: Waktu check-in menurut server (BR-11) }
+        checked_out_at: { type: [string, 'null'], format: date-time, description: Waktu check-out menurut server (BR-12) }
+        checkout_condition:
+          oneOf:
+            - { $ref: '#/components/schemas/CheckoutCondition' }
+            - { type: 'null' }
+        checkout_note: { type: [string, 'null'] }
+        checkout_attachment_id: { type: [string, 'null'], format: uuid, description: 'Foto check-out; dibuka lewat `GET /attachments/{id}`' }
         created_at: { type: string, format: date-time }
         requester_summary:
           allOf:

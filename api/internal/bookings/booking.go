@@ -64,7 +64,13 @@ type Booking struct {
 	ExpiresAt       *time.Time `json:"expires_at"`
 	EditedAt        *time.Time `json:"edited_at"`
 	Letter          *Letter    `json:"letter"`
-	CreatedAt       time.Time  `json:"created_at"`
+	// Use of the room (BR-11, BR-12). The checkout photo is opened through GET /attachments/{id}.
+	CheckedInAt          *time.Time `json:"checked_in_at"`
+	CheckedOutAt         *time.Time `json:"checked_out_at"`
+	CheckoutCondition    *string    `json:"checkout_condition"`
+	CheckoutNote         *string    `json:"checkout_note"`
+	CheckoutAttachmentID *uuid.UUID `json:"checkout_attachment_id"`
+	CreatedAt            time.Time  `json:"created_at"`
 	// RequesterSummary is only on the detail an approver reads.
 	RequesterSummary *RequesterSummary `json:"requester_summary,omitempty"`
 }
@@ -167,6 +173,25 @@ func fromRow(r dbgen.GetBookingRow) Booking {
 			l.LetterNumber = &r.LetterNumber.String
 		}
 		b.Letter = &l
+	}
+	if r.CheckedInAt.Valid {
+		t := clock.ToWIB(r.CheckedInAt.Time)
+		b.CheckedInAt = &t
+	}
+	if r.CheckedOutAt.Valid {
+		t := clock.ToWIB(r.CheckedOutAt.Time)
+		b.CheckedOutAt = &t
+	}
+	if r.CheckoutCondition.Valid {
+		s := string(r.CheckoutCondition.CheckoutCondition)
+		b.CheckoutCondition = &s
+	}
+	if r.CheckoutNote.Valid {
+		b.CheckoutNote = &r.CheckoutNote.String
+	}
+	if r.CheckoutAttachmentID.Valid {
+		id := uuid.UUID(r.CheckoutAttachmentID.Bytes)
+		b.CheckoutAttachmentID = &id
 	}
 	return b
 }

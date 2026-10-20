@@ -36,3 +36,27 @@ WHERE uploaded_by = $1 AND kind = sqlc.arg(kind)::attachment_kind AND purged_at 
 -- Used when a booking names a letter: it must exist, be a letter, be the requester's own and not be purged.
 -- name: GetLetterForRequester :one
 SELECT id, uploaded_by, kind, purged_at FROM attachments WHERE id = $1;
+
+-- Files due for deletion (BR-13 c, BR-16, BR-19), locked so two instances of the job do not both take them.
+--  * orphans: older than orphan_before and referred to by nothing;
+--  * photos older than photo_before, unless a report that is not SELESAI still shows them;
+--  * letters older than letter_before, unless a live booking (MENUNGGU, DISETUJUI, BERLANGSUNG) still needs them.
+-- name: LockPurgeableAttachments :many
+SELECT a.id, a.storage_path
+FROM attachments a
+WHERE a.purged_at IS NULL
+  AND (
+    (a.created_at < sqlc.arg(orphan_before)
+      AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.letter_attachment_id = a.id OR b.checkout_attachment_id = a.id)
+      AND NOT EXISTS (SELECT 1 FROM damage_reports d WHERE d.attachment_id = a.id))
+    OR (a.kind = 'PHOTO' AND a.created_at < sqlc.arg(photo_before)
+      AND NOT EXISTS (SELECT 1 FROM damage_reports d WHERE d.attachment_id = a.id AND d.status <> 'SELESAI'))
+    OR (a.kind = 'LETTER' AND a.created_at < sqlc.arg(letter_before)
+      AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.letter_attachment_id = a.id AND b.status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG')))
+  )
+ORDER BY a.created_at, a.id
+LIMIT sqlc.arg(batch)
+FOR UPDATE OF a SKIP LOCKED;
+
+-- name: MarkAttachmentsPurged :exec
+UPDATE attachments SET purged_at = sqlc.arg(now) WHERE id = ANY(sqlc.arg(ids)::uuid[]);

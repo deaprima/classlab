@@ -29,6 +29,8 @@ func (h *Handler) Register(r chi.Router) {
 		r.Post("/", h.create)
 		r.Patch("/{id}", h.update)
 		r.Delete("/{id}", h.delete)
+		r.Get("/{id}/qr", h.qr)
+		r.Post("/{id}/qr/rotate", h.rotateQR)
 	})
 }
 
@@ -168,4 +170,32 @@ func parseID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+func (h *Handler) qr(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	out, err := h.svc.QR(r.Context(), actor, id)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) rotateQR(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	out, err := h.svc.RotateQR(r.Context(), actor, id)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }

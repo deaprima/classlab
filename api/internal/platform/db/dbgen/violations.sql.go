@@ -13,6 +13,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const annulViolation = `-- name: AnnulViolation :one
+UPDATE violations SET annulled_at = $1, annulled_by = $2, annul_reason = $3
+WHERE id = $4 AND annulled_at IS NULL
+RETURNING id, user_id, booking_id, kind, points, annulled_at, annulled_by, annul_reason, created_at
+`
+
+type AnnulViolationParams struct {
+	Now        pgtype.Timestamptz `json:"now"`
+	AnnulledBy pgtype.UUID        `json:"annulled_by"`
+	Reason     pgtype.Text        `json:"reason"`
+	ID         uuid.UUID          `json:"id"`
+}
+
+func (q *Queries) AnnulViolation(ctx context.Context, arg AnnulViolationParams) (Violation, error) {
+	row := q.db.QueryRow(ctx, annulViolation,
+		arg.Now,
+		arg.AnnulledBy,
+		arg.Reason,
+		arg.ID,
+	)
+	var i Violation
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BookingID,
+		&i.Kind,
+		&i.Points,
+		&i.AnnulledAt,
+		&i.AnnulledBy,
+		&i.AnnulReason,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const blockUserUntil = `-- name: BlockUserUntil :execrows
 UPDATE users SET booking_blocked_until = $1, updated_at = $2
 WHERE id = $3 AND (booking_blocked_until IS NULL OR booking_blocked_until < $1)
@@ -32,6 +67,17 @@ func (q *Queries) BlockUserUntil(ctx context.Context, arg BlockUserUntilParams) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const countUserViolations = `-- name: CountUserViolations :one
+SELECT count(*) FROM violations WHERE user_id = $1
+`
+
+func (q *Queries) CountUserViolations(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUserViolations, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const insertViolation = `-- name: InsertViolation :execrows
@@ -62,6 +108,90 @@ func (q *Queries) InsertViolation(ctx context.Context, arg InsertViolationParams
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const listUserViolations = `-- name: ListUserViolations :many
+SELECT v.id, v.user_id, v.booking_id, v.kind, v.points, v.annulled_at, v.annulled_by, v.annul_reason, v.created_at,
+       r.code AS room_code, b.start_at AS booking_start_at
+FROM violations v
+JOIN bookings b ON b.id = v.booking_id
+JOIN rooms r ON r.id = b.room_id
+WHERE v.user_id = $1
+ORDER BY v.created_at DESC, v.id
+LIMIT $3 OFFSET $2
+`
+
+type ListUserViolationsParams struct {
+	UserID     uuid.UUID `json:"user_id"`
+	PageOffset int32     `json:"page_offset"`
+	PageLimit  int32     `json:"page_limit"`
+}
+
+type ListUserViolationsRow struct {
+	ID             uuid.UUID          `json:"id"`
+	UserID         uuid.UUID          `json:"user_id"`
+	BookingID      uuid.UUID          `json:"booking_id"`
+	Kind           ViolationKind      `json:"kind"`
+	Points         int32              `json:"points"`
+	AnnulledAt     pgtype.Timestamptz `json:"annulled_at"`
+	AnnulledBy     pgtype.UUID        `json:"annulled_by"`
+	AnnulReason    pgtype.Text        `json:"annul_reason"`
+	CreatedAt      time.Time          `json:"created_at"`
+	RoomCode       string             `json:"room_code"`
+	BookingStartAt time.Time          `json:"booking_start_at"`
+}
+
+func (q *Queries) ListUserViolations(ctx context.Context, arg ListUserViolationsParams) ([]ListUserViolationsRow, error) {
+	rows, err := q.db.Query(ctx, listUserViolations, arg.UserID, arg.PageOffset, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserViolationsRow{}
+	for rows.Next() {
+		var i ListUserViolationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.BookingID,
+			&i.Kind,
+			&i.Points,
+			&i.AnnulledAt,
+			&i.AnnulledBy,
+			&i.AnnulReason,
+			&i.CreatedAt,
+			&i.RoomCode,
+			&i.BookingStartAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockViolation = `-- name: LockViolation :one
+SELECT id, user_id, booking_id, kind, points, annulled_at, annulled_by, annul_reason, created_at FROM violations WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockViolation(ctx context.Context, id uuid.UUID) (Violation, error) {
+	row := q.db.QueryRow(ctx, lockViolation, id)
+	var i Violation
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BookingID,
+		&i.Kind,
+		&i.Points,
+		&i.AnnulledAt,
+		&i.AnnulledBy,
+		&i.AnnulReason,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const sumActiveViolationPoints = `-- name: SumActiveViolationPoints :one
