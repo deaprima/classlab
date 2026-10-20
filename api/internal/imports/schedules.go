@@ -275,7 +275,7 @@ func cancelForImport(ctx context.Context, q *dbgen.Queries, actor httpx.Principa
 	if err := q.CreateBookingEvent(ctx, dbgen.CreateBookingEventParams{
 		BookingID: c.BookingID, ActorID: pgtype.UUID{Bytes: actor.UserID, Valid: true},
 		FromStatus: dbgen.NullBookingStatus{BookingStatus: c.Status, Valid: true},
-		ToStatus:   dbgen.BookingStatusDIBATALKAN, Reason: pgtype.Text{String: reason, Valid: true}, CreatedAt: now,
+		ToStatus:   dbgen.BookingStatusDIBATALKAN, Reason: pgtype.Text{String: reason, Valid: true}, Kind: "STATUS", CreatedAt: now,
 	}); err != nil {
 		return fmt.Errorf("recording cancellation of booking %s: %w", c.BookingID, err)
 	}

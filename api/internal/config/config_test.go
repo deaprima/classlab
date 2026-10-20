@@ -4,18 +4,6 @@ import (
 	"testing"
 )
 
-func TestBookingRulesRequiresAPositiveQuota(t *testing.T) {
-	r, err := (&Config{BookingMaxActivePerUser: 5}).BookingRules()
-	if err != nil || r.MaxActivePerUser != 5 {
-		t.Errorf("quota 5: %+v, %v", r, err)
-	}
-	for _, n := range []int{0, -1} {
-		if _, err := (&Config{BookingMaxActivePerUser: n}).BookingRules(); err == nil {
-			t.Errorf("quota %d accepted", n)
-		}
-	}
-}
-
 func TestValidateCORSOrigins(t *testing.T) {
 	for _, ok := range [][]string{
 		{"http://localhost:5173"},

@@ -1,6 +1,6 @@
 -- Reads that serve the API join the room and reporter in one query, so list pages never go N+1.
 -- name: GetReport :one
-SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
+SELECT d.id, d.room_id, d.reporter_id, d.description, d.attachment_id, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
        r.open_time AS room_open_time, r.close_time AS room_close_time,
@@ -11,7 +11,7 @@ JOIN users u ON u.id = d.reporter_id
 WHERE d.id = $1;
 
 -- name: ListReports :many
-SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
+SELECT d.id, d.room_id, d.reporter_id, d.description, d.attachment_id, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
        r.open_time AS room_open_time, r.close_time AS room_close_time,
@@ -41,15 +41,15 @@ WHERE (sqlc.narg(reporter_id)::uuid IS NULL OR d.reporter_id = sqlc.narg(reporte
 
 -- Taken before a status change so two concurrent updates cannot both pass the one-step check.
 -- name: LockReport :one
-SELECT id, room_id, reporter_id, description, photo_path, status, handled_by, created_at, updated_at
+SELECT id, room_id, reporter_id, description, attachment_id, status, handled_by, created_at, updated_at
 FROM damage_reports
 WHERE id = $1
 FOR UPDATE;
 
 -- name: CreateReport :one
-INSERT INTO damage_reports (room_id, reporter_id, description, photo_path, created_at, updated_at)
+INSERT INTO damage_reports (room_id, reporter_id, description, attachment_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $5)
-RETURNING id, room_id, reporter_id, description, photo_path, status, handled_by, created_at, updated_at;
+RETURNING id, room_id, reporter_id, description, attachment_id, status, handled_by, created_at, updated_at;
 
 -- name: UpdateReportStatus :exec
 UPDATE damage_reports SET

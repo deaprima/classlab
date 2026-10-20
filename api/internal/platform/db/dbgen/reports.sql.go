@@ -47,34 +47,46 @@ func (q *Queries) CountReports(ctx context.Context, arg CountReportsParams) (int
 }
 
 const createReport = `-- name: CreateReport :one
-INSERT INTO damage_reports (room_id, reporter_id, description, photo_path, created_at, updated_at)
+INSERT INTO damage_reports (room_id, reporter_id, description, attachment_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $5)
-RETURNING id, room_id, reporter_id, description, photo_path, status, handled_by, created_at, updated_at
+RETURNING id, room_id, reporter_id, description, attachment_id, status, handled_by, created_at, updated_at
 `
 
 type CreateReportParams struct {
-	RoomID      uuid.UUID   `json:"room_id"`
-	ReporterID  uuid.UUID   `json:"reporter_id"`
-	Description string      `json:"description"`
-	PhotoPath   pgtype.Text `json:"photo_path"`
-	CreatedAt   time.Time   `json:"created_at"`
+	RoomID       uuid.UUID   `json:"room_id"`
+	ReporterID   uuid.UUID   `json:"reporter_id"`
+	Description  string      `json:"description"`
+	AttachmentID pgtype.UUID `json:"attachment_id"`
+	CreatedAt    time.Time   `json:"created_at"`
 }
 
-func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (DamageReport, error) {
+type CreateReportRow struct {
+	ID           uuid.UUID    `json:"id"`
+	RoomID       uuid.UUID    `json:"room_id"`
+	ReporterID   uuid.UUID    `json:"reporter_id"`
+	Description  string       `json:"description"`
+	AttachmentID pgtype.UUID  `json:"attachment_id"`
+	Status       ReportStatus `json:"status"`
+	HandledBy    pgtype.UUID  `json:"handled_by"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+}
+
+func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (CreateReportRow, error) {
 	row := q.db.QueryRow(ctx, createReport,
 		arg.RoomID,
 		arg.ReporterID,
 		arg.Description,
-		arg.PhotoPath,
+		arg.AttachmentID,
 		arg.CreatedAt,
 	)
-	var i DamageReport
+	var i CreateReportRow
 	err := row.Scan(
 		&i.ID,
 		&i.RoomID,
 		&i.ReporterID,
 		&i.Description,
-		&i.PhotoPath,
+		&i.AttachmentID,
 		&i.Status,
 		&i.HandledBy,
 		&i.CreatedAt,
@@ -110,7 +122,7 @@ func (q *Queries) CreateReportEvent(ctx context.Context, arg CreateReportEventPa
 }
 
 const getReport = `-- name: GetReport :one
-SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
+SELECT d.id, d.room_id, d.reporter_id, d.description, d.attachment_id, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
        r.open_time AS room_open_time, r.close_time AS room_close_time,
@@ -126,7 +138,7 @@ type GetReportRow struct {
 	RoomID             uuid.UUID    `json:"room_id"`
 	ReporterID         uuid.UUID    `json:"reporter_id"`
 	Description        string       `json:"description"`
-	PhotoPath          pgtype.Text  `json:"photo_path"`
+	AttachmentID       pgtype.UUID  `json:"attachment_id"`
 	Status             ReportStatus `json:"status"`
 	HandledBy          pgtype.UUID  `json:"handled_by"`
 	CreatedAt          time.Time    `json:"created_at"`
@@ -152,7 +164,7 @@ func (q *Queries) GetReport(ctx context.Context, id uuid.UUID) (GetReportRow, er
 		&i.RoomID,
 		&i.ReporterID,
 		&i.Description,
-		&i.PhotoPath,
+		&i.AttachmentID,
 		&i.Status,
 		&i.HandledBy,
 		&i.CreatedAt,
@@ -211,7 +223,7 @@ func (q *Queries) ListReportEvents(ctx context.Context, reportID uuid.UUID) ([]R
 }
 
 const listReports = `-- name: ListReports :many
-SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
+SELECT d.id, d.room_id, d.reporter_id, d.description, d.attachment_id, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
        r.open_time AS room_open_time, r.close_time AS room_close_time,
@@ -244,7 +256,7 @@ type ListReportsRow struct {
 	RoomID             uuid.UUID    `json:"room_id"`
 	ReporterID         uuid.UUID    `json:"reporter_id"`
 	Description        string       `json:"description"`
-	PhotoPath          pgtype.Text  `json:"photo_path"`
+	AttachmentID       pgtype.UUID  `json:"attachment_id"`
 	Status             ReportStatus `json:"status"`
 	HandledBy          pgtype.UUID  `json:"handled_by"`
 	CreatedAt          time.Time    `json:"created_at"`
@@ -283,7 +295,7 @@ func (q *Queries) ListReports(ctx context.Context, arg ListReportsParams) ([]Lis
 			&i.RoomID,
 			&i.ReporterID,
 			&i.Description,
-			&i.PhotoPath,
+			&i.AttachmentID,
 			&i.Status,
 			&i.HandledBy,
 			&i.CreatedAt,
@@ -310,22 +322,34 @@ func (q *Queries) ListReports(ctx context.Context, arg ListReportsParams) ([]Lis
 }
 
 const lockReport = `-- name: LockReport :one
-SELECT id, room_id, reporter_id, description, photo_path, status, handled_by, created_at, updated_at
+SELECT id, room_id, reporter_id, description, attachment_id, status, handled_by, created_at, updated_at
 FROM damage_reports
 WHERE id = $1
 FOR UPDATE
 `
 
+type LockReportRow struct {
+	ID           uuid.UUID    `json:"id"`
+	RoomID       uuid.UUID    `json:"room_id"`
+	ReporterID   uuid.UUID    `json:"reporter_id"`
+	Description  string       `json:"description"`
+	AttachmentID pgtype.UUID  `json:"attachment_id"`
+	Status       ReportStatus `json:"status"`
+	HandledBy    pgtype.UUID  `json:"handled_by"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+}
+
 // Taken before a status change so two concurrent updates cannot both pass the one-step check.
-func (q *Queries) LockReport(ctx context.Context, id uuid.UUID) (DamageReport, error) {
+func (q *Queries) LockReport(ctx context.Context, id uuid.UUID) (LockReportRow, error) {
 	row := q.db.QueryRow(ctx, lockReport, id)
-	var i DamageReport
+	var i LockReportRow
 	err := row.Scan(
 		&i.ID,
 		&i.RoomID,
 		&i.ReporterID,
 		&i.Description,
-		&i.PhotoPath,
+		&i.AttachmentID,
 		&i.Status,
 		&i.HandledBy,
 		&i.CreatedAt,

@@ -23,7 +23,7 @@ import (
 // --- per-student booking quota ----------------------------------------------------------------
 
 func TestBookingQuotaPerStudent(t *testing.T) {
-	e := newEnv(t, func(c *config.Config) { c.BookingMaxActivePerUser = 5 })
+	e := newEnv(t, func(c *config.Config) { c.Business.MaxActiveBookings = 5 })
 	a, b := e.login(mahasiswaA).accessToken, e.login(mahasiswaB).accessToken
 	tu := e.tuToken()
 
@@ -38,11 +38,10 @@ func TestBookingQuotaPerStudent(t *testing.T) {
 	}
 
 	res := book(a)
-	if res.Code != http.StatusUnprocessableEntity || res.errorCode() != "VALIDATION_ERROR" {
-		t.Fatalf("sixth booking: %d %s; want 422 VALIDATION_ERROR", res.Code, res.Body.String())
+	if res.Code != http.StatusConflict || res.errorCode() != "QUOTA_EXCEEDED" {
+		t.Fatalf("sixth booking: %d %s; want 409 QUOTA_EXCEEDED", res.Code, res.Body.String())
 	}
-	details := res.json()["error"].(map[string]any)["details"].([]any)
-	if msg, _ := details[0].(map[string]any)["message"].(string); !strings.Contains(msg, "5 pengajuan aktif") {
+	if msg, _ := res.json()["error"].(map[string]any)["message"].(string); !strings.Contains(msg, "5 pengajuan aktif") {
 		t.Errorf("message = %q; want it to state the limit", msg)
 	}
 	if f := fieldsOf(res); len(f) != 0 {
@@ -55,12 +54,12 @@ func TestBookingQuotaPerStudent(t *testing.T) {
 	// Cancelling frees a place; approving does not (an approved booking still holds a room).
 	mustStatus(t, e.action(a, mine[0], "cancel", nil), http.StatusOK)
 	mustStatus(t, book(a), http.StatusCreated)
-	if res := book(a); res.Code != http.StatusUnprocessableEntity {
-		t.Errorf("after refilling: %d; want 422", res.Code)
+	if res := book(a); res.Code != http.StatusConflict {
+		t.Errorf("after refilling: %d; want 409", res.Code)
 	}
 	mustStatus(t, e.action(tu, mine[1], "approve", nil), http.StatusOK)
-	if res := book(a); res.Code != http.StatusUnprocessableEntity {
-		t.Errorf("an approved booking must still count: %d; want 422", res.Code)
+	if res := book(a); res.Code != http.StatusConflict {
+		t.Errorf("an approved booking must still count: %d; want 409", res.Code)
 	}
 
 	// Rejection frees a place too.
@@ -74,27 +73,27 @@ func TestBookingQuotaPerStudent(t *testing.T) {
 	for range 4 {
 		mustStatus(t, book(b), http.StatusCreated)
 	}
-	if res := book(b); res.Code != http.StatusUnprocessableEntity {
+	if res := book(b); res.Code != http.StatusConflict {
 		t.Errorf("student B's fifth live booking was allowed to be followed by a sixth: %d", res.Code)
 	}
 }
 
 // A booking in progress still holds a place: BERLANGSUNG counts towards the quota like MENUNGGU and DISETUJUI.
 func TestBookingInProgressCountsTowardsTheQuota(t *testing.T) {
-	e := newEnv(t, func(c *config.Config) { c.BookingMaxActivePerUser = 2 })
+	e := newEnv(t, func(c *config.Config) { c.Business.MaxActiveBookings = 2 })
 	tok := e.login(mahasiswaA).accessToken
 
 	// 09:00-12:00 WIB today, so it has not ended at the test clock's 10:00 WIB.
 	e.insertBooking(e.freshRoom(), mahasiswaA, "BERLANGSUNG", "Sedang dipakai", at("2026-10-14", "09:00"), at("2026-10-14", "12:00"))
 	mustStatus(t, e.postBooking(tok, e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil), http.StatusCreated)
-	if res := e.postBooking(tok, e.freshRoom(), at(tue, "10:00"), at(tue, "11:00"), nil); res.Code != http.StatusUnprocessableEntity {
-		t.Errorf("a third live booking, one of them in progress: %d %s; want 422", res.Code, res.Body.String())
+	if res := e.postBooking(tok, e.freshRoom(), at(tue, "10:00"), at(tue, "11:00"), nil); res.Code != http.StatusConflict {
+		t.Errorf("a third live booking, one of them in progress: %d %s; want 409", res.Code, res.Body.String())
 	}
 }
 
 // A retry of a booking the student already made must return it even when they are at the limit.
 func TestBookingQuotaDoesNotBlockIdempotentRetries(t *testing.T) {
-	e := newEnv(t, func(c *config.Config) { c.BookingMaxActivePerUser = 2 })
+	e := newEnv(t, func(c *config.Config) { c.Business.MaxActiveBookings = 2 })
 	tok := e.login(mahasiswaA).accessToken
 	room := e.freshRoom()
 	key := func(r *http.Request) { r.Header.Set("Idempotency-Key", "retry-1") }
@@ -102,8 +101,8 @@ func TestBookingQuotaDoesNotBlockIdempotentRetries(t *testing.T) {
 	first := e.postBooking(tok, room, at(tue, "08:00"), at(tue, "09:00"), nil, key)
 	mustStatus(t, first, http.StatusCreated)
 	mustStatus(t, e.postBooking(tok, e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil), http.StatusCreated)
-	if res := e.postBooking(tok, e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil); res.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("third booking: %d; want 422", res.Code)
+	if res := e.postBooking(tok, e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil); res.Code != http.StatusConflict {
+		t.Fatalf("third booking: %d; want 409", res.Code)
 	}
 
 	again := e.postBooking(tok, room, at(tue, "08:00"), at(tue, "09:00"), nil, key)
@@ -114,7 +113,7 @@ func TestBookingQuotaDoesNotBlockIdempotentRetries(t *testing.T) {
 
 // Two requests for different rooms hold different room locks, so only the quota lock keeps their count honest.
 func TestBookingQuotaHoldsUnderConcurrency(t *testing.T) {
-	e := newEnv(t, func(c *config.Config) { c.BookingMaxActivePerUser = 5 })
+	e := newEnv(t, func(c *config.Config) { c.Business.MaxActiveBookings = 5 })
 	tok := e.login(mahasiswaA).accessToken
 
 	const n = 12
@@ -141,7 +140,7 @@ func TestBookingQuotaHoldsUnderConcurrency(t *testing.T) {
 		switch res.Code {
 		case http.StatusCreated:
 			created++
-		case http.StatusUnprocessableEntity:
+		case http.StatusConflict:
 			refused++
 		default:
 			t.Errorf("unexpected response %d: %s", res.Code, res.Body.String())
@@ -220,11 +219,11 @@ func TestAPIResponsesAreNotCached(t *testing.T) {
 		}
 	}
 
-	// A report photo is the one thing worth caching, and only privately.
+	// A report photo is served through the attachments endpoint and is never cached (it can show people).
 	rep := e.postReport(tok, e.freshRoom(), "Rusak", &photoPart{"a.png", "image/png", pngBytes(0)})
 	mustStatus(t, rep, http.StatusCreated)
-	photo := e.do("GET", "/api/v1/reports/"+idOf(rep)+"/photo", nil, bearer(tok))
-	if cc := photo.Header().Get("Cache-Control"); cc != "private, max-age=3600" {
+	photo := e.do("GET", "/api/v1/attachments/"+rep.json()["attachment_id"].(string), nil, bearer(tok))
+	if cc := photo.Header().Get("Cache-Control"); cc != "private, no-store" {
 		t.Errorf("photo Cache-Control = %q", cc)
 	}
 }

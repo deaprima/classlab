@@ -35,6 +35,8 @@ type ErrorDetail struct {
 	// Line and Column locate a problem in an uploaded CSV file (BR-23, BR-24); line 1 is the header.
 	Line   int    `json:"line,omitempty"`
 	Column string `json:"column,omitempty"`
+	// OccurrenceNo says which date of a multi-date request a problem belongs to, counting from 1 (BR-27).
+	OccurrenceNo int `json:"occurrence_no,omitempty"`
 }
 
 type ErrorBody struct {

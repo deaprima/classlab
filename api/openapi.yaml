@@ -748,6 +748,9 @@ paths:
       description: >
         MAHASISWA dan ORGANISASI hanya melihat booking miliknya. TU dan KALAB melihat booking tipe ruang yang
         mereka setujui; ADMIN melihat semua. `mine=true` mempersempit ke booking milik sendiri. OB dijawab 403.
+        Pengajuan multi-tanggal tampil sebagai satu baris per tanggal; `group_id` mengumpulkan tanggal-tanggalnya.
+        Dengan `status=MENUNGGU`, daftar bagi approver (TU, KALAB, ADMIN) diurutkan menurut `expires_at` (yang
+        paling cepat kedaluwarsa lebih dulu, BR-22). `requester_summary` tidak ada pada daftar.
       security:
         - BearerAuth: []
       parameters:
@@ -757,6 +760,14 @@ paths:
           schema: { $ref: "#/components/schemas/BookingStatus" }
         - name: room_id
           in: query
+          schema: { type: string, format: uuid }
+        - name: type
+          in: query
+          description: Filter tipe ruang.
+          schema: { $ref: '#/components/schemas/RoomType' }
+        - name: group_id
+          in: query
+          description: Filter tanggal-tanggal milik satu pengajuan multi-tanggal.
           schema: { type: string, format: uuid }
         - name: from
           in: query
@@ -788,59 +799,120 @@ paths:
     post:
       summary: Ajukan booking baru (MAHASISWA, ORGANISASI)
       description: >-
-        Satu pemohon maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu
-        `MENUNGGU` atau `DISETUJUI` yang belum berakhir. Melebihi batas dijawab 422 tanpa `field`.
-        Peran selain MAHASISWA dan ORGANISASI dijawab 403 `FORBIDDEN`; bila `requester_roles` tipe ruang tidak
-        memuat peran pemohon, dijawab 403 `ROOM_TYPE_NOT_ALLOWED`. Durasi minimal/maksimal dan batas hari ke depan
-        berasal dari kebijakan tipe ruang (BR-20, lihat `GET /room-types`), bukan nilai global; pelanggarannya
-        dijawab 422 `VALIDATION_ERROR` pada `end_at` (durasi) atau `start_at` (hari ke depan). Waktu di luar jam
-        operasional efektif ruang (jam khusus ruang, atau jam bawaan tipe; BR-29) dijawab 422
-        `OUTSIDE_OPERATING_HOURS` dengan `details` berisi dua item: `{field: open_time, message: "HH:MM"}` dan
-        `{field: close_time, message: "HH:MM"}` yang membawa jendela efektif tersebut.
+        Pengajuan satu tanggal (`start_at` + `end_at`) atau beberapa tanggal sekaligus (`occurrences`, 1 sampai
+        `MAX_OCCURRENCES`, default 14; BR-27), tidak pernah keduanya (422 pada field `occurrences`). Pengajuan
+        multi-tanggal dibuat seluruhnya atau tidak sama sekali: satu tanggal yang gagal menggagalkan semuanya, dan
+        tanggal-tanggalnya tidak boleh saling tumpang tindih. Seluruh tanggal memakai ruang, tujuan, dan lampiran yang sama.
+
+
+        **Persetujuan (BR-17).** Sistem menyetujui langsung (status `DISETUJUI`, `approval_mode: AUTO`) bila kebijakan
+        tipe ruang `AUTO_IF_ELIGIBLE`, pemohon berperan MAHASISWA dengan poin pelanggaran aktif di bawah batas
+        yang dikonfigurasi, dan slot kosong. Selain itu pengajuan berstatus `MENUNGGU` (`approval_mode: MANUAL`,
+        `manual_reason` menyebut alasannya) dan menunggu approver tipe ruang sampai `expires_at` (BR-22).
+
+
+        **Aturan isi.** Surat (`letter_attachment_id`, hasil `POST /attachments`, harus milik pemohon) wajib untuk
+        ORGANISASI dan untuk tipe ruang yang mensyaratkannya (BR-18). `participants` tidak boleh melebihi kapasitas
+        ruang dan wajib untuk AUDITORIUM (BR-21). Durasi minimal/maksimal, batas hari ke depan, dan jam operasional
+        berasal dari kebijakan tipe ruang dan ruang (BR-20, BR-29; lihat `GET /room-types`); pelanggarannya dijawab 422
+        `VALIDATION_ERROR` pada `end_at` (durasi) atau `start_at` (hari ke depan). Waktu di luar jam operasional
+        efektif dijawab 422 `OUTSIDE_OPERATING_HOURS` dengan `details` berisi `{field: open_time, message: "HH:MM"}`
+        dan `{field: close_time, message: "HH:MM"}`. Pada pengajuan multi-tanggal, item `details` yang berasal dari
+        satu tanggal membawa `occurrence_no` (mulai dari 1).
+
+
+        **Batas dan penolakan.** Pemohon maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` pengajuan aktif; satu
+        pengajuan multi-tanggal dihitung satu. Melebihi batas dijawab 409 `QUOTA_EXCEEDED`. Pemohon yang sedang
+        diblokir karena poin pelanggaran dijawab 403 `BOOKING_BLOCKED` dengan `details[0] = {field: blocked_until,
+        message: <date-time>}` (BR-14). Peran selain MAHASISWA dan ORGANISASI dijawab 403 `FORBIDDEN`; bila
+        `requester_roles` tipe ruang tidak memuat peran pemohon, 403 `ROOM_TYPE_NOT_ALLOWED`. Ruang nonaktif dijawab
+        409 `ROOM_INACTIVE`; bentrok dengan jadwal atau booking lain dijawab 409 `BOOKING_CONFLICT` dengan `details`
+        per bentrokan (membawa `occurrence_no` pada pengajuan multi-tanggal).
       security:
         - BearerAuth: []
       parameters:
         - name: Idempotency-Key
           in: header
-          schema: { type: string }
+          description: Maksimal 128 karakter. Memakai kunci yang sama untuk permintaan yang berbeda dijawab 422.
+          schema: { type: string, maxLength: 128 }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [room_id, start_at, end_at, purpose]
+              required: [room_id, purpose]
               properties:
                 room_id: { type: string, format: uuid }
-                start_at: { type: string, format: date-time }
-                end_at: { type: string, format: date-time }
-                purpose: { type: string }
-                participants: { type: integer, minimum: 1 }
-                notes: { type: string }
+                start_at:
+                  type: string
+                  format: date-time
+                  description: Pengajuan satu tanggal. Wajib bersama `end_at` bila `occurrences` tidak dikirim.
+                end_at:
+                  type: string
+                  format: date-time
+                  description: Pengajuan satu tanggal. Wajib bersama `start_at` bila `occurrences` tidak dikirim.
+                occurrences:
+                  type: array
+                  minItems: 1
+                  description: Pengajuan multi-tanggal, 1 sampai `MAX_OCCURRENCES` (default 14). Tidak boleh dikirim bersama `start_at`/`end_at`.
+                  items:
+                    type: object
+                    required: [start_at, end_at]
+                    properties:
+                      start_at: { type: string, format: date-time }
+                      end_at: { type: string, format: date-time }
+                purpose: { type: string, maxLength: 200 }
+                participants: { type: integer, minimum: 1, maximum: 10000 }
+                notes: { type: string, maxLength: 1000 }
+                details:
+                  type: object
+                  additionalProperties: true
+                  description: Isian khusus tipe ruang. Saat ini belum ada kunci yang didukung, sehingga hanya objek kosong yang sah.
+                letter_attachment_id:
+                  type: string
+                  format: uuid
+                  description: Id surat dari `POST /attachments`; harus milik pemohon.
+                letter_number: { type: string, maxLength: 100 }
       responses:
         '201':
           description: >-
-            Berhasil dibuat. Bila `Idempotency-Key` sama dengan permintaan identik sebelumnya, booking
-            yang sudah ada dikembalikan dengan status yang sama dan header `Idempotency-Replayed: true`.
+            Berhasil dibuat. Pengajuan satu tanggal mengembalikan `Booking` (status `DISETUJUI` bila disetujui
+            sistem, `MENUNGGU` bila tidak); pengajuan dengan `occurrences` mengembalikan `BookingGroupResult`.
+            Bila `Idempotency-Key` sama dengan permintaan identik sebelumnya, hasil yang sudah ada dikembalikan
+            dengan header `Idempotency-Replayed: true`.
           headers:
             Idempotency-Replayed:
               description: '`true` bila respons ini adalah pengulangan dari permintaan sebelumnya'
               schema: { type: string }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Booking' }
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/Booking' }
+                  - { $ref: '#/components/schemas/BookingGroupResult' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ForbiddenResponse' }
-        '409': { $ref: '#/components/responses/ErrorResponse' }
-        '422': { $ref: '#/components/responses/ErrorResponse' }
+        '409':
+          description: "`BOOKING_CONFLICT` (`details` per bentrokan, dengan `occurrence_no` pada multi-tanggal), `QUOTA_EXCEEDED`, atau `ROOM_INACTIVE`"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+        '422':
+          description: "`VALIDATION_ERROR` (`details` dapat membawa `occurrence_no`) atau `OUTSIDE_OPERATING_HOURS`"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
 
   /bookings/{id}:
     get:
       summary: Detail pengajuan booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
       description: >
         Pemohon hanya dapat membaca booking miliknya; TU dan KALAB hanya booking tipe ruang yang mereka setujui;
-        ADMIN semuanya. Di luar jangkauan dijawab 404. OB dijawab 403.
+        ADMIN semuanya. Di luar jangkauan dijawab 404. OB dijawab 403. Bagi approver (TU, KALAB, ADMIN) respons
+        memuat `requester_summary`: poin pelanggaran aktif dan mata kuliah pemohon dari impor akun (BR-14, BR-24);
+        pemohon sendiri tidak menerimanya.
       security:
         - BearerAuth: []
       parameters:
@@ -857,13 +929,71 @@ paths:
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
+    patch:
+      summary: "Ubah pengajuan booking (pemilik: MAHASISWA, ORGANISASI)"
+      description: >
+        Hanya pemilik; peran lain 403 dan booking milik orang lain 404. Semua field opsional, tetapi minimal satu
+        harus dikirim (body kosong dijawab 422). Ruang tidak dapat diganti: field tak dikenal seperti `room_id`
+        dijawab 400; batalkan lalu ajukan ulang (BR-26). `notes` dan `letter_number` berisi string kosong untuk
+        menghapusnya.
+
+
+        **Aturan (BR-26).** Hanya booking `MENUNGGU` atau `DISETUJUI` yang dapat diubah, sampai `EDIT_CUTOFF_MIN`
+        (default 60) menit sebelum waktu mulai yang berlaku; selain itu 409 `EDIT_WINDOW_CLOSED` atau `INVALID_STATE`.
+        Perubahan melewati pemeriksaan yang sama dengan pengajuan (batas tipe ruang, jam operasional, kapasitas,
+        surat, bentrok dengan jadwal dan booking lain kecuali dirinya sendiri). Pada pengajuan multi-tanggal hanya
+        satu tanggal yang berubah. Akibatnya bergantung pada keadaan booking:
+
+        - `MENUNGGU` tetap `MENUNGGU`; kedaluwarsa tidak diperpanjang (hanya dapat dimajukan bila waktu mulai lebih awal).
+
+        - `DISETUJUI` oleh sistem (`AUTO`): keputusan persetujuan dihitung ulang; bila tidak lagi memenuhi syarat booking
+        kembali `MENUNGGU` dengan `approval_mode: MANUAL`.
+
+        - `DISETUJUI` oleh approver (`MANUAL`): perubahan material (waktu, peserta, tujuan, `details`, surat) mengembalikannya ke
+        `MENUNGGU` dengan `expires_at` baru; perubahan `notes` saja tidak mengubah hal lain.
+
+        Setiap perubahan menambah event `EDITED` pada riwayat (`GET /bookings/{id}/events`) berisi `changes`;
+        permintaan yang tidak mengubah apa pun mengembalikan booking apa adanya tanpa event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditRequest' }
+      responses:
+        '200':
+          description: Booking setelah diubah (status dapat kembali `MENUNGGU`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409':
+          description: "`EDIT_WINDOW_CLOSED`, `INVALID_STATE`, atau `BOOKING_CONFLICT`"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+        '422':
+          description: "`VALIDATION_ERROR` atau `OUTSIDE_OPERATING_HOURS`"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
 
   /bookings/{id}/events:
     get:
       summary: Jejak riwayat audit status booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
       description: >
         Aturan akses sama dengan detail booking. `actor_id` bernilai null bila perubahan dilakukan sistem
-        (mis. job otomatis).
+        (mis. persetujuan otomatis atau job kedaluwarsa). Event `STATUS` mencatat perpindahan status; event
+        `EDITED` mencatat perubahan isi oleh pemilik dan memuat `changes`.
       security:
         - BearerAuth: []
       parameters:
@@ -892,7 +1022,11 @@ paths:
       summary: Setujui peminjaman ruang (TU, KALAB, ADMIN)
       description: >
         Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang booking (selain itu 403).
-        Booking di luar jangkauan approver dijawab 404.
+        Booking di luar jangkauan approver dijawab 404. Pada pengajuan multi-tanggal, persetujuan berlaku untuk
+        setiap tanggal `MENUNGGU` dalam grup sekaligus dalam satu transaksi; tidak ada persetujuan sebagian
+        (BR-27). Respons adalah booking yang dialamatkan. 409 `INVALID_STATE` bila booking bukan `MENUNGGU`, bila
+        pengajuan sudah melewati `expires_at` (BR-22), atau bila waktunya sudah lewat; 409 `BOOKING_CONFLICT` bila
+        salah satu tanggal kini bentrok; 409 `ROOM_INACTIVE` bila ruang nonaktif.
       security:
         - BearerAuth: []
       parameters:
@@ -916,6 +1050,9 @@ paths:
       summary: Tolak peminjaman ruang (TU, KALAB, ADMIN)
       description: >
         Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang booking (selain itu 403).
+        Pada pengajuan multi-tanggal, penolakan berlaku untuk setiap tanggal `MENUNGGU` dalam grup sekaligus
+        dalam satu transaksi (BR-27). `reason` wajib 5 sampai 500 karakter (selain itu 422). 409 `INVALID_STATE`
+        bila booking bukan `MENUNGGU` atau pengajuan sudah melewati `expires_at` (BR-22).
       security:
         - BearerAuth: []
       parameters:
@@ -931,7 +1068,7 @@ paths:
               type: object
               required: [reason]
               properties:
-                reason: { type: string, minLength: 5 }
+                reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '200':
           description: Berhasil
@@ -949,9 +1086,14 @@ paths:
     post:
       summary: Batalkan booking (pemilik, atau TU/KALAB/ADMIN approver tipe ruang)
       description: >
-        Pemilik (MAHASISWA atau ORGANISASI) dapat membatalkan booking `MENUNGGU` miliknya; alasan opsional.
-        Pengelola (TU, KALAB, ADMIN dengan kewenangan atas tipe ruang) membatalkan booking `DISETUJUI` dan wajib
-        menyertakan `reason`.
+        Pemilik (MAHASISWA atau ORGANISASI) dapat membatalkan tanggal `MENUNGGU` atau `DISETUJUI` miliknya yang
+        belum dimulai; alasan opsional (maksimal 500 karakter). Membatalkan tanggal `DISETUJUI` kurang dari 2 jam
+        sebelum mulai menambah satu poin pelanggaran `BATAL_TERLAMBAT` (BR-14). Pengelola (TU, KALAB, ADMIN dengan
+        kewenangan atas tipe ruang) hanya membatalkan tanggal `DISETUJUI` dan wajib menyertakan `reason` 5 sampai 500
+        karakter (yang `MENUNGGU` harus ditolak, bukan dibatalkan). `scope` `OCCURRENCE` (default) membatalkan
+        tanggal yang dialamatkan; `GROUP` membatalkan semua tanggal pengajuan multi-tanggal yang masih dapat
+        dibatalkan (BR-27). Respons adalah booking yang dialamatkan. 409 `INVALID_STATE` bila tidak ada tanggal yang
+        dapat dibatalkan; 422 untuk `scope` atau `reason` yang tidak sah.
       security:
         - BearerAuth: []
       parameters:
@@ -965,7 +1107,11 @@ paths:
             schema:
               type: object
               properties:
-                reason: { type: string }
+                reason: { type: string, maxLength: 500, description: Opsional untuk pemilik; wajib 5 sampai 500 karakter untuk pengelola }
+                scope:
+                  type: string
+                  enum: [OCCURRENCE, GROUP]
+                  default: OCCURRENCE
       responses:
         '200':
           description: Berhasil
@@ -1068,6 +1214,110 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '429': { $ref: '#/components/responses/ErrorResponse' }
 
+  /attachments:
+    post:
+      summary: Unggah surat (MAHASISWA, ORGANISASI; multipart/form-data)
+      description: >
+        Mengunggah surat tugas atau surat kegiatan untuk dilampirkan pada booking (BR-19). `kind` harus `LETTER`.
+        Berkas boleh PDF, JPEG, PNG, atau WebP (dicek dari isi berkas, bukan nama atau Content-Type), maksimal
+        `MAX_LETTER_MB` (default 5 MB). PDF disimpan apa adanya dan tidak pernah dibuka isinya; gambar didekode
+        dan disimpan ulang sebagai JPEG sehingga metadata terbuang. Berkas kosong, terlalu besar, atau bertipe lain
+        dijawab 422 pada field `file`; `kind` selain `LETTER` dijawab 422 pada field `kind`. Peran selain MAHASISWA
+        dan ORGANISASI dijawab 403.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [kind, file]
+              properties:
+                kind: { type: string, enum: [LETTER] }
+                file: { type: string, format: binary, description: "PDF, JPEG, PNG, atau WebP" }
+      responses:
+        '201':
+          description: Surat tersimpan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attachment' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+    get:
+      summary: Daftar surat milik sendiri (MAHASISWA, ORGANISASI)
+      description: >
+        Surat yang pernah diunggah pemohon, terbaru lebih dulu, agar dapat dipakai ulang. `kind` bila diisi harus
+        `LETTER` (selain itu 422). Peran lain dijawab 403.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [LETTER] }
+        - { $ref: '#/components/parameters/PageQuery' }
+        - { $ref: '#/components/parameters/PerPageQuery' }
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attachment' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /attachments/{id}:
+    get:
+      summary: Buka berkas lampiran (semua peran terautentikasi yang berhak)
+      description: >
+        Mengembalikan isi berkas (foto laporan atau surat booking). Yang boleh membuka: pengunggah dan ADMIN
+        selalu; OB setiap foto; TU dan KALAB foto atau surat yang terlampir pada booking atau laporan tipe ruang
+        yang mereka setujui. Selain itu, juga untuk id yang tidak dikenal, dijawab 404 agar keberadaan berkas
+        tidak terungkap. Berkas yang sudah dihapus oleh kebijakan retensi dijawab 410 `GONE`. Tipe isi berasal dari
+        catatan server. PDF selalu `Content-Disposition: attachment`; gambar `inline`. Berkas dibaca dengan header
+        Authorization (mis. lewat `fetch`), bukan tautan langsung.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Isi berkas
+          headers:
+            Cache-Control:
+              description: Selalu `private, no-store`
+              schema: { type: string, enum: ['private, no-store'] }
+            X-Content-Type-Options:
+              description: Selalu `nosniff`
+              schema: { type: string, enum: [nosniff] }
+            Content-Disposition:
+              description: '`attachment` untuk PDF, `inline` untuk gambar; nama berkas dibuat server'
+              schema: { type: string }
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '410':
+          description: Berkas sudah dihapus oleh kebijakan retensi (`GONE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+
   /reports:
     get:
       summary: Daftar laporan kerusakan
@@ -1105,7 +1355,9 @@ paths:
       summary: Buat laporan kerusakan baru (multipart/form-data)
       description: >-
         Foto opsional: JPG, PNG, atau WebP (dicek dari isi berkas, bukan nama atau Content-Type), maksimal
-        `UPLOAD_MAX_BYTES` (default 5 MB). Foto terlalu besar atau bertipe lain dijawab 422 pada field `photo`.
+        `MAX_UPLOAD_MB` (default 5 MB). Foto terlalu besar atau bertipe lain dijawab 422 pada field `photo`.
+        Foto didekode lalu disimpan ulang sebagai JPEG (sisi terpanjang maksimal 1600 px) dan metadata (EXIF dan
+        sejenisnya) dibuang. Respons membawa `attachment_id`; foto dibuka dengan `GET /attachments/{id}`.
       security:
         - BearerAuth: []
       requestBody:
@@ -1154,28 +1406,6 @@ paths:
                       events:
                         type: array
                         items: { $ref: '#/components/schemas/ReportEvent' }
-        '401': { $ref: '#/components/responses/ErrorResponse' }
-        '403': { $ref: '#/components/responses/ForbiddenResponse' }
-        '404': { $ref: '#/components/responses/ErrorResponse' }
-
-  /reports/{id}/photo:
-    get:
-      summary: Foto laporan kerusakan (pelapor, TU/KALAB approver tipe ruang, ADMIN)
-      description: Foto disimpan di luar webroot dan hanya disajikan lewat endpoint ini. Laporan di luar jangkauan dijawab 404.
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200':
-          description: Berkas gambar
-          content:
-            image/jpeg: { schema: { type: string, format: binary } }
-            image/png: { schema: { type: string, format: binary } }
-            image/webp: { schema: { type: string, format: binary } }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
@@ -1470,6 +1700,7 @@ components:
       description: >-
         Akses ditolak (403). `error.code` adalah `FORBIDDEN` (peran atau kewenangan atas tipe ruang tidak cukup),
         `ROOM_TYPE_NOT_ALLOWED` (hanya `POST /bookings`: peran pemohon tidak termasuk `requester_roles` tipe ruang),
+        `BOOKING_BLOCKED` (hanya `POST /bookings`: pemohon diblokir sampai `details[0].message`, field `blocked_until`),
         atau `PASSWORD_CHANGE_REQUIRED` (akun masih memakai password sementara; berlaku untuk setiap endpoint
         terautentikasi kecuali `GET /auth/me`, `POST /auth/logout`, dan `POST /auth/change-password`).
       content:
@@ -1490,8 +1721,11 @@ components:
       type: string
       description: >-
         Kode error mesin-baca. 400 BAD_REQUEST; 401 UNAUTHENTICATED; 403 FORBIDDEN, PASSWORD_CHANGE_REQUIRED,
-        ROOM_TYPE_NOT_ALLOWED; 404 NOT_FOUND; 405 METHOD_NOT_ALLOWED; 409 BOOKING_CONFLICT, INVALID_STATE,
-        ROOM_INACTIVE, ROOM_HAS_ACTIVE_BOOKINGS, IMPORT_PLAN_CHANGED, IMPORT_ALREADY_APPLIED; 422 VALIDATION_ERROR,
+        ROOM_TYPE_NOT_ALLOWED, BOOKING_BLOCKED (pemohon diblokir karena poin pelanggaran; `details[0]` adalah
+        `{field: blocked_until, message: <date-time>}`); 404 NOT_FOUND; 405 METHOD_NOT_ALLOWED; 409 BOOKING_CONFLICT,
+        INVALID_STATE, QUOTA_EXCEEDED (batas pengajuan aktif terlampaui), EDIT_WINDOW_CLOSED (lewat batas
+        pengubahan booking), ROOM_INACTIVE, ROOM_HAS_ACTIVE_BOOKINGS, IMPORT_PLAN_CHANGED, IMPORT_ALREADY_APPLIED;
+        410 GONE (berkas sudah dihapus oleh kebijakan retensi); 422 VALIDATION_ERROR,
         IMPORT_INVALID, OUTSIDE_OPERATING_HOURS (booking di luar jam operasional ruang; `details` berisi
         `open_time` dan `close_time` efektif); 429 RATE_LIMITED; 500 INTERNAL_SERVER_ERROR; 503 SERVICE_BUSY.
       enum:
@@ -1500,10 +1734,14 @@ components:
         - FORBIDDEN
         - PASSWORD_CHANGE_REQUIRED
         - ROOM_TYPE_NOT_ALLOWED
+        - BOOKING_BLOCKED
         - NOT_FOUND
         - METHOD_NOT_ALLOWED
         - BOOKING_CONFLICT
         - INVALID_STATE
+        - QUOTA_EXCEEDED
+        - EDIT_WINDOW_CLOSED
+        - GONE
         - ROOM_INACTIVE
         - ROOM_HAS_ACTIVE_BOOKINGS
         - IMPORT_PLAN_CHANGED
@@ -1531,6 +1769,10 @@ components:
         column:
           type: string
           description: Nama kolom CSV yang bermasalah. Hanya pada galat impor.
+        occurrence_no:
+          type: integer
+          minimum: 1
+          description: Tanggal ke-berapa (mulai dari 1) dalam pengajuan multi-tanggal yang bermasalah. Hanya pada `POST /bookings` dengan `occurrences`.
 
     ErrorBody:
       type: object
@@ -1845,9 +2087,50 @@ components:
         identifier: { type: string, description: NIM atau NIP }
         name: { type: string }
 
+    ApprovalMode:
+      type: string
+      enum: [AUTO, MANUAL]
+      description: "`AUTO` disetujui sistem (BR-17); `MANUAL` diputuskan approver."
+
+    ManualReason:
+      type: string
+      enum: [ROOM_POLICY, ORGANIZATION, VIOLATION_HISTORY]
+      description: >-
+        Mengapa pengajuan tidak disetujui otomatis: kebijakan tipe ruang, pemohon ORGANISASI, atau poin
+        pelanggaran aktif mencapai batas.
+
+    BookingLetter:
+      type: object
+      required: [attachment_id, letter_number]
+      properties:
+        attachment_id: { type: string, format: uuid, description: "Dibuka dengan `GET /attachments/{id}`" }
+        letter_number: { type: [string, 'null'] }
+
+    RequesterCourse:
+      type: object
+      required: [semester, course_code, course_name, class_name]
+      properties:
+        semester: { type: string, example: 2026-GANJIL }
+        course_code: { type: [string, 'null'] }
+        course_name: { type: [string, 'null'] }
+        class_name: { type: [string, 'null'] }
+
+    RequesterSummary:
+      type: object
+      required: [active_points, courses]
+      description: Ringkasan pemohon untuk approver (BR-14, BR-24).
+      properties:
+        active_points: { type: integer, description: Poin pelanggaran aktif }
+        courses:
+          type: array
+          items: { $ref: '#/components/schemas/RequesterCourse' }
+
     Booking:
       type: object
-      required: [id, room_id, room, requester_id, requester, start_at, end_at, purpose, status, created_at]
+      required: [id, room_id, room, requester_id, requester, start_at, end_at, purpose, details, status, approval_mode, manual_reason, group_id, occurrence_no, occurrence_count, expires_at, edited_at, letter, created_at]
+      description: >-
+        Satu tanggal booking. Pengajuan multi-tanggal (BR-27) menghasilkan satu `Booking` per tanggal dengan
+        `group_id` yang sama.
       properties:
         id: { type: string, format: uuid }
         room_id: { type: string, format: uuid }
@@ -1859,22 +2142,125 @@ components:
         purpose: { type: string }
         participants: { type: integer }
         notes: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+          description: Isian khusus tipe ruang; `{}` bila tidak ada.
         status: { $ref: '#/components/schemas/BookingStatus' }
+        approval_mode: { $ref: '#/components/schemas/ApprovalMode' }
+        manual_reason:
+          oneOf:
+            - { $ref: '#/components/schemas/ManualReason' }
+            - { type: 'null' }
+          description: Terisi bila `approval_mode` `MANUAL`; null bila disetujui sistem.
         decided_by: { type: string, format: uuid }
         decided_at: { type: string, format: date-time }
         decision_reason: { type: string }
+        group_id:
+          type: [string, 'null']
+          format: uuid
+          description: Id pengajuan multi-tanggal; null bila dibuat dengan satu tanggal.
+        occurrence_no:
+          type: [integer, 'null']
+          description: Urutan tanggal dalam grup (mulai dari 1); null bila bukan bagian grup.
+        occurrence_count:
+          type: integer
+          minimum: 1
+          description: Jumlah tanggal dalam pengajuan; 1 untuk booking yang bukan bagian grup.
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Batas waktu approver memutuskan (BR-22); null bila tidak sedang menunggu.
+        edited_at:
+          type: [string, 'null']
+          format: date-time
+          description: Waktu perubahan terakhir oleh pemilik (BR-26); null bila belum pernah diubah.
+        letter:
+          oneOf:
+            - { $ref: '#/components/schemas/BookingLetter' }
+            - { type: 'null' }
         created_at: { type: string, format: date-time }
+        requester_summary:
+          allOf:
+            - { $ref: '#/components/schemas/RequesterSummary' }
+          description: Hanya ada pada `GET /bookings/{id}` untuk approver (TU, KALAB, ADMIN).
+
+    BookingGroupOccurrence:
+      type: object
+      required: [id, occurrence_no, start_at, end_at, status]
+      properties:
+        id: { type: string, format: uuid }
+        occurrence_no: { type: integer, minimum: 1 }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+
+    BookingGroupResult:
+      type: object
+      required: [group_id, status, approval_mode, manual_reason, expires_at, bookings]
+      description: Hasil `POST /bookings` dengan `occurrences` (BR-27).
+      properties:
+        group_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        approval_mode: { $ref: '#/components/schemas/ApprovalMode' }
+        manual_reason:
+          oneOf:
+            - { $ref: '#/components/schemas/ManualReason' }
+            - { type: 'null' }
+        expires_at: { type: [string, 'null'], format: date-time }
+        bookings:
+          type: array
+          items: { $ref: '#/components/schemas/BookingGroupOccurrence' }
+
+    EditRequest:
+      type: object
+      minProperties: 1
+      description: >-
+        Hanya field yang dikirim yang diubah. `room_id` tidak dapat diubah (field tak dikenal dijawab 400).
+      properties:
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        purpose: { type: string, maxLength: 200 }
+        participants: { type: integer, minimum: 1, maximum: 10000 }
+        notes: { type: string, maxLength: 1000, description: 'String kosong menghapus catatan' }
+        details: { type: object, additionalProperties: true }
+        letter_attachment_id: { type: string, format: uuid, description: Id surat milik pemohon }
+        letter_number: { type: string, maxLength: 100, description: 'String kosong menghapus nomor surat' }
 
     BookingEvent:
       type: object
-      required: [id, booking_id, actor_id, to_status, created_at]
+      required: [id, booking_id, actor_id, kind, to_status, created_at]
       properties:
         id: { type: string, format: uuid }
         booking_id: { type: string, format: uuid }
         actor_id: { type: [string, 'null'], format: uuid, description: Null bila perubahan dilakukan sistem }
+        kind:
+          type: string
+          enum: [STATUS, EDITED]
+          description: "`STATUS` perpindahan status; `EDITED` perubahan isi oleh pemilik (BR-26)."
         from_status: { $ref: '#/components/schemas/BookingStatus' }
         to_status: { $ref: '#/components/schemas/BookingStatus' }
         reason: { type: string }
+        changes:
+          type: object
+          description: Hanya pada `EDITED`. Nama field yang berubah menjadi `{from, to}`.
+          additionalProperties:
+            type: object
+            required: [from, to]
+            properties:
+              from: { type: [string, integer, number, boolean, object, array, 'null'] }
+              to: { type: [string, integer, number, boolean, object, array, 'null'] }
+        created_at: { type: string, format: date-time }
+
+    Attachment:
+      type: object
+      required: [id, kind, content_type, size_bytes, original_name, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [LETTER, PHOTO] }
+        content_type: { type: string, enum: [application/pdf, image/jpeg] }
+        size_bytes: { type: integer }
+        original_name: { type: [string, 'null'], description: Nama berkas dari pengunggah (hanya untuk tampilan) }
         created_at: { type: string, format: date-time }
 
     Notification:
@@ -1900,7 +2286,7 @@ components:
 
     DamageReport:
       type: object
-      required: [id, room_id, room, reporter_id, reporter, description, status, created_at]
+      required: [id, room_id, room, reporter_id, reporter, description, attachment_id, status, created_at]
       properties:
         id: { type: string, format: uuid }
         room_id: { type: string, format: uuid }
@@ -1908,11 +2294,12 @@ components:
         reporter_id: { type: string, format: uuid }
         reporter: { $ref: '#/components/schemas/Reporter' }
         description: { type: string }
-        photo_path:
-          type: string
+        attachment_id:
+          type: [string, 'null']
+          format: uuid
           description: >-
-            Path URL foto (`/api/v1/reports/{id}/photo`), bukan lokasi berkas di server. Ada hanya bila
-            laporan punya foto; ambil dengan header Authorization.
+            Id foto laporan, null bila tanpa foto. Dibuka dengan `GET /attachments/{id}` (header Authorization).
+            Foto disimpan sebagai JPEG tanpa metadata.
         status: { $ref: '#/components/schemas/ReportStatus' }
         handled_by: { type: string, format: uuid }
         created_at: { type: string, format: date-time }

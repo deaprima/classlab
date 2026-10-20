@@ -10,7 +10,59 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const blockUserUntil = `-- name: BlockUserUntil :execrows
+UPDATE users SET booking_blocked_until = $1, updated_at = $2
+WHERE id = $3 AND (booking_blocked_until IS NULL OR booking_blocked_until < $1)
+`
+
+type BlockUserUntilParams struct {
+	Until pgtype.Timestamptz `json:"until"`
+	Now   time.Time          `json:"now"`
+	ID    uuid.UUID          `json:"id"`
+}
+
+// Blocks the user until the given time unless an equal or later block already stands; the row count says
+// whether this call is the one that started a block (so the notification is sent once).
+func (q *Queries) BlockUserUntil(ctx context.Context, arg BlockUserUntilParams) (int64, error) {
+	result, err := q.db.Exec(ctx, blockUserUntil, arg.Until, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const insertViolation = `-- name: InsertViolation :execrows
+INSERT INTO violations (user_id, booking_id, kind, points, created_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (booking_id, kind) DO NOTHING
+`
+
+type InsertViolationParams struct {
+	UserID    uuid.UUID     `json:"user_id"`
+	BookingID uuid.UUID     `json:"booking_id"`
+	Kind      ViolationKind `json:"kind"`
+	Points    int32         `json:"points"`
+	CreatedAt time.Time     `json:"created_at"`
+}
+
+// One violation per (booking, kind): recording the same thing twice is a no-op, which is what keeps a job
+// that runs again from doubling the points (BR-13, BR-14).
+func (q *Queries) InsertViolation(ctx context.Context, arg InsertViolationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertViolation,
+		arg.UserID,
+		arg.BookingID,
+		arg.Kind,
+		arg.Points,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
 
 const sumActiveViolationPoints = `-- name: SumActiveViolationPoints :one
 SELECT COALESCE(SUM(points), 0)::int
