@@ -321,6 +321,86 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
+  /room-types:
+    get:
+      summary: Daftar tipe ruang beserta kebijakannya (semua peran terautentikasi)
+      description: >
+        Mengembalikan kebijakan tiap tipe ruang (BR-20): siapa approver dan peminta, kebijakan persetujuan,
+        jam operasional bawaan, serta batas durasi dan hari ke depan. Dipakai klien untuk menentukan menu dan
+        formulir; server tetap menjadi penentu pada setiap aksi. Respons tidak dipaginasi.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RoomTypePolicy' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+
+  /room-types/{type}:
+    patch:
+      summary: Ubah kebijakan tipe ruang (ADMIN)
+      description: >
+        Hanya ADMIN (peran lain 403). Semua field opsional, tetapi minimal satu field harus dikirim (body kosong
+        dijawab 422). `approver_roles` dan `requester_roles` tidak boleh kosong dan tidak boleh memuat peran di luar
+        himpunan yang diizinkan. Aturan lintas-field dinilai terhadap hasil akhir: jam buka harus sebelum jam
+        tutup dan keduanya berkelipatan 30 menit (galat pada field `open_time`), durasi minimal tidak boleh
+        melebihi durasi maksimal dan keduanya berkelipatan 30 menit (galat pada field `min_duration_min`).
+        Perubahan berlaku mulai permintaan berikutnya; booking yang sudah dibuat tidak berubah keputusannya.
+        Perubahan dicatat di audit log.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: Tipe ruang (KELAS, LAB, AUDITORIUM, RUANG_UJIAN, RUANG_SIDANG); tipe yang tidak dikenal dijawab 404.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                approver_roles:
+                  type: array
+                  minItems: 1
+                  items: { type: string, enum: [TU, KALAB, ADMIN] }
+                  description: Peran yang boleh menyetujui booking tipe ini; tidak boleh kosong.
+                requester_roles:
+                  type: array
+                  minItems: 1
+                  items: { type: string, enum: [MAHASISWA, ORGANISASI] }
+                  description: Peran yang boleh mengajukan booking tipe ini; tidak boleh kosong.
+                approval_policy: { $ref: '#/components/schemas/ApprovalPolicy' }
+                letter_required: { type: boolean }
+                open_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam buka bawaan tipe (HH:MM, WIB)" }
+                close_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam tutup bawaan tipe (HH:MM, WIB; `24:00` berarti tengah malam)" }
+                min_duration_min: { type: integer, description: Durasi booking minimal dalam menit; kelipatan 30 }
+                max_duration_min: { type: integer, description: Durasi booking maksimal dalam menit; kelipatan 30 }
+                max_advance_days: { type: integer, minimum: 1, maximum: 365, description: Batas hari ke depan booking boleh diajukan }
+      responses:
+        '200':
+          description: Kebijakan diperbarui
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoomTypePolicy' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
   /rooms:
     get:
       summary: Daftar ruang
@@ -364,7 +444,9 @@ paths:
       description: >
         Kode disimpan dalam huruf besar dan harus unik di antara ruang yang belum dihapus dalam satu unit.
         Peran harus TU, KALAB, atau ADMIN pada route, dan memegang kewenangan atas tipe ruang tersebut
-        (approver tipe itu, atau ADMIN); selain itu 403.
+        (approver tipe itu, atau ADMIN); selain itu 403. Jam operasional khusus ruang (`open_time` dan `close_time`,
+        BR-29) opsional dan harus dikirim bersamaan; tanpa keduanya ruang mengikuti jam bawaan tipenya. Jam khusus
+        harus berkelipatan 30 menit dan jam buka sebelum jam tutup; tidak dibatasi oleh jam bawaan tipe.
       security:
         - BearerAuth: []
       requestBody:
@@ -383,6 +465,8 @@ paths:
                 facilities:
                   type: array
                   items: { type: string }
+                open_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam buka khusus ruang (HH:MM, WIB); bersamaan dengan `close_time`" }
+                close_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam tutup khusus ruang (HH:MM, WIB); bersamaan dengan `open_time`" }
       responses:
         '201':
           description: Berhasil dibuat
@@ -418,7 +502,10 @@ paths:
       description: >
         Kode ruang tidak dapat diubah. Mengirim `facilities` menggantikan seluruh daftar (`[]` mengosongkan).
         Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang (juga tipe tujuan bila `type`
-        diubah); selain itu 403.
+        diubah); selain itu 403. Jam operasional khusus ruang (BR-29): `open_time` dan `close_time` dinilai terhadap
+        hasil akhir, jadi cukup mengirim satu bila ruang sudah punya yang lain, tetapi keduanya harus terisi atau
+        keduanya kosong. `clear_operating_hours: true` mengembalikan ruang ke jam bawaan tipenya dan tidak boleh
+        dikirim bersama `open_time` atau `close_time` (422).
       security:
         - BearerAuth: []
       parameters:
@@ -439,6 +526,11 @@ paths:
                 capacity: { type: integer, minimum: 1 }
                 facilities: { type: array, items: { type: string } }
                 is_active: { type: boolean }
+                open_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam buka khusus ruang (HH:MM, WIB)" }
+                close_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam tutup khusus ruang (HH:MM, WIB)" }
+                clear_operating_hours:
+                  type: boolean
+                  description: "`true` menghapus jam khusus ruang sehingga mengikuti jam bawaan tipe; tidak boleh dikombinasikan dengan `open_time`/`close_time`"
       responses:
         '200':
           description: Berhasil
@@ -473,8 +565,10 @@ paths:
     get:
       summary: Timeline gabungan jadwal akademik + booking disetujui (overlay)
       description: >
-        Berisi jadwal (`SCHEDULE`) dan booking berstatus DISETUJUI (`BOOKING`) yang beririsan dengan [from, to),
-        urut waktu mulai. Booking MENUNGGU tidak ditampilkan. Rentang maksimal 31 hari.
+        Berisi jadwal (`SCHEDULE`) dan booking berstatus DISETUJUI atau BERLANGSUNG (`BOOKING`) yang beririsan dengan
+        [from, to), urut waktu mulai. Booking MENUNGGU tidak ditampilkan. Rentang maksimal 31 hari.
+        `operating_hours` memuat jam operasional efektif ruang (jam khusus ruang bila ada, jika tidak jam bawaan
+        tipenya; BR-29) untuk menggambar grid kalender.
       security:
         - BearerAuth: []
       parameters:
@@ -497,11 +591,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [data]
+                required: [data, operating_hours]
                 properties:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/TimelineItem' }
+                  operating_hours: { $ref: '#/components/schemas/OperatingHours' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ForbiddenResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
@@ -610,9 +705,10 @@ paths:
     get:
       summary: Status ketersediaan per ruang pada rentang waktu
       description: >
-        Hanya ruang aktif yang belum dihapus. Prioritas status: DIGUNAKAN (jadwal atau booking DISETUJUI)
-        > DIAJUKAN (booking MENUNGGU) > TERSEDIA. Interval setengah-terbuka [start_at, end_at), jadi
+        Hanya ruang aktif yang belum dihapus. Prioritas status: DIGUNAKAN (jadwal, atau booking DISETUJUI atau
+        BERLANGSUNG) > DIAJUKAN (booking MENUNGGU) > TERSEDIA. Interval setengah-terbuka [start_at, end_at), jadi
         08:00-10:00 dan 10:00-12:00 tidak bentrok. Rentang maksimal 31 hari. Respons tidak dipaginasi.
+        Tiap ruang membawa `operating_hours`, yaitu jam operasional efektifnya (BR-29).
       security:
         - BearerAuth: []
       parameters:
@@ -695,7 +791,12 @@ paths:
         Satu pemohon maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu
         `MENUNGGU` atau `DISETUJUI` yang belum berakhir. Melebihi batas dijawab 422 tanpa `field`.
         Peran selain MAHASISWA dan ORGANISASI dijawab 403 `FORBIDDEN`; bila `requester_roles` tipe ruang tidak
-        memuat peran pemohon, dijawab 403 `ROOM_TYPE_NOT_ALLOWED`.
+        memuat peran pemohon, dijawab 403 `ROOM_TYPE_NOT_ALLOWED`. Durasi minimal/maksimal dan batas hari ke depan
+        berasal dari kebijakan tipe ruang (BR-20, lihat `GET /room-types`), bukan nilai global; pelanggarannya
+        dijawab 422 `VALIDATION_ERROR` pada `end_at` (durasi) atau `start_at` (hari ke depan). Waktu di luar jam
+        operasional efektif ruang (jam khusus ruang, atau jam bawaan tipe; BR-29) dijawab 422
+        `OUTSIDE_OPERATING_HOURS` dengan `details` berisi dua item: `{field: open_time, message: "HH:MM"}` dan
+        `{field: close_time, message: "HH:MM"}` yang membawa jendela efektif tersebut.
       security:
         - BearerAuth: []
       parameters:
@@ -1250,6 +1351,98 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorBody' }
 
+  /imports/schedules:
+    post:
+      summary: Impor jadwal akademik semester dari CSV (TU, ADMIN; multipart/form-data)
+      description: >
+        Dua langkah (BR-23). Dengan `?dry_run=true` berkas hanya diperiksa dan rencananya dikembalikan beserta
+        `plan_hash` (tidak ada yang disimpan). Tanpa `dry_run`, impor diterapkan dalam satu transaksi dan wajib
+        menyertakan `plan_hash` dari pratinjau untuk berkas yang sama; bila data berubah sejak pratinjau dijawab 409
+        `IMPORT_PLAN_CHANGED`, dan berkas yang sama yang sudah pernah diterapkan dijawab 409
+        `IMPORT_ALREADY_APPLIED`.
+
+
+        **Kolom CSV.** Wajib: `room_code`, `title`, `day_of_week` (1 = Senin sampai 7 = Minggu), `start_time` dan
+        `end_time` (HH:MM, WIB, pada hari yang sama), `semester_start` dan `semester_end` (YYYY-MM-DD). Opsional:
+        `skip_dates` (tanggal ISO dipisah spasi, dilewati). Tiap baris menjadi satu pertemuan per minggu pada hari
+        tersebut dari `semester_start` sampai `semester_end`. Hanya pertemuan yang belum dimulai yang dibuat; yang
+        sudah lewat tidak ditulis ulang. Jumlah pertemuan per baris dibatasi (`IMPORT_MAX_WEEKS`).
+
+
+        **Aturan bentrok.** Jadwal akademik menang atas booking: booking MENUNGGU atau DISETUJUI yang bertabrakan
+        dibatalkan otomatis (pemohon diberi notifikasi, tanpa poin pelanggaran) dan daftarnya muncul di
+        `bookings_to_cancel`. Bentrok dengan booking yang sedang BERLANGSUNG, dengan jadwal akademik lain, dengan
+        jadwal manual, atau dengan baris lain pada berkas yang sama menjadi galat per baris. Berkas yang memuat
+        galat tidak dapat diterapkan: dijawab 422 `IMPORT_INVALID` dengan `details` per baris (`line`, `column`);
+        baris 1 adalah header. Kode ruang dicari pada unit organisasi pengunggah.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: dry_run
+          in: query
+          description: "`true` untuk pratinjau tanpa menyimpan"
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: Berkas CSV }
+                plan_hash: { type: string, description: "Wajib saat menerapkan (tanpa `dry_run`); diambil dari respons pratinjau" }
+      responses:
+        '200':
+          description: Pratinjau (`dry_run=true`) atau hasil penerapan
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/SchedulePreview' }
+                  - { $ref: '#/components/schemas/ScheduleApplyResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '409':
+          description: "`IMPORT_PLAN_CHANGED` atau `IMPORT_ALREADY_APPLIED`"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+        '422':
+          description: "`VALIDATION_ERROR` (mis. `plan_hash`, `file`) atau `IMPORT_INVALID` (isi berkas bermasalah; `details` memuat `line` dan `column`)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+
+  /imports/{id}/rollback:
+    post:
+      summary: Rollback impor jadwal (TU, ADMIN)
+      description: >
+        Tanpa body. Menghapus pertemuan hasil impor jadwal yang belum dimulai dan menandai impor sebagai
+        `ROLLED_BACK`; pertemuan yang sudah dimulai tetap ada sebagai riwayat. Booking yang dibatalkan oleh impor
+        tidak dikembalikan. Untuk mengganti jadwal satu semester: rollback, lalu impor ulang (BR-23).
+        Id tidak dikenal dijawab 404, impor yang sudah di-rollback dijawab 409 `INVALID_STATE`, dan impor
+        selain jadwal (mis. akun) dijawab 422 pada field `id`.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Rollback berhasil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RollbackResult' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1299,7 +1492,8 @@ components:
         Kode error mesin-baca. 400 BAD_REQUEST; 401 UNAUTHENTICATED; 403 FORBIDDEN, PASSWORD_CHANGE_REQUIRED,
         ROOM_TYPE_NOT_ALLOWED; 404 NOT_FOUND; 405 METHOD_NOT_ALLOWED; 409 BOOKING_CONFLICT, INVALID_STATE,
         ROOM_INACTIVE, ROOM_HAS_ACTIVE_BOOKINGS, IMPORT_PLAN_CHANGED, IMPORT_ALREADY_APPLIED; 422 VALIDATION_ERROR,
-        IMPORT_INVALID; 429 RATE_LIMITED; 500 INTERNAL_SERVER_ERROR; 503 SERVICE_BUSY.
+        IMPORT_INVALID, OUTSIDE_OPERATING_HOURS (booking di luar jam operasional ruang; `details` berisi
+        `open_time` dan `close_time` efektif); 429 RATE_LIMITED; 500 INTERNAL_SERVER_ERROR; 503 SERVICE_BUSY.
       enum:
         - BAD_REQUEST
         - UNAUTHENTICATED
@@ -1316,6 +1510,7 @@ components:
         - IMPORT_ALREADY_APPLIED
         - VALIDATION_ERROR
         - IMPORT_INVALID
+        - OUTSIDE_OPERATING_HOURS
         - RATE_LIMITED
         - INTERNAL_SERVER_ERROR
         - SERVICE_BUSY
@@ -1494,9 +1689,91 @@ components:
               identifier: { type: string }
               temporary_password: { type: string }
 
+    SchedulePreview:
+      type: object
+      required: [rows, occurrences, errors, bookings_to_cancel, plan_hash]
+      properties:
+        rows: { type: integer, description: Jumlah baris data pada berkas }
+        occurrences: { type: integer, description: Jumlah pertemuan yang akan dibuat (hanya yang belum dimulai) }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/ImportRowError' }
+        bookings_to_cancel:
+          type: array
+          description: Booking MENUNGGU/DISETUJUI yang akan dibatalkan karena kalah dari jadwal akademik.
+          items:
+            type: object
+            required: [booking_id, room_code, start_at, end_at, conflicts_with]
+            properties:
+              booking_id: { type: string, format: uuid }
+              room_code: { type: string }
+              start_at: { type: string, format: date-time }
+              end_at: { type: string, format: date-time }
+              conflicts_with: { type: string, description: Judul jadwal akademik yang menggantikannya }
+        plan_hash: { type: string, description: Dikirim kembali saat menerapkan impor }
+
+    ScheduleApplyResult:
+      type: object
+      required: [import_id, rows, occurrences, bookings_cancelled]
+      properties:
+        import_id: { type: string, format: uuid, description: "Id impor; dipakai untuk `POST /imports/{id}/rollback`" }
+        rows: { type: integer }
+        occurrences: { type: integer, description: Jumlah pertemuan yang dibuat }
+        bookings_cancelled: { type: integer, description: Jumlah booking yang dibatalkan oleh impor }
+
+    RollbackResult:
+      type: object
+      required: [id, status, deleted_occurrences]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [ROLLED_BACK] }
+        deleted_occurrences: { type: integer, description: Jumlah pertemuan yang belum dimulai yang dihapus }
+
+    ClockTime:
+      type: string
+      pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$'
+      description: Jam dinding WIB berformat HH:MM. `24:00` hanya sah sebagai jam tutup (tengah malam).
+      example: '07:00'
+
+    ApprovalPolicy:
+      type: string
+      enum: [AUTO_IF_ELIGIBLE, ALWAYS_MANUAL]
+
+    RoomTypePolicy:
+      type: object
+      required: [type, label, approver_roles, requester_roles, approval_policy, letter_required, open_time, close_time, min_duration_min, max_duration_min, max_advance_days, updated_at]
+      properties:
+        type: { $ref: '#/components/schemas/RoomType' }
+        label: { type: string }
+        approver_roles:
+          type: array
+          items: { $ref: '#/components/schemas/UserRole' }
+          description: Peran yang boleh menyetujui booking dan mengelola ruang tipe ini.
+        requester_roles:
+          type: array
+          items: { $ref: '#/components/schemas/UserRole' }
+          description: Peran yang boleh mengajukan booking tipe ini.
+        approval_policy: { $ref: '#/components/schemas/ApprovalPolicy' }
+        letter_required: { type: boolean }
+        open_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam buka bawaan tipe (HH:MM, WIB)" }
+        close_time: { allOf: [{ $ref: '#/components/schemas/ClockTime' }], description: "Jam tutup bawaan tipe (HH:MM, WIB); bisa `24:00`" }
+        min_duration_min: { type: integer, description: Durasi booking minimal (menit) }
+        max_duration_min: { type: integer, description: Durasi booking maksimal (menit) }
+        max_advance_days: { type: integer, description: Batas hari ke depan booking boleh diajukan }
+        updated_at: { type: string, format: date-time }
+
+    OperatingHours:
+      type: object
+      required: [open_time, close_time, custom]
+      description: "Jam operasional efektif ruang (BR-29): jam khusus ruang bila ada, jika tidak jam bawaan tipenya."
+      properties:
+        open_time: { $ref: '#/components/schemas/ClockTime' }
+        close_time: { $ref: '#/components/schemas/ClockTime' }
+        custom: { type: boolean, description: "`true` bila ruang menetapkan jam sendiri" }
+
     Room:
       type: object
-      required: [id, org_unit_id, code, name, type, capacity, facilities, is_active]
+      required: [id, org_unit_id, code, name, type, capacity, facilities, is_active, open_time, close_time]
       properties:
         id: { type: string, format: uuid }
         org_unit_id: { type: string, format: uuid }
@@ -1506,6 +1783,14 @@ components:
         capacity: { type: integer }
         facilities: { type: array, items: { type: string } }
         is_active: { type: boolean }
+        open_time:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$'
+          description: Jam buka khusus ruang (HH:MM, WIB); null bila mengikuti jam bawaan tipe ruang (BR-29).
+        close_time:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$'
+          description: Jam tutup khusus ruang (HH:MM, WIB); null bila mengikuti jam bawaan tipe ruang (BR-29).
 
     ScheduleSource:
       type: string
@@ -1535,9 +1820,10 @@ components:
 
     AvailabilityRoom:
       type: object
-      required: [room, status, conflicts]
+      required: [room, operating_hours, status, conflicts]
       properties:
         room: { $ref: '#/components/schemas/Room' }
+        operating_hours: { $ref: '#/components/schemas/OperatingHours' }
         status: { type: string, enum: [TERSEDIA, DIGUNAKAN, DIAJUKAN] }
         conflicts:
           type: array
@@ -1547,7 +1833,7 @@ components:
             properties:
               kind: { type: string, enum: [SCHEDULE, BOOKING] }
               title: { type: string }
-              status: { type: string, enum: [MENUNGGU, DISETUJUI], description: 'Hanya untuk kind BOOKING' }
+              status: { type: string, enum: [MENUNGGU, DISETUJUI, BERLANGSUNG], description: 'Hanya untuk kind BOOKING' }
               start_at: { type: string, format: date-time }
               end_at: { type: string, format: date-time }
 

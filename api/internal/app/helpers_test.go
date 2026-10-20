@@ -82,12 +82,6 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		Argon2Parallelism:  1,
 		CORSAllowedOrigins: []string{"http://localhost:5173"},
 
-		// BR-01 defaults, as in .env.example.
-		OperatingHoursStart:       "07:00",
-		OperatingHoursEnd:         "21:00",
-		BookingMinDurationMinutes: 30,
-		BookingMaxDurationHours:   8,
-		BookingMaxFutureDays:      30,
 		// High on purpose: most tests make many bookings for one student. Quota tests set it to 5, the real default.
 		BookingMaxActivePerUser: 100,
 

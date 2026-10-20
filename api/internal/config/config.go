@@ -12,28 +12,23 @@ import (
 )
 
 type Config struct {
-	AppEnv                    string
-	Port                      string
-	LogLevel                  string
-	DatabaseURL               string
-	JWTSecret                 string
-	JWTAccessExpiry           time.Duration
-	RefreshTokenExpiry        time.Duration
-	CookieSecure              bool
-	Argon2MemoryKiB           uint32
-	Argon2Iterations          uint32
-	Argon2Parallelism         uint8
-	CORSAllowedOrigins        []string
-	OperatingHoursStart       string
-	OperatingHoursEnd         string
-	BookingMinDurationMinutes int
-	BookingMaxDurationHours   int
-	BookingMaxFutureDays      int
-	BookingMaxActivePerUser   int
-	UploadDir                 string
-	UploadMaxBytes            int64
-	SSEHeartbeat              time.Duration
-	DBLockTimeout             time.Duration
+	AppEnv                  string
+	Port                    string
+	LogLevel                string
+	DatabaseURL             string
+	JWTSecret               string
+	JWTAccessExpiry         time.Duration
+	RefreshTokenExpiry      time.Duration
+	CookieSecure            bool
+	Argon2MemoryKiB         uint32
+	Argon2Iterations        uint32
+	Argon2Parallelism       uint8
+	CORSAllowedOrigins      []string
+	BookingMaxActivePerUser int
+	UploadDir               string
+	UploadMaxBytes          int64
+	SSEHeartbeat            time.Duration
+	DBLockTimeout           time.Duration
 
 	// Business holds the BR-11 to BR-28 settings. The older booking and upload settings above stay until
 	// the phase that replaces the code reading them (bookings: Phase 3, uploads: Phase 3).
@@ -47,28 +42,23 @@ func Load() (*Config, error) {
 	_ = godotenv.Load("../.env")
 
 	cfg := &Config{
-		AppEnv:                    getEnv("APP_ENV", "development"),
-		Port:                      getEnv("PORT", "8080"),
-		LogLevel:                  getEnv("LOG_LEVEL", "info"),
-		DatabaseURL:               getEnv("DATABASE_URL", ""),
-		JWTSecret:                 getEnv("JWT_SECRET", ""),
-		JWTAccessExpiry:           getDurationEnv("JWT_ACCESS_EXPIRY", 15*time.Minute),
-		RefreshTokenExpiry:        getDurationEnv("REFRESH_TOKEN_EXPIRY", 7*24*time.Hour),
-		CookieSecure:              getBoolEnv("COOKIE_SECURE", false),
-		Argon2MemoryKiB:           uint32(getIntEnv("ARGON2_MEMORY_KIB", 19*1024)),
-		Argon2Iterations:          uint32(getIntEnv("ARGON2_ITERATIONS", 2)),
-		Argon2Parallelism:         uint8(getIntEnv("ARGON2_PARALLELISM", 1)),
-		CORSAllowedOrigins:        getStringSliceEnv("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173"}),
-		OperatingHoursStart:       getEnv("OPERATING_HOURS_START", "07:00"),
-		OperatingHoursEnd:         getEnv("OPERATING_HOURS_END", "21:00"),
-		BookingMinDurationMinutes: getIntEnv("BOOKING_MIN_DURATION_MINUTES", 30),
-		BookingMaxDurationHours:   getIntEnv("BOOKING_MAX_DURATION_HOURS", 8),
-		BookingMaxFutureDays:      getIntEnv("BOOKING_MAX_FUTURE_DAYS", 30),
-		BookingMaxActivePerUser:   getIntEnv("BOOKING_MAX_ACTIVE_PER_USER", 5),
-		UploadDir:                 getEnv("UPLOAD_DIR", "./uploads"),
-		UploadMaxBytes:            getInt64Env("UPLOAD_MAX_BYTES", 5*1024*1024),
-		SSEHeartbeat:              getDurationEnv("SSE_HEARTBEAT", 25*time.Second),
-		DBLockTimeout:             getDurationEnv("DB_LOCK_TIMEOUT", 5*time.Second),
+		AppEnv:                  getEnv("APP_ENV", "development"),
+		Port:                    getEnv("PORT", "8080"),
+		LogLevel:                getEnv("LOG_LEVEL", "info"),
+		DatabaseURL:             getEnv("DATABASE_URL", ""),
+		JWTSecret:               getEnv("JWT_SECRET", ""),
+		JWTAccessExpiry:         getDurationEnv("JWT_ACCESS_EXPIRY", 15*time.Minute),
+		RefreshTokenExpiry:      getDurationEnv("REFRESH_TOKEN_EXPIRY", 7*24*time.Hour),
+		CookieSecure:            getBoolEnv("COOKIE_SECURE", false),
+		Argon2MemoryKiB:         uint32(getIntEnv("ARGON2_MEMORY_KIB", 19*1024)),
+		Argon2Iterations:        uint32(getIntEnv("ARGON2_ITERATIONS", 2)),
+		Argon2Parallelism:       uint8(getIntEnv("ARGON2_PARALLELISM", 1)),
+		CORSAllowedOrigins:      getStringSliceEnv("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173"}),
+		BookingMaxActivePerUser: getIntEnv("BOOKING_MAX_ACTIVE_PER_USER", 5),
+		UploadDir:               getEnv("UPLOAD_DIR", "./uploads"),
+		UploadMaxBytes:          getInt64Env("UPLOAD_MAX_BYTES", 5*1024*1024),
+		SSEHeartbeat:            getDurationEnv("SSE_HEARTBEAT", 25*time.Second),
+		DBLockTimeout:           getDurationEnv("DB_LOCK_TIMEOUT", 5*time.Second),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -184,61 +174,22 @@ func getStringSliceEnv(key string, defaultVal []string) []string {
 	return defaultVal
 }
 
-// BookingRules are the BR-01 limits, parsed from the environment settings.
+// BookingRules holds the booking settings that are still global. Operating hours, durations and how far
+// ahead a booking may be made follow the room type's policy (BR-20) and the room's own hours (BR-29), not
+// the environment; the quota moves to the business settings in Phase 3.
 type BookingRules struct {
-	OpenMinute    int // minutes after midnight WIB when bookings may start
-	CloseMinute   int // minutes after midnight WIB when bookings must end
-	MinDuration   time.Duration
-	MaxDuration   time.Duration
-	MaxFutureDays int
-	// MaxActivePerUser caps how many pending or approved upcoming bookings one student may hold, so
+	// MaxActivePerUser caps how many pending or approved upcoming bookings one requester may hold, so
 	// nobody can hold the calendar hostage with requests (a pending one holds its slot, BR-03).
 	MaxActivePerUser int
 }
 
-// BookingRules parses and validates the booking settings. Load calls it so a bad value stops the
-// server at start instead of rejecting every booking later.
+// BookingRules validates the booking settings. Load calls it so a bad value stops the server at start
+// instead of rejecting every booking later.
 func (c *Config) BookingRules() (BookingRules, error) {
-	open, err := parseClock(c.OperatingHoursStart)
-	if err != nil {
-		return BookingRules{}, fmt.Errorf("OPERATING_HOURS_START: %w", err)
-	}
-	closing, err := parseClock(c.OperatingHoursEnd)
-	if err != nil {
-		return BookingRules{}, fmt.Errorf("OPERATING_HOURS_END: %w", err)
-	}
-	if open >= closing {
-		return BookingRules{}, fmt.Errorf("OPERATING_HOURS_START must be before OPERATING_HOURS_END")
-	}
-	if c.BookingMinDurationMinutes < 1 || c.BookingMaxDurationHours < 1 ||
-		time.Duration(c.BookingMinDurationMinutes)*time.Minute > time.Duration(c.BookingMaxDurationHours)*time.Hour {
-		return BookingRules{}, fmt.Errorf("BOOKING_MIN_DURATION_MINUTES and BOOKING_MAX_DURATION_HOURS must be positive with min <= max")
-	}
-	if c.BookingMaxFutureDays < 1 {
-		return BookingRules{}, fmt.Errorf("BOOKING_MAX_FUTURE_DAYS must be at least 1")
-	}
 	if c.BookingMaxActivePerUser < 1 {
 		return BookingRules{}, fmt.Errorf("BOOKING_MAX_ACTIVE_PER_USER must be at least 1")
 	}
-	return BookingRules{
-		OpenMinute:       open,
-		CloseMinute:      closing,
-		MinDuration:      time.Duration(c.BookingMinDurationMinutes) * time.Minute,
-		MaxDuration:      time.Duration(c.BookingMaxDurationHours) * time.Hour,
-		MaxFutureDays:    c.BookingMaxFutureDays,
-		MaxActivePerUser: c.BookingMaxActivePerUser,
-	}, nil
-}
-
-// parseClock reads "HH:MM" as minutes after midnight; "24:00" is allowed as a closing time.
-func parseClock(v string) (int, error) {
-	hh, mm, ok := strings.Cut(v, ":")
-	h, errH := strconv.Atoi(hh)
-	m, errM := strconv.Atoi(mm)
-	if !ok || errH != nil || errM != nil || h < 0 || h > 24 || m < 0 || m > 59 || (h == 24 && m != 0) {
-		return 0, fmt.Errorf("%q is not a valid HH:MM time", v)
-	}
-	return h*60 + m, nil
+	return BookingRules{MaxActivePerUser: c.BookingMaxActivePerUser}, nil
 }
 
 // validateCORSOrigins refuses a wildcard: the API always answers with credentials allowed, and a

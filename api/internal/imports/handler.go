@@ -9,6 +9,7 @@ import (
 	"classlab/api/internal/httpx"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 // formOverheadBytes covers multipart boundaries and the small text fields around the file.
@@ -29,6 +30,8 @@ func (h *Handler) Routes() http.Handler {
 	r.Use(httpx.RequireRoles(httpx.RoleTU, httpx.RoleAdmin))
 	r.Get("/", h.list)
 	r.Post("/users", h.users)
+	r.Post("/schedules", h.schedules)
+	r.Post("/{id}/rollback", h.rollback)
 	return r
 }
 
@@ -141,5 +144,50 @@ func (h *Handler) users(w http.ResponseWriter, r *http.Request) {
 	}
 	// The response carries temporary passwords, so it must never be cached or replayed.
 	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, result)
+}
+
+// schedules serves POST /imports/schedules: a preview with ?dry_run=true, otherwise the apply.
+func (h *Handler) schedules(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+
+	up, err := readUpload(w, r, h.svc.Limits().MaxBytes)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+
+	if r.URL.Query().Get("dry_run") == "true" {
+		preview, err := h.svc.PreviewSchedules(r.Context(), actor, bytes.NewReader(up.file))
+		if err != nil {
+			httpx.WriteError(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusOK, preview)
+		return
+	}
+
+	result, err := h.svc.ApplySchedules(r.Context(), actor, up.fileName, bytes.NewReader(up.file), up.fields["plan_hash"])
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, result)
+}
+
+// rollback serves POST /imports/{id}/rollback.
+func (h *Handler) rollback(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, httpx.ErrNotFound)
+		return
+	}
+	result, err := h.svc.Rollback(r.Context(), actor, id)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
 	httpx.JSON(w, http.StatusOK, result)
 }

@@ -1,0 +1,4 @@
+room_code,title,day_of_week,start_time,end_time,semester_start,semester_end,skip_dates
+KLS-101,Statistika,4,13:00,15:00,2026-08-24,2026-12-18,2026-10-15 2026-11-05
+KLS-102,Sistem Informasi,3,13:00,15:00,2026-08-26,2026-12-16,
+LAB-1,Administrasi Jaringan,2,13:00,16:00,2026-08-25,2026-12-15,2026-10-13

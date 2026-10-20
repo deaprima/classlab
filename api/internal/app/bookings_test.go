@@ -156,8 +156,6 @@ func TestCreateBookingValidation(t *testing.T) {
 		{"end off the half hour", at(tue, "08:00"), at(tue, "09:10"), nil, "end_at"},
 		{"in the past", at(today, "08:00"), at(today, "09:00"), nil, "start_at"},
 		{"longer than 8 hours", at(tue, "07:00"), at(tue, "16:00"), nil, "end_at"},
-		{"before opening", at(tue, "06:00"), at(tue, "08:00"), nil, "start_at"},
-		{"after closing", at(tue, "20:00"), at(tue, "22:00"), nil, "end_at"},
 		{"more than 30 days ahead", at("2026-11-14", "08:00"), at("2026-11-14", "09:00"), nil, "start_at"},
 		{"blank purpose", at(tue, "08:00"), at(tue, "09:00"), map[string]any{"purpose": "  "}, "purpose"},
 		{"zero participants", at(tue, "08:00"), at(tue, "09:00"), map[string]any{"participants": 0}, "participants"},
@@ -167,6 +165,17 @@ func TestCreateBookingValidation(t *testing.T) {
 		res := e.postBooking(tok, room, tc.start, tc.end, tc.extra)
 		if res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)[tc.field] {
 			t.Errorf("%s: %d %s; want 422 naming %q", tc.name, res.Code, res.Body.String(), tc.field)
+		}
+	}
+
+	// Outside the room's operating hours has its own code (BR-29): the effective window comes back in details.
+	for name, w := range map[string][2]string{
+		"before opening": {at(tue, "06:00"), at(tue, "08:00")},
+		"after closing":  {at(tue, "20:00"), at(tue, "22:00")},
+	} {
+		res := e.postBooking(tok, room, w[0], w[1], nil)
+		if res.Code != http.StatusUnprocessableEntity || res.errorCode() != "OUTSIDE_OPERATING_HOURS" {
+			t.Errorf("%s: %d %s; want 422 OUTSIDE_OPERATING_HOURS", name, res.Code, res.errorCode())
 		}
 	}
 

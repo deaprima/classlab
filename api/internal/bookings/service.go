@@ -115,7 +115,7 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	if in.Notes != nil && utf8.RuneCountInString(*in.Notes) > maxNotesRunes {
 		problems = append(problems, httpx.ErrorDetail{Field: "notes", Message: fmt.Sprintf("Catatan maksimal %d karakter.", maxNotesRunes)})
 	}
-	problems = append(problems, s.validateWindow(in.StartAt, in.EndAt, now)...)
+	problems = append(problems, validateWindow(in.StartAt, in.EndAt, now)...)
 	if len(problems) > 0 {
 		return Booking{}, false, httpx.ValidationError(problems...)
 	}
@@ -149,6 +149,9 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		}
 		if !policy.CanRequest(actor.Role) {
 			return httpx.ErrRoomTypeNotAllowed
+		}
+		if err := validatePolicyWindow(policy, room.OpenTime, room.CloseTime, start, end, now); err != nil {
+			return err
 		}
 		active, err := q.CountActiveBookingsForRequester(ctx, dbgen.CountActiveBookingsForRequesterParams{RequesterID: actor.UserID, EndAt: now})
 		if err != nil {
@@ -248,8 +251,9 @@ func idempotencyReuse() error {
 	})
 }
 
-// validateWindow applies BR-01. Everything is judged in WIB, the zone users read the clock in.
-func (s *Service) validateWindow(start, end, now time.Time) []httpx.ErrorDetail {
+// validateWindow applies the checks of BR-01 that do not depend on the room: ordering, one day, the
+// 30-minute grid and not in the past. Everything is judged in WIB, the zone users read the clock in.
+func validateWindow(start, end, now time.Time) []httpx.ErrorDetail {
 	if start.IsZero() || end.IsZero() {
 		var out []httpx.ErrorDetail
 		if start.IsZero() {
@@ -278,24 +282,52 @@ func (s *Service) validateWindow(start, end, now time.Time) []httpx.ErrorDetail 
 	if start.Before(now) {
 		out = append(out, httpx.ErrorDetail{Field: "start_at", Message: "start_at tidak boleh di masa lalu."})
 	}
-	if d := end.Sub(start); d < s.rules.MinDuration {
-		out = append(out, httpx.ErrorDetail{Field: "end_at", Message: "Durasi minimal " + formatDuration(s.rules.MinDuration) + "."})
-	} else if d > s.rules.MaxDuration {
-		out = append(out, httpx.ErrorDetail{Field: "end_at", Message: "Durasi maksimal " + formatDuration(s.rules.MaxDuration) + "."})
+	return out
+}
+
+// validatePolicyWindow applies what depends on the room: the duration and booking-horizon limits of its
+// type (BR-01, BR-20) and its operating hours, which are the room's own when set and the type's default
+// otherwise (BR-29). Hours get their own error code so a client can tell "closed at that time" from a
+// malformed request.
+func validatePolicyWindow(p roomtypes.Policy, roomOpen, roomClose pgtype.Time, start, end, now time.Time) error {
+	st, en := clock.ToWIB(start), clock.ToWIB(end)
+
+	open, closing := p.OpenMinute, p.CloseMinute
+	if o, ok := roomtypes.MinutesOf(roomOpen); ok {
+		if c, ok := roomtypes.MinutesOf(roomClose); ok {
+			open, closing = o, c
+		}
 	}
-	if minuteOfDay(st) < s.rules.OpenMinute {
-		out = append(out, httpx.ErrorDetail{Field: "start_at", Message: "Jam operasional dimulai pukul " + formatMinute(s.rules.OpenMinute) + " WIB."})
+	if minuteOfDay(st) < open || minuteOfDay(en) > closing {
+		return outsideOperatingHours(open, closing)
 	}
-	if minuteOfDay(en) > s.rules.CloseMinute {
-		out = append(out, httpx.ErrorDetail{Field: "end_at", Message: "Jam operasional berakhir pukul " + formatMinute(s.rules.CloseMinute) + " WIB."})
+
+	var out []httpx.ErrorDetail
+	if d := end.Sub(start); d < p.MinDuration {
+		out = append(out, httpx.ErrorDetail{Field: "end_at", Message: "Durasi minimal " + formatDuration(p.MinDuration) + "."})
+	} else if d > p.MaxDuration {
+		out = append(out, httpx.ErrorDetail{Field: "end_at", Message: "Durasi maksimal " + formatDuration(p.MaxDuration) + "."})
 	}
 	today := clock.ToWIB(now)
 	todayStart := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, clock.WIB)
 	startDay := time.Date(st.Year(), st.Month(), st.Day(), 0, 0, 0, 0, clock.WIB)
-	if startDay.Sub(todayStart) > time.Duration(s.rules.MaxFutureDays)*24*time.Hour {
-		out = append(out, httpx.ErrorDetail{Field: "start_at", Message: fmt.Sprintf("Booking maksimal %d hari ke depan.", s.rules.MaxFutureDays)})
+	if startDay.Sub(todayStart) > time.Duration(p.MaxAdvanceDays)*24*time.Hour {
+		out = append(out, httpx.ErrorDetail{Field: "start_at", Message: fmt.Sprintf("Booking maksimal %d hari ke depan.", p.MaxAdvanceDays)})
 	}
-	return out
+	if len(out) > 0 {
+		return httpx.ValidationError(out...)
+	}
+	return nil
+}
+
+// outsideOperatingHours is the 422 OUTSIDE_OPERATING_HOURS response; details carry the effective window.
+func outsideOperatingHours(open, closing int) error {
+	return httpx.NewCustomError(http.StatusUnprocessableEntity, "OUTSIDE_OPERATING_HOURS",
+		fmt.Sprintf("Waktu di luar jam operasional ruang ini (%s-%s WIB).", formatMinute(open), formatMinute(closing)),
+		[]httpx.ErrorDetail{
+			{Field: "open_time", Message: formatMinute(open)},
+			{Field: "close_time", Message: formatMinute(closing)},
+		}, httpx.ErrValidation)
 }
 
 func onSlot(t time.Time) bool {

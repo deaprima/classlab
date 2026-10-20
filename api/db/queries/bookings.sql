@@ -4,6 +4,7 @@ SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.parti
        b.status, b.decided_by, b.decided_at, b.decision_reason, b.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS requester_identifier, u.name AS requester_name
 FROM bookings b
 JOIN rooms r ON r.id = b.room_id
@@ -15,6 +16,7 @@ SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.parti
        b.status, b.decided_by, b.decided_at, b.decision_reason, b.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS requester_identifier, u.name AS requester_name
 FROM bookings b
 JOIN rooms r ON r.id = b.room_id

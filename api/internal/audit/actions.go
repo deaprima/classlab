@@ -19,6 +19,11 @@ const (
 	ActionScheduleCreated = "SCHEDULE_CREATED"
 	ActionScheduleUpdated = "SCHEDULE_UPDATED"
 	ActionScheduleDeleted = "SCHEDULE_DELETED"
+
+	ActionRoomTypePolicyUpdated = "ROOM_TYPE_POLICY_UPDATED"
+
+	ActionSchedulesImported = "SCHEDULES_IMPORTED"
+	ActionImportRolledBack  = "IMPORT_ROLLED_BACK"
 )
 
 // Entity types stored in audit_logs.entity_type.
@@ -27,4 +32,5 @@ const (
 	EntityRoom     = "ROOM"
 	EntitySchedule = "SCHEDULE"
 	EntityImport   = "IMPORT"
+	EntityRoomType = "ROOM_TYPE"
 )

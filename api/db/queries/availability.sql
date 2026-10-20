@@ -19,7 +19,7 @@ WHERE room_id = ANY(sqlc.arg(room_ids)::uuid[])
 ORDER BY start_at, id;
 
 -- name: ListBookableRooms :many
-SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 FROM rooms
 WHERE deleted_at IS NULL AND is_active
   AND (sqlc.narg(type)::room_type IS NULL OR type = sqlc.narg(type)::room_type)

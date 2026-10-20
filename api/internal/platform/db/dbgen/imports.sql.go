@@ -13,6 +13,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelBookingForImport = `-- name: CancelBookingForImport :execrows
+UPDATE bookings SET
+  status = 'DIBATALKAN', decided_by = $1, decided_at = $2,
+  decision_reason = $3, updated_at = $2
+WHERE id = $4 AND status IN ('MENUNGGU', 'DISETUJUI')
+`
+
+type CancelBookingForImportParams struct {
+	DecidedBy pgtype.UUID        `json:"decided_by"`
+	Now       pgtype.Timestamptz `json:"now"`
+	Reason    pgtype.Text        `json:"reason"`
+	ID        uuid.UUID          `json:"id"`
+}
+
+// An academic schedule always wins over a request (BR-23). Only a booking still waiting or approved is
+// cancelled; one that is under way is an import error and never reaches this statement.
+func (q *Queries) CancelBookingForImport(ctx context.Context, arg CancelBookingForImportParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelBookingForImport,
+		arg.DecidedBy,
+		arg.Now,
+		arg.Reason,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countImports = `-- name: CountImports :one
 SELECT count(*) FROM imports i
 WHERE ($1::import_kind IS NULL OR i.kind = $1::import_kind)
@@ -56,6 +85,34 @@ func (q *Queries) CreateImport(ctx context.Context, arg CreateImportParams) (uui
 	return id, err
 }
 
+const createImportedSchedule = `-- name: CreateImportedSchedule :exec
+INSERT INTO room_schedules (room_id, title, start_at, end_at, source, created_by, import_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, 'AKADEMIK', $5, $6, $7, $7)
+`
+
+type CreateImportedScheduleParams struct {
+	RoomID    uuid.UUID   `json:"room_id"`
+	Title     string      `json:"title"`
+	StartAt   time.Time   `json:"start_at"`
+	EndAt     time.Time   `json:"end_at"`
+	CreatedBy uuid.UUID   `json:"created_by"`
+	ImportID  pgtype.UUID `json:"import_id"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+func (q *Queries) CreateImportedSchedule(ctx context.Context, arg CreateImportedScheduleParams) error {
+	_, err := q.db.Exec(ctx, createImportedSchedule,
+		arg.RoomID,
+		arg.Title,
+		arg.StartAt,
+		arg.EndAt,
+		arg.CreatedBy,
+		arg.ImportID,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const createUserCourse = `-- name: CreateUserCourse :exec
 INSERT INTO user_courses (user_id, import_id, semester, course_code, course_name, class_name, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -82,6 +139,41 @@ func (q *Queries) CreateUserCourse(ctx context.Context, arg CreateUserCoursePara
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const deleteUpcomingImportSchedules = `-- name: DeleteUpcomingImportSchedules :execrows
+DELETE FROM room_schedules WHERE import_id = $1 AND start_at > $2
+`
+
+type DeleteUpcomingImportSchedulesParams struct {
+	ImportID pgtype.UUID `json:"import_id"`
+	StartAt  time.Time   `json:"start_at"`
+}
+
+// Rollback removes what has not started; meetings that already took place stay as history.
+func (q *Queries) DeleteUpcomingImportSchedules(ctx context.Context, arg DeleteUpcomingImportSchedulesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUpcomingImportSchedules, arg.ImportID, arg.StartAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getImportForUpdate = `-- name: GetImportForUpdate :one
+SELECT id, kind, status FROM imports WHERE id = $1 FOR UPDATE
+`
+
+type GetImportForUpdateRow struct {
+	ID     uuid.UUID  `json:"id"`
+	Kind   ImportKind `json:"kind"`
+	Status string     `json:"status"`
+}
+
+func (q *Queries) GetImportForUpdate(ctx context.Context, id uuid.UUID) (GetImportForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getImportForUpdate, id)
+	var i GetImportForUpdateRow
+	err := row.Scan(&i.ID, &i.Kind, &i.Status)
+	return i, err
 }
 
 const importAlreadyApplied = `-- name: ImportAlreadyApplied :one
@@ -154,6 +246,149 @@ func (q *Queries) ListImports(ctx context.Context, arg ListImportsParams) ([]Lis
 			&i.Summary,
 			&i.CreatedAt,
 			&i.RolledBackAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLiveBookingsInRange = `-- name: ListLiveBookingsInRange :many
+SELECT id, room_id, requester_id, status, purpose, start_at, end_at
+FROM bookings
+WHERE room_id = ANY($1::uuid[])
+  AND status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG')
+  AND start_at < $2 AND end_at > $3
+ORDER BY room_id, start_at
+`
+
+type ListLiveBookingsInRangeParams struct {
+	RoomIds    []uuid.UUID `json:"room_ids"`
+	RangeEnd   time.Time   `json:"range_end"`
+	RangeStart time.Time   `json:"range_start"`
+}
+
+type ListLiveBookingsInRangeRow struct {
+	ID          uuid.UUID     `json:"id"`
+	RoomID      uuid.UUID     `json:"room_id"`
+	RequesterID uuid.UUID     `json:"requester_id"`
+	Status      BookingStatus `json:"status"`
+	Purpose     string        `json:"purpose"`
+	StartAt     time.Time     `json:"start_at"`
+	EndAt       time.Time     `json:"end_at"`
+}
+
+func (q *Queries) ListLiveBookingsInRange(ctx context.Context, arg ListLiveBookingsInRangeParams) ([]ListLiveBookingsInRangeRow, error) {
+	rows, err := q.db.Query(ctx, listLiveBookingsInRange, arg.RoomIds, arg.RangeEnd, arg.RangeStart)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLiveBookingsInRangeRow{}
+	for rows.Next() {
+		var i ListLiveBookingsInRangeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoomID,
+			&i.RequesterID,
+			&i.Status,
+			&i.Purpose,
+			&i.StartAt,
+			&i.EndAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoomsByCodes = `-- name: ListRoomsByCodes :many
+SELECT id, code, is_active
+FROM rooms
+WHERE org_unit_id = $1 AND code = ANY($2::text[]) AND deleted_at IS NULL
+`
+
+type ListRoomsByCodesParams struct {
+	OrgUnitID uuid.UUID `json:"org_unit_id"`
+	Codes     []string  `json:"codes"`
+}
+
+type ListRoomsByCodesRow struct {
+	ID       uuid.UUID `json:"id"`
+	Code     string    `json:"code"`
+	IsActive bool      `json:"is_active"`
+}
+
+// Rooms a schedule file refers to, by the code printed on the door. Inactive rooms come back too so the
+// import can say "inactive" rather than "unknown"; deleted ones do not.
+func (q *Queries) ListRoomsByCodes(ctx context.Context, arg ListRoomsByCodesParams) ([]ListRoomsByCodesRow, error) {
+	rows, err := q.db.Query(ctx, listRoomsByCodes, arg.OrgUnitID, arg.Codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoomsByCodesRow{}
+	for rows.Next() {
+		var i ListRoomsByCodesRow
+		if err := rows.Scan(&i.ID, &i.Code, &i.IsActive); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSchedulesInRange = `-- name: ListSchedulesInRange :many
+SELECT id, room_id, title, source, start_at, end_at
+FROM room_schedules
+WHERE room_id = ANY($1::uuid[]) AND start_at < $2 AND end_at > $3
+ORDER BY room_id, start_at
+`
+
+type ListSchedulesInRangeParams struct {
+	RoomIds    []uuid.UUID `json:"room_ids"`
+	RangeEnd   time.Time   `json:"range_end"`
+	RangeStart time.Time   `json:"range_start"`
+}
+
+type ListSchedulesInRangeRow struct {
+	ID      uuid.UUID      `json:"id"`
+	RoomID  uuid.UUID      `json:"room_id"`
+	Title   string         `json:"title"`
+	Source  ScheduleSource `json:"source"`
+	StartAt time.Time      `json:"start_at"`
+	EndAt   time.Time      `json:"end_at"`
+}
+
+// Everything already in the way, for all rooms of the file at once. Both lists are ordered by start so the
+// import can search them instead of comparing every pair.
+func (q *Queries) ListSchedulesInRange(ctx context.Context, arg ListSchedulesInRangeParams) ([]ListSchedulesInRangeRow, error) {
+	rows, err := q.db.Query(ctx, listSchedulesInRange, arg.RoomIds, arg.RangeEnd, arg.RangeStart)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSchedulesInRangeRow{}
+	for rows.Next() {
+		var i ListSchedulesInRangeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoomID,
+			&i.Title,
+			&i.Source,
+			&i.StartAt,
+			&i.EndAt,
 		); err != nil {
 			return nil, err
 		}
@@ -243,6 +478,21 @@ SELECT pg_advisory_xact_lock(hashtextextended('import-users', 0))
 // Serialises student imports so two of them cannot each plan "create" for the same identifier.
 func (q *Queries) LockUserImport(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockUserImport)
+	return err
+}
+
+const markImportRolledBack = `-- name: MarkImportRolledBack :exec
+UPDATE imports SET status = 'ROLLED_BACK', rolled_back_at = $2, rolled_back_by = $3 WHERE id = $1
+`
+
+type MarkImportRolledBackParams struct {
+	ID           uuid.UUID          `json:"id"`
+	RolledBackAt pgtype.Timestamptz `json:"rolled_back_at"`
+	RolledBackBy pgtype.UUID        `json:"rolled_back_by"`
+}
+
+func (q *Queries) MarkImportRolledBack(ctx context.Context, arg MarkImportRolledBackParams) error {
+	_, err := q.db.Exec(ctx, markImportRolledBack, arg.ID, arg.RolledBackAt, arg.RolledBackBy)
 	return err
 }
 

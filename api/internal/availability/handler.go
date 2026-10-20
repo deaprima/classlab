@@ -76,10 +76,10 @@ func (h *Handler) Timeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := h.svc.Timeline(r.Context(), id, from, to)
+	result, err := h.svc.Timeline(r.Context(), id, from, to)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, httpx.DataResponse[[]TimelineItem]{Data: items})
+	httpx.JSON(w, http.StatusOK, result)
 }
