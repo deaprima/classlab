@@ -34,6 +34,10 @@ type Config struct {
 	UploadMaxBytes            int64
 	SSEHeartbeat              time.Duration
 	DBLockTimeout             time.Duration
+
+	// Business holds the BR-11 to BR-28 settings. The older booking and upload settings above stay until
+	// the phase that replaces the code reading them (bookings: Phase 3, uploads: Phase 3).
+	Business Business
 }
 
 // Load loads configuration from environment variables with optional .env file support.
@@ -100,6 +104,12 @@ func Load() (*Config, error) {
 	if _, err := cfg.BookingRules(); err != nil {
 		return nil, err
 	}
+
+	business, err := loadBusiness()
+	if err != nil {
+		return nil, fmt.Errorf("invalid business settings: %w", err)
+	}
+	cfg.Business = business
 
 	return cfg, nil
 }
