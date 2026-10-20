@@ -12,9 +12,10 @@ const (
 	ActionUserPasswordReset = "USER_PASSWORD_RESET"
 	ActionUsersImported     = "USERS_IMPORTED"
 
-	ActionRoomCreated = "ROOM_CREATED"
-	ActionRoomUpdated = "ROOM_UPDATED"
-	ActionRoomDeleted = "ROOM_DELETED"
+	ActionRoomCreated   = "ROOM_CREATED"
+	ActionRoomUpdated   = "ROOM_UPDATED"
+	ActionRoomDeleted   = "ROOM_DELETED"
+	ActionRoomQRRotated = "ROOM_QR_ROTATED"
 
 	ActionScheduleCreated = "SCHEDULE_CREATED"
 	ActionScheduleUpdated = "SCHEDULE_UPDATED"
@@ -24,13 +25,16 @@ const (
 
 	ActionSchedulesImported = "SCHEDULES_IMPORTED"
 	ActionImportRolledBack  = "IMPORT_ROLLED_BACK"
+
+	ActionViolationAnnulled = "VIOLATION_ANNULLED"
 )
 
 // Entity types stored in audit_logs.entity_type.
 const (
-	EntityUser     = "USER"
-	EntityRoom     = "ROOM"
-	EntitySchedule = "SCHEDULE"
-	EntityImport   = "IMPORT"
-	EntityRoomType = "ROOM_TYPE"
+	EntityUser      = "USER"
+	EntityRoom      = "ROOM"
+	EntitySchedule  = "SCHEDULE"
+	EntityImport    = "IMPORT"
+	EntityRoomType  = "ROOM_TYPE"
+	EntityViolation = "VIOLATION"
 )

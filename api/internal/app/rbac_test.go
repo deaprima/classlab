@@ -232,6 +232,34 @@ func TestRBACMatrix(t *testing.T) {
 			},
 			want: everyone(http.StatusNotFound).with(http.StatusOK, "MAHASISWA", "ADMIN"),
 		},
+
+		// Check-in is for requesters (C1: organisations too); nobody here has a booking, so those that pass the role
+		// gate meet NO_ELIGIBLE_BOOKING. The booking-side cells are in checkin_test.go.
+		{
+			name: "POST /check-in", method: "POST",
+			path: func(*env) string { return "/api/v1/check-in" },
+			body: func(e *env) any {
+				code, qr := e.roomQR(e.roomIDByCode("LAB-1"))
+				return map[string]string{"room_code": code, "qr_token": qr}
+			},
+			want: only(http.StatusConflict, "MAHASISWA", "ORGANISASI"),
+		},
+		{
+			name: "GET /checkouts", method: "GET",
+			path: func(*env) string { return "/api/v1/checkouts" },
+			want: only(http.StatusOK, "OB", "TU", "KALAB", "ADMIN"),
+		},
+		{
+			name: "GET /users/{id}/violations", method: "GET",
+			path: func(e *env) string { return "/api/v1/users/" + e.userIDOf(mahasiswaA) + "/violations" },
+			want: only(http.StatusOK, "TU", "KALAB", "ADMIN"),
+		},
+		{
+			name: "POST /violations/{id}/annul", method: "POST",
+			path: func(e *env) string { return "/api/v1/violations/" + e.violationOf(mahasiswaA) + "/annul" },
+			body: func(*env) any { return map[string]any{"reason": "Salah catat oleh sistem"} },
+			want: only(http.StatusOK, "ADMIN"),
+		},
 	}
 
 	for _, rt := range roomTypeRules {
@@ -356,6 +384,26 @@ func TestRBACMatrix(t *testing.T) {
 				name: "GET /attachments/{id} (report photo) [" + typ + "]", method: "GET",
 				path: func(e *env) string { return "/api/v1/attachments/" + e.photoOfReportIn(typ) },
 				want: everyone(http.StatusOK).with(http.StatusNotFound, "ORGANISASI", "TU", "KALAB").with(http.StatusOK, approvers...),
+			},
+			// The QR is a secret of the room: the managers of its type and ADMIN read and rotate it (BR-10, BR-11).
+			endpoint{
+				name: "GET /rooms/{id}/qr [" + typ + "]", method: "GET",
+				path: func(e *env) string { return "/api/v1/rooms/" + e.freshRoomOfType(typ) + "/qr" },
+				want: only(http.StatusOK, writers...),
+			},
+			endpoint{
+				name: "POST /rooms/{id}/qr/rotate [" + typ + "]", method: "POST",
+				path: func(e *env) string { return "/api/v1/rooms/" + e.freshRoomOfType(typ) + "/qr/rotate" },
+				want: only(http.StatusOK, writers...),
+			},
+			// Only the owner of a booking in use checks out; another requester gets 404, every other role 403.
+			endpoint{
+				name: "POST /bookings/{id}/check-out [" + typ + "]", method: "POST",
+				call: func(e *env, token string) response {
+					id := e.insertBooking(e.freshRoomOfType(typ), mahasiswaA, "BERLANGSUNG", "Fixture", at(tue, "08:00"), at(tue, "10:00"))
+					return e.checkOut(token, id, map[string]string{"condition": "NORMAL"}, goodPhoto())
+				},
+				want: only(http.StatusOK, "MAHASISWA").with(http.StatusNotFound, "ORGANISASI"),
 			},
 			endpoint{
 				name: "PATCH /reports/{id}/status [" + typ + "]", method: "PATCH",
@@ -656,5 +704,18 @@ func (e *env) photoOfReportIn(typ string) string {
 	res := e.postReport(e.login(mahasiswaA).accessToken, e.freshRoomOfType(typ), "Rusak", &photoPart{"a.png", "image/png", pngBytes(64)})
 	mustStatus(e.t, res, http.StatusCreated)
 	id, _ := res.json()["attachment_id"].(string)
+	return id
+}
+
+// violationOf records a no-show violation for the student (on a booking inserted for the purpose) and returns its id.
+func (e *env) violationOf(student string) string {
+	e.t.Helper()
+	booking := e.insertBooking(e.freshRoom(), student, "TIDAK_HADIR", "Fixture", at(tue, "08:00"), at(tue, "10:00"))
+	var id string
+	if err := e.pool.QueryRow(e.t.Context(),
+		`INSERT INTO violations (user_id, booking_id, kind, points, created_at) VALUES ($1, $2, 'TIDAK_HADIR', 2, $3) RETURNING id`,
+		e.userIDOf(student), booking, e.clock.Now()).Scan(&id); err != nil {
+		e.t.Fatal(err)
+	}
 	return id
 }

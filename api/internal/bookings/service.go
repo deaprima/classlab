@@ -11,12 +11,14 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"classlab/api/internal/attachments"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/notifications"
 	"classlab/api/internal/overlap"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
+	"classlab/api/internal/reports"
 	"classlab/api/internal/roomtypes"
 	"classlab/api/internal/violations"
 
@@ -54,6 +56,8 @@ type Settings struct {
 	MaxActiveBookings    int           // BR-15, MAHASISWA
 	MaxActiveBookingsOrg int           // BR-15, ORGANISASI
 	PointsLateCancel     int           // BR-14
+	CheckinEarly         time.Duration // BR-11
+	CheckinLate          time.Duration // BR-11
 	Violations           violations.Settings
 }
 
@@ -63,11 +67,13 @@ type Service struct {
 	clock    clock.Clock
 	types    *roomtypes.Store
 	notifier *notifications.Notifier
+	files    *attachments.Service
+	reports  *reports.Service
 	settings Settings
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store, notifier *notifications.Notifier, settings Settings) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types, notifier: notifier, settings: settings}
+func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store, notifier *notifications.Notifier, files *attachments.Service, reports *reports.Service, settings Settings) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types, notifier: notifier, files: files, reports: reports, settings: settings}
 }
 
 // isRequester reports whether the role submits bookings: students and organisations.

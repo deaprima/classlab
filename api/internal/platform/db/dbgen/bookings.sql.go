@@ -268,6 +268,7 @@ SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.parti
        (SELECT count(*) FROM bookings g WHERE g.group_id = b.group_id)::int AS occurrence_count,
        b.expires_at, b.edited_at, b.details, b.approval_mode, b.manual_reason,
        b.letter_attachment_id, b.letter_number,
+       b.checked_in_at, b.checked_out_at, b.checkout_condition, b.checkout_note, b.checkout_attachment_id,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
        r.open_time AS room_open_time, r.close_time AS room_close_time,
@@ -279,40 +280,45 @@ WHERE b.id = $1
 `
 
 type GetBookingRow struct {
-	ID                  uuid.UUID          `json:"id"`
-	RoomID              uuid.UUID          `json:"room_id"`
-	RequesterID         uuid.UUID          `json:"requester_id"`
-	StartAt             time.Time          `json:"start_at"`
-	EndAt               time.Time          `json:"end_at"`
-	Purpose             string             `json:"purpose"`
-	Participants        pgtype.Int4        `json:"participants"`
-	Notes               pgtype.Text        `json:"notes"`
-	Status              BookingStatus      `json:"status"`
-	DecidedBy           pgtype.UUID        `json:"decided_by"`
-	DecidedAt           pgtype.Timestamptz `json:"decided_at"`
-	DecisionReason      pgtype.Text        `json:"decision_reason"`
-	CreatedAt           time.Time          `json:"created_at"`
-	GroupID             pgtype.UUID        `json:"group_id"`
-	OccurrenceNo        pgtype.Int4        `json:"occurrence_no"`
-	OccurrenceCount     int32              `json:"occurrence_count"`
-	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
-	EditedAt            pgtype.Timestamptz `json:"edited_at"`
-	Details             []byte             `json:"details"`
-	ApprovalMode        ApprovalMode       `json:"approval_mode"`
-	ManualReason        NullManualReason   `json:"manual_reason"`
-	LetterAttachmentID  pgtype.UUID        `json:"letter_attachment_id"`
-	LetterNumber        pgtype.Text        `json:"letter_number"`
-	RoomOrgUnitID       uuid.UUID          `json:"room_org_unit_id"`
-	RoomCode            string             `json:"room_code"`
-	RoomName            string             `json:"room_name"`
-	RoomType            RoomType           `json:"room_type"`
-	RoomCapacity        int32              `json:"room_capacity"`
-	RoomFacilities      []string           `json:"room_facilities"`
-	RoomIsActive        bool               `json:"room_is_active"`
-	RoomOpenTime        pgtype.Time        `json:"room_open_time"`
-	RoomCloseTime       pgtype.Time        `json:"room_close_time"`
-	RequesterIdentifier string             `json:"requester_identifier"`
-	RequesterName       string             `json:"requester_name"`
+	ID                   uuid.UUID             `json:"id"`
+	RoomID               uuid.UUID             `json:"room_id"`
+	RequesterID          uuid.UUID             `json:"requester_id"`
+	StartAt              time.Time             `json:"start_at"`
+	EndAt                time.Time             `json:"end_at"`
+	Purpose              string                `json:"purpose"`
+	Participants         pgtype.Int4           `json:"participants"`
+	Notes                pgtype.Text           `json:"notes"`
+	Status               BookingStatus         `json:"status"`
+	DecidedBy            pgtype.UUID           `json:"decided_by"`
+	DecidedAt            pgtype.Timestamptz    `json:"decided_at"`
+	DecisionReason       pgtype.Text           `json:"decision_reason"`
+	CreatedAt            time.Time             `json:"created_at"`
+	GroupID              pgtype.UUID           `json:"group_id"`
+	OccurrenceNo         pgtype.Int4           `json:"occurrence_no"`
+	OccurrenceCount      int32                 `json:"occurrence_count"`
+	ExpiresAt            pgtype.Timestamptz    `json:"expires_at"`
+	EditedAt             pgtype.Timestamptz    `json:"edited_at"`
+	Details              []byte                `json:"details"`
+	ApprovalMode         ApprovalMode          `json:"approval_mode"`
+	ManualReason         NullManualReason      `json:"manual_reason"`
+	LetterAttachmentID   pgtype.UUID           `json:"letter_attachment_id"`
+	LetterNumber         pgtype.Text           `json:"letter_number"`
+	CheckedInAt          pgtype.Timestamptz    `json:"checked_in_at"`
+	CheckedOutAt         pgtype.Timestamptz    `json:"checked_out_at"`
+	CheckoutCondition    NullCheckoutCondition `json:"checkout_condition"`
+	CheckoutNote         pgtype.Text           `json:"checkout_note"`
+	CheckoutAttachmentID pgtype.UUID           `json:"checkout_attachment_id"`
+	RoomOrgUnitID        uuid.UUID             `json:"room_org_unit_id"`
+	RoomCode             string                `json:"room_code"`
+	RoomName             string                `json:"room_name"`
+	RoomType             RoomType              `json:"room_type"`
+	RoomCapacity         int32                 `json:"room_capacity"`
+	RoomFacilities       []string              `json:"room_facilities"`
+	RoomIsActive         bool                  `json:"room_is_active"`
+	RoomOpenTime         pgtype.Time           `json:"room_open_time"`
+	RoomCloseTime        pgtype.Time           `json:"room_close_time"`
+	RequesterIdentifier  string                `json:"requester_identifier"`
+	RequesterName        string                `json:"requester_name"`
 }
 
 // Reads that serve the API join the room and requester in one query, so list pages never go N+1.
@@ -344,6 +350,11 @@ func (q *Queries) GetBooking(ctx context.Context, id uuid.UUID) (GetBookingRow, 
 		&i.ManualReason,
 		&i.LetterAttachmentID,
 		&i.LetterNumber,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
 		&i.RoomOrgUnitID,
 		&i.RoomCode,
 		&i.RoomName,
@@ -452,6 +463,7 @@ SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.parti
        (SELECT count(*) FROM bookings g WHERE g.group_id = b.group_id)::int AS occurrence_count,
        b.expires_at, b.edited_at, b.details, b.approval_mode, b.manual_reason,
        b.letter_attachment_id, b.letter_number,
+       b.checked_in_at, b.checked_out_at, b.checkout_condition, b.checkout_note, b.checkout_attachment_id,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
        r.open_time AS room_open_time, r.close_time AS room_close_time,
@@ -487,40 +499,45 @@ type ListBookingsParams struct {
 }
 
 type ListBookingsRow struct {
-	ID                  uuid.UUID          `json:"id"`
-	RoomID              uuid.UUID          `json:"room_id"`
-	RequesterID         uuid.UUID          `json:"requester_id"`
-	StartAt             time.Time          `json:"start_at"`
-	EndAt               time.Time          `json:"end_at"`
-	Purpose             string             `json:"purpose"`
-	Participants        pgtype.Int4        `json:"participants"`
-	Notes               pgtype.Text        `json:"notes"`
-	Status              BookingStatus      `json:"status"`
-	DecidedBy           pgtype.UUID        `json:"decided_by"`
-	DecidedAt           pgtype.Timestamptz `json:"decided_at"`
-	DecisionReason      pgtype.Text        `json:"decision_reason"`
-	CreatedAt           time.Time          `json:"created_at"`
-	GroupID             pgtype.UUID        `json:"group_id"`
-	OccurrenceNo        pgtype.Int4        `json:"occurrence_no"`
-	OccurrenceCount     int32              `json:"occurrence_count"`
-	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
-	EditedAt            pgtype.Timestamptz `json:"edited_at"`
-	Details             []byte             `json:"details"`
-	ApprovalMode        ApprovalMode       `json:"approval_mode"`
-	ManualReason        NullManualReason   `json:"manual_reason"`
-	LetterAttachmentID  pgtype.UUID        `json:"letter_attachment_id"`
-	LetterNumber        pgtype.Text        `json:"letter_number"`
-	RoomOrgUnitID       uuid.UUID          `json:"room_org_unit_id"`
-	RoomCode            string             `json:"room_code"`
-	RoomName            string             `json:"room_name"`
-	RoomType            RoomType           `json:"room_type"`
-	RoomCapacity        int32              `json:"room_capacity"`
-	RoomFacilities      []string           `json:"room_facilities"`
-	RoomIsActive        bool               `json:"room_is_active"`
-	RoomOpenTime        pgtype.Time        `json:"room_open_time"`
-	RoomCloseTime       pgtype.Time        `json:"room_close_time"`
-	RequesterIdentifier string             `json:"requester_identifier"`
-	RequesterName       string             `json:"requester_name"`
+	ID                   uuid.UUID             `json:"id"`
+	RoomID               uuid.UUID             `json:"room_id"`
+	RequesterID          uuid.UUID             `json:"requester_id"`
+	StartAt              time.Time             `json:"start_at"`
+	EndAt                time.Time             `json:"end_at"`
+	Purpose              string                `json:"purpose"`
+	Participants         pgtype.Int4           `json:"participants"`
+	Notes                pgtype.Text           `json:"notes"`
+	Status               BookingStatus         `json:"status"`
+	DecidedBy            pgtype.UUID           `json:"decided_by"`
+	DecidedAt            pgtype.Timestamptz    `json:"decided_at"`
+	DecisionReason       pgtype.Text           `json:"decision_reason"`
+	CreatedAt            time.Time             `json:"created_at"`
+	GroupID              pgtype.UUID           `json:"group_id"`
+	OccurrenceNo         pgtype.Int4           `json:"occurrence_no"`
+	OccurrenceCount      int32                 `json:"occurrence_count"`
+	ExpiresAt            pgtype.Timestamptz    `json:"expires_at"`
+	EditedAt             pgtype.Timestamptz    `json:"edited_at"`
+	Details              []byte                `json:"details"`
+	ApprovalMode         ApprovalMode          `json:"approval_mode"`
+	ManualReason         NullManualReason      `json:"manual_reason"`
+	LetterAttachmentID   pgtype.UUID           `json:"letter_attachment_id"`
+	LetterNumber         pgtype.Text           `json:"letter_number"`
+	CheckedInAt          pgtype.Timestamptz    `json:"checked_in_at"`
+	CheckedOutAt         pgtype.Timestamptz    `json:"checked_out_at"`
+	CheckoutCondition    NullCheckoutCondition `json:"checkout_condition"`
+	CheckoutNote         pgtype.Text           `json:"checkout_note"`
+	CheckoutAttachmentID pgtype.UUID           `json:"checkout_attachment_id"`
+	RoomOrgUnitID        uuid.UUID             `json:"room_org_unit_id"`
+	RoomCode             string                `json:"room_code"`
+	RoomName             string                `json:"room_name"`
+	RoomType             RoomType              `json:"room_type"`
+	RoomCapacity         int32                 `json:"room_capacity"`
+	RoomFacilities       []string              `json:"room_facilities"`
+	RoomIsActive         bool                  `json:"room_is_active"`
+	RoomOpenTime         pgtype.Time           `json:"room_open_time"`
+	RoomCloseTime        pgtype.Time           `json:"room_close_time"`
+	RequesterIdentifier  string                `json:"requester_identifier"`
+	RequesterName        string                `json:"requester_name"`
 }
 
 // queue_order sorts the approvers' queue: the request that expires soonest first (BR-22).
@@ -569,6 +586,11 @@ func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]L
 			&i.ManualReason,
 			&i.LetterAttachmentID,
 			&i.LetterNumber,
+			&i.CheckedInAt,
+			&i.CheckedOutAt,
+			&i.CheckoutCondition,
+			&i.CheckoutNote,
+			&i.CheckoutAttachmentID,
 			&i.RoomOrgUnitID,
 			&i.RoomCode,
 			&i.RoomName,

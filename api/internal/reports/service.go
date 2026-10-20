@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"classlab/api/internal/attachments"
@@ -126,33 +127,20 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			return fmt.Errorf("reading room: %w", err)
 		}
 
-		params := dbgen.CreateReportParams{RoomID: in.RoomID, ReporterID: actor.UserID, Description: in.Description, CreatedAt: now}
+		var attachment pgtype.UUID
 		if hasPhoto {
 			st, err := s.files.Insert(ctx, q, prepared, actor.UserID, "", now)
 			if err != nil {
 				return err
 			}
 			stored = st
-			params.AttachmentID = pgtype.UUID{Bytes: st.ID, Valid: true}
+			attachment = pgtype.UUID{Bytes: st.ID, Valid: true}
 		}
-		row, err := q.CreateReport(ctx, params)
+		report, err := s.FileIn(ctx, q, actor.UserID, in.RoomID, in.Description, attachment, now)
 		if err != nil {
-			return fmt.Errorf("creating report: %w", err)
-		}
-		if err := q.CreateReportEvent(ctx, dbgen.CreateReportEventParams{
-			ReportID: row.ID, ActorID: actor.UserID, ToStatus: dbgen.ReportStatusBARU, CreatedAt: now,
-		}); err != nil {
-			return fmt.Errorf("recording report event: %w", err)
-		}
-
-		view, err := q.GetReport(ctx, row.ID)
-		if err != nil {
-			return fmt.Errorf("reading created report: %w", err)
-		}
-		created = fromRow(view)
-		if err := s.notifyCreated(ctx, q, created, now); err != nil {
 			return err
 		}
+		created = report
 
 		// The file is written last, so a failed write rolls the report back with it.
 		if hasPhoto {
@@ -165,6 +153,34 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			stored.Remove(ctx) // the commit may be what failed
 		}
 		return Report{}, mapError(err)
+	}
+	return created, nil
+}
+
+// FileIn records a new report, its first history event and the notification to the room type's approvers,
+// through the caller's transaction. Create uses it for POST /reports, and check-out uses it when the room
+// is left with a problem (BR-12), so the booking and its report commit or roll back together. The photo, if
+// any, is already inserted by the caller.
+func (s *Service) FileIn(ctx context.Context, q *dbgen.Queries, reporterID, roomID uuid.UUID, description string, attachment pgtype.UUID, now time.Time) (Report, error) {
+	row, err := q.CreateReport(ctx, dbgen.CreateReportParams{
+		RoomID: roomID, ReporterID: reporterID, Description: description, AttachmentID: attachment, CreatedAt: now,
+	})
+	if err != nil {
+		return Report{}, fmt.Errorf("creating report: %w", err)
+	}
+	if err := q.CreateReportEvent(ctx, dbgen.CreateReportEventParams{
+		ReportID: row.ID, ActorID: reporterID, ToStatus: dbgen.ReportStatusBARU, CreatedAt: now,
+	}); err != nil {
+		return Report{}, fmt.Errorf("recording report event: %w", err)
+	}
+
+	view, err := q.GetReport(ctx, row.ID)
+	if err != nil {
+		return Report{}, fmt.Errorf("reading created report: %w", err)
+	}
+	created := fromRow(view)
+	if err := s.notifyCreated(ctx, q, created, now); err != nil {
+		return Report{}, err
 	}
 	return created, nil
 }

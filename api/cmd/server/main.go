@@ -51,6 +51,7 @@ func main() {
 	}
 
 	go maintenance.Run(ctx, pool, clock.NewRealClock(), appLogger, time.Hour)
+	go app.NewJobRunner(cfg, pool, appLogger, clock.NewRealClock()).Run(ctx, time.Minute)
 
 	router, err := app.NewRouter(ctx, cfg, pool, appLogger, clock.NewRealClock())
 	if err != nil {

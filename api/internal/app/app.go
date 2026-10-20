@@ -16,6 +16,7 @@ import (
 	"classlab/api/internal/config"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/imports"
+	"classlab/api/internal/jobs"
 	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
@@ -61,11 +62,14 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 
 	authenticate := httpx.Authenticate(authSvc)
 
-	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk, types))
+	// The QR links to the frontend, which is the first allowed CORS origin.
+	publicBaseURL := ""
+	if len(cfg.CORSAllowedOrigins) > 0 {
+		publicBaseURL = cfg.CORSAllowedOrigins[0]
+	}
+	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk, types, publicBaseURL))
 	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk, types))
 	availabilityHandler := availability.NewHandler(availability.NewService(pool, types))
-	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, types, notifier, bookingSettings(cfg)))
-
 	importsHandler := imports.NewHandler(imports.NewService(pool, hasher, clk, notifier, imports.Options{
 		Limits:             imports.Limits{MaxBytes: cfg.Business.ImportMaxBytes, MaxRows: cfg.Business.ImportMaxRows},
 		TempPasswordLength: cfg.Business.TempPasswordLength,
@@ -86,10 +90,10 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 		notifications.StreamOptions{Heartbeat: cfg.SSEHeartbeat, MaxLifetime: cfg.JWTAccessExpiry, MaxPerUser: maxStreamsPerUser},
 		log,
 	)
-	reportsHandler := reports.NewHandler(
-		reports.NewService(pool, clk, files, log, types, notifier),
-		cfg.Business.MaxUploadBytes,
-	)
+	reportsSvc := reports.NewService(pool, clk, files, log, types, notifier)
+	reportsHandler := reports.NewHandler(reportsSvc, cfg.Business.MaxUploadBytes)
+	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, types, notifier, files, reportsSvc, bookingSettings(cfg)), cfg.Business.MaxUploadBytes)
+	violationsHandler := violations.NewHandler(violations.NewService(pool, clk, cfg.Business.ViolationWindow))
 
 	r := chi.NewRouter()
 	r.Use(httpx.RequestID)
@@ -129,6 +133,8 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 			r.Route("/room-types", roomTypesHandler.Register)
 			r.Route("/schedules", schedulesHandler.Register)
 			r.Route("/bookings", bookingsHandler.Register)
+			bookingsHandler.RegisterRoot(r)
+			violationsHandler.Register(r)
 			r.Route("/notifications", notificationsHandler.Register)
 			r.Route("/reports", reportsHandler.Register)
 			r.Get("/availability", availabilityHandler.Check)
@@ -165,7 +171,24 @@ func bookingSettings(cfg *config.Config) bookings.Settings {
 		PendingTTL: b.PendingTTL, EditCutoff: b.EditCutoff, LateCancel: b.LateCancel,
 		MaxOccurrences: b.MaxOccurrences, AutoApproveMaxPoints: b.AutoApproveMaxPoints,
 		MaxActiveBookings: b.MaxActiveBookings, MaxActiveBookingsOrg: b.MaxActiveBookingsOrg,
-		PointsLateCancel: b.PointsLateCancel,
-		Violations:       violations.Settings{Window: b.ViolationWindow, Threshold: b.BlockThresholdPoints, BlockFor: b.BlockDuration},
+		PointsLateCancel: b.PointsLateCancel, CheckinEarly: b.CheckinEarly, CheckinLate: b.CheckinLate,
+		Violations: violations.Settings{Window: b.ViolationWindow, Threshold: b.BlockThresholdPoints, BlockFor: b.BlockDuration},
 	}
+}
+
+// NewJobRunner wires the scheduled jobs (BR-13) with the same business settings the router uses. The caller
+// starts it with Run, so the jobs live exactly as long as the server.
+func NewJobRunner(cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Clock) *jobs.Runner {
+	b := cfg.Business
+	files := attachments.NewService(pool, attachments.NewStorage(cfg.UploadDir), clk, attachments.Limits{
+		MaxLetterBytes: b.MaxLetterBytes,
+		MaxPhotoBytes:  b.MaxUploadBytes,
+	}, roomtypes.NewStore(pool), log)
+	return jobs.New(pool, clk, notifications.NewNotifier(notifications.InApp{}), files, jobs.Settings{
+		CheckinEarly: b.CheckinEarly, CheckinLate: b.CheckinLate, CheckoutGrace: b.CheckoutGrace,
+		ReminderCheckinLast: b.ReminderCheckinLast, ReminderCheckout: b.ReminderCheckout,
+		PointsNoShow: b.PointsNoShow, PointsNoCheckout: b.PointsNoCheckout,
+		Violations: violations.Settings{Window: b.ViolationWindow, Threshold: b.BlockThresholdPoints, BlockFor: b.BlockDuration},
+		Purge:      attachments.PurgePolicy{OrphanAge: b.OrphanAttachmentAge, PhotoRetention: b.PhotoRetention, LetterRetention: b.LetterRetention},
+	}, log)
 }
