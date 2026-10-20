@@ -126,7 +126,11 @@ func TestRBACMatrix(t *testing.T) {
 		method string
 		path   func(e *env) string
 		body   func(e *env) any
-		want   expect
+		// bodyAs builds the body for the caller (identifier "" is anonymous) when it depends on who sends it.
+		bodyAs func(e *env, identifier string) any
+		// call replaces the JSON request for endpoints that take multipart data; token is "" when anonymous.
+		call func(e *env, token string) response
+		want expect
 	}
 	endpoints := []endpoint{
 		{
@@ -204,6 +208,30 @@ func TestRBACMatrix(t *testing.T) {
 			// OB does not see bookings at all; the other roles see the part they are entitled to.
 			want: only(http.StatusOK, "MAHASISWA", "ORGANISASI", "TU", "KALAB", "ADMIN"),
 		},
+		{
+			// Letters are uploaded by requesters only (BR-19).
+			name: "POST /attachments", method: "POST",
+			path: func(*env) string { return "/api/v1/attachments" },
+			call: func(e *env, token string) response {
+				return e.uploadLetter(token, "LETTER", pdfBytes())
+			},
+			want: only(http.StatusCreated, "MAHASISWA", "ORGANISASI"),
+		},
+		{
+			name: "GET /attachments", method: "GET",
+			path: func(*env) string { return "/api/v1/attachments?kind=LETTER" },
+			want: only(http.StatusOK, "MAHASISWA", "ORGANISASI"),
+		},
+		{
+			// A letter that is not attached to any booking is private to its uploader and ADMIN. The cells where TU or
+			// KALAB open the letter of a booking of a type they approve are not in this matrix (they need a booking with
+			// a letter per type); they are covered by the attachment tests.
+			name: "GET /attachments/{id} (unattached letter)", method: "GET",
+			path: func(e *env) string {
+				return "/api/v1/attachments/" + e.letterFor(e.login(mahasiswaA).accessToken)
+			},
+			want: everyone(http.StatusNotFound).with(http.StatusOK, "MAHASISWA", "ADMIN"),
+		},
 	}
 
 	for _, rt := range roomTypeRules {
@@ -262,7 +290,15 @@ func TestRBACMatrix(t *testing.T) {
 			endpoint{
 				name: "POST /bookings [" + typ + "]", method: "POST",
 				path: func(*env) string { return "/api/v1/bookings" },
-				body: func(e *env) any { return bookingBody(e.freshRoomOfType(typ), at(tue, "08:00"), at(tue, "09:00"), nil) },
+				// A letter is mandatory for ORGANISASI and AUDITORIUM, and AUDITORIUM needs a head count, so every
+				// requester sends both; the letter belongs to the sender.
+				bodyAs: func(e *env, identifier string) any {
+					extra := map[string]any{"participants": 10}
+					if identifier == mahasiswaA || identifier == orgID {
+						extra["letter_attachment_id"] = e.letterFor(e.login(identifier).accessToken)
+					}
+					return bookingBody(e.freshRoomOfType(typ), at(tue, "08:00"), at(tue, "09:00"), extra)
+				},
 				want: only(http.StatusCreated, requesters...),
 			},
 
@@ -299,12 +335,12 @@ func TestRBACMatrix(t *testing.T) {
 				want: only(http.StatusConflict, approvers...).with(http.StatusOK, "MAHASISWA").with(http.StatusNotFound, "ORGANISASI"),
 			},
 			endpoint{
-				// An approved booking is cancelled by an approver of the type with a reason (BR-04, BR-10). Whether its owner
-				// may cancel it too is settled later, so that cell is not pinned here.
+				// An approved booking is cancelled by an approver of the type with a reason (BR-04, BR-10), and by its owner
+				// while it has not started (BR-14; it starts days after the test clock, so no violation is recorded).
 				name: "POST /bookings/{id}/cancel (approved) [" + typ + "]", method: "POST",
 				path: func(e *env) string { return "/api/v1/bookings/" + e.approvedBookingIn(typ, mahasiswaA) + "/cancel" },
 				body: func(*env) any { return map[string]any{"reason": "Ruang diperbaiki"} },
-				want: only(http.StatusOK, approvers...).with(skip, "MAHASISWA").with(http.StatusNotFound, "ORGANISASI"),
+				want: only(http.StatusOK, approvers...).with(http.StatusOK, "MAHASISWA").with(http.StatusNotFound, "ORGANISASI"),
 			},
 
 			// Damage reports follow the same rule: the reporter (MAHASISWA) and the approvers of the room's type see
@@ -314,12 +350,12 @@ func TestRBACMatrix(t *testing.T) {
 				path: func(e *env) string { return "/api/v1/reports/" + e.reportIn(typ, nil) },
 				want: reportReadable(approvers),
 			},
+			// The photo of a report is opened through /attachments (the per-report route is gone): the uploader, ADMIN, OB
+			// (damage photos) and the approvers of the type; nobody else (404).
 			endpoint{
-				name: "GET /reports/{id}/photo [" + typ + "]", method: "GET",
-				path: func(e *env) string {
-					return "/api/v1/reports/" + e.reportIn(typ, &photoPart{"a.png", "image/png", pngBytes(64)}) + "/photo"
-				},
-				want: reportReadable(approvers),
+				name: "GET /attachments/{id} (report photo) [" + typ + "]", method: "GET",
+				path: func(e *env) string { return "/api/v1/attachments/" + e.photoOfReportIn(typ) },
+				want: everyone(http.StatusOK).with(http.StatusNotFound, "ORGANISASI", "TU", "KALAB").with(http.StatusOK, approvers...),
 			},
 			endpoint{
 				name: "PATCH /reports/{id}/status [" + typ + "]", method: "PATCH",
@@ -328,10 +364,18 @@ func TestRBACMatrix(t *testing.T) {
 				want: only(http.StatusOK, approvers...),
 			},
 		)
+		if typ != "AUDITORIUM" {
+			endpoints = append(endpoints, endpoint{
+				name: "PATCH /bookings/{id} [" + typ + "]", method: "PATCH",
+				path: func(e *env) string { return "/api/v1/bookings/" + e.pendingBookingIn(typ, mahasiswaA) },
+				body: func(*env) any { return map[string]any{"notes": "Butuh proyektor"} },
+				want: only(http.StatusOK, "MAHASISWA").with(http.StatusNotFound, "ORGANISASI"),
+			})
+		}
 	}
 
 	// The fixtures file many bookings for the same student; the quota is not what this test is about.
-	e := newEnv(t, func(c *config.Config) { c.BookingMaxActivePerUser = 100000 })
+	e := newEnv(t, func(c *config.Config) { c.Business.MaxActiveBookings = 100000 })
 	for _, ep := range endpoints {
 		for _, role := range allRoles {
 			want := ep.want[role.name]
@@ -343,12 +387,23 @@ func TestRBACMatrix(t *testing.T) {
 				if role.identifier != "" {
 					opts = append(opts, bearer(e.login(role.identifier).accessToken))
 				}
-				var body any
-				if ep.body != nil {
-					body = ep.body(e)
+				var res response
+				if ep.call != nil {
+					token := ""
+					if role.identifier != "" {
+						token = e.login(role.identifier).accessToken
+					}
+					res = ep.call(e, token)
+				} else {
+					var body any
+					switch {
+					case ep.bodyAs != nil:
+						body = ep.bodyAs(e, role.identifier)
+					case ep.body != nil:
+						body = ep.body(e)
+					}
+					res = e.do(ep.method, ep.path(e), body, opts...)
 				}
-
-				res := e.do(ep.method, ep.path(e), body, opts...)
 				if res.Code != want {
 					t.Errorf("status = %d; want %d (body %s)", res.Code, want, res.Body.String())
 				}
@@ -403,7 +458,8 @@ func TestBookingByARoleOutsideTheTypesRequesterRoles(t *testing.T) {
 		room := e.freshRoomOfType(rt.typ)
 		for role, tok := range tokens {
 			events, notes := e.countRows("SELECT count(*) FROM booking_events"), e.countRows("SELECT count(*) FROM notifications")
-			res := e.postBooking(tok, room, at(tue, "08:00"), at(tue, "09:00"), nil)
+			// Organisations and auditorium requests need a letter, and an auditorium a head count (BR-18, BR-19).
+			res := e.postBooking(tok, room, at(tue, "08:00"), at(tue, "09:00"), map[string]any{"participants": 10, "letter_attachment_id": e.letterFor(tok)})
 			if slices.Contains(rt.requesters, role) {
 				if res.Code != http.StatusCreated {
 					t.Errorf("%s booking a %s room: %d %s; want 201", role, rt.typ, res.Code, res.Body.String())
@@ -592,4 +648,13 @@ func TestTUManagesOnlyStudentAccounts(t *testing.T) {
 	if n := e.countRows("SELECT count(*) FROM users WHERE identifier = '2022202999'"); n != 0 {
 		t.Error("a refused creation still wrote a row")
 	}
+}
+
+// photoOfReportIn files a report with a photo in a fresh room of the type and returns the photo's attachment id.
+func (e *env) photoOfReportIn(typ string) string {
+	e.t.Helper()
+	res := e.postReport(e.login(mahasiswaA).accessToken, e.freshRoomOfType(typ), "Rusak", &photoPart{"a.png", "image/png", pngBytes(64)})
+	mustStatus(e.t, res, http.StatusCreated)
+	id, _ := res.json()["attachment_id"].(string)
+	return id
 }

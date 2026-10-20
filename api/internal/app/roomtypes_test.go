@@ -237,5 +237,6 @@ func TestRequesterRolesDecideWhoMayBook(t *testing.T) {
 		t.Fatalf("organisation booking a sidang room: %d %s, want 403 ROOM_TYPE_NOT_ALLOWED", res.Code, res.errorCode())
 	}
 	mustStatus(t, e.patchPolicy(e.adminToken(), "RUANG_SIDANG", map[string]any{"requester_roles": []string{"MAHASISWA", "ORGANISASI"}}), http.StatusOK)
-	mustStatus(t, e.postBooking(org, room, at(mon, "08:00"), at(mon, "10:00"), nil), http.StatusCreated)
+	// An organisation always attaches a letter (BR-18).
+	mustStatus(t, e.postBooking(org, room, at(mon, "08:00"), at(mon, "10:00"), map[string]any{"letter_attachment_id": e.letterFor(org)}), http.StatusCreated)
 }

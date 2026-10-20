@@ -82,15 +82,17 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		Argon2Parallelism:  1,
 		CORSAllowedOrigins: []string{"http://localhost:5173"},
 
-		// High on purpose: most tests make many bookings for one student. Quota tests set it to 5, the real default.
-		BookingMaxActivePerUser: 100,
-
 		Business: config.DefaultBusiness(),
 
-		UploadDir:      t.TempDir(),
-		UploadMaxBytes: 5 << 20,
-		SSEHeartbeat:   25 * time.Second,
+		UploadDir:    t.TempDir(),
+		SSEHeartbeat: 25 * time.Second,
 	}
+	// High on purpose: most tests make many bookings for one account. Quota tests set the real values.
+	cfg.Business.MaxActiveBookings = 100
+	cfg.Business.MaxActiveBookingsOrg = 100
+	// Auto-approval (BR-17) is off by default so that the many tests of the manual flow (approve, reject, expiry,
+	// notifications to approvers) keep working on KELAS rooms. Tests of auto-approval pass withAutoApproval.
+	cfg.Business.AutoApproveMaxPoints = 0
 	for _, fn := range mutate {
 		fn(cfg)
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"classlab/api/internal/config"
 	"classlab/api/internal/platform/password"
 	"classlab/api/internal/seed"
 )
@@ -159,4 +160,10 @@ func (e *env) insertUser(identifier, name, role string) string {
 		e.t.Fatalf("inserting user %s: %v", identifier, err)
 	}
 	return id
+}
+
+// withAutoApproval restores the real AUTO_APPROVE_MAX_POINTS (1) that newEnv switches off, so that a KELAS
+// booking by a student without active violation points is approved at creation (BR-17).
+func withAutoApproval(c *config.Config) {
+	c.Business.AutoApproveMaxPoints = config.DefaultBusiness().AutoApproveMaxPoints
 }

@@ -482,14 +482,14 @@ func TestBookingStateMachine(t *testing.T) {
 		token   string
 		action  string
 		body    any
-		allowed string // the only status this action may start from
+		allowed []string // the statuses this action may start from
 		result  string
 	}
 	steps := []step{
-		{"approve", tu, "approve", nil, "MENUNGGU", "DISETUJUI"},
-		{"reject", tu, "reject", map[string]string{"reason": "Dipakai ujian"}, "MENUNGGU", "DITOLAK"},
-		{"owner cancels", owner, "cancel", nil, "MENUNGGU", "DIBATALKAN"},
-		{"TU cancels", tu, "cancel", map[string]string{"reason": "Ruang diperbaiki"}, "DISETUJUI", "DIBATALKAN"},
+		{"approve", tu, "approve", nil, []string{"MENUNGGU"}, "DISETUJUI"},
+		{"reject", tu, "reject", map[string]string{"reason": "Dipakai ujian"}, []string{"MENUNGGU"}, "DITOLAK"},
+		{"owner cancels (before the start)", owner, "cancel", nil, []string{"MENUNGGU", "DISETUJUI"}, "DIBATALKAN"},
+		{"TU cancels", tu, "cancel", map[string]string{"reason": "Ruang diperbaiki"}, []string{"DISETUJUI"}, "DIBATALKAN"},
 	}
 
 	for _, s := range steps {
@@ -498,7 +498,7 @@ func TestBookingStateMachine(t *testing.T) {
 			events := e.eventCount(id)
 			res := e.action(s.token, id, s.action, s.body)
 
-			if from == s.allowed {
+			if slices.Contains(s.allowed, from) {
 				mustStatus(t, res, http.StatusOK)
 				if statusOf(res) != s.result || e.bookingStatus(id) != s.result {
 					t.Errorf("%s from %s: status = %s/%s; want %s", s.name, from, statusOf(res), e.bookingStatus(id), s.result)
@@ -852,7 +852,13 @@ func TestApproveRefusalsOnRoomAndTime(t *testing.T) {
 	if res := e.action(tu, late, "approve", nil); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
 		t.Errorf("past booking: %d %s; want 409 INVALID_STATE", res.Code, res.errorCode())
 	}
-	mustStatus(t, e.action(tu, late, "reject", map[string]string{"reason": "Sudah lewat"}), http.StatusOK)
+	// Past expires_at (BR-22) a decision of either kind is refused, and so is the owner cancelling a booking that has started.
+	if res := e.action(tu, late, "reject", map[string]string{"reason": "Sudah lewat"}); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
+		t.Errorf("rejecting an expired booking: %d %s; want 409 INVALID_STATE", res.Code, res.errorCode())
+	}
+	if res := e.action(e.login(mahasiswaB).accessToken, late, "cancel", nil); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
+		t.Errorf("owner cancelling after the start: %d %s; want 409 INVALID_STATE", res.Code, res.errorCode())
+	}
 }
 
 func TestBookingNotifications(t *testing.T) {
