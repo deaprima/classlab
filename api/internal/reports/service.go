@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
-	"time"
 	"unicode/utf8"
 
+	"classlab/api/internal/attachments"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
@@ -33,17 +32,16 @@ var statusOrder = []dbgen.ReportStatus{
 }
 
 type Service struct {
-	pool          *db.Pool
-	q             *dbgen.Queries
-	clock         clock.Clock
-	store         *Storage
-	maxPhotoBytes int64
-	log           *slog.Logger
-	types         *roomtypes.Store
+	pool  *db.Pool
+	q     *dbgen.Queries
+	clock clock.Clock
+	files *attachments.Service
+	log   *slog.Logger
+	types *roomtypes.Store
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, store *Storage, maxPhotoBytes int64, log *slog.Logger, types *roomtypes.Store) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, store: store, maxPhotoBytes: maxPhotoBytes, log: log, types: types}
+func NewService(pool *db.Pool, clk clock.Clock, files *attachments.Service, log *slog.Logger, types *roomtypes.Store) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, files: files, log: log, types: types}
 }
 
 type CreateInput struct {
@@ -91,22 +89,21 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		problems = append(problems, httpx.ErrorDetail{Field: "description", Message: fmt.Sprintf("Deskripsi wajib diisi (maksimal %d karakter).", maxDescriptionRunes)})
 	}
 
-	var photoName string
-	if in.Photo != nil {
-		switch kind, ok := sniffImage(in.Photo); {
-		case int64(len(in.Photo)) > s.maxPhotoBytes:
-			problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: fmt.Sprintf("Ukuran foto maksimal %d MB.", s.maxPhotoBytes>>20)})
-		case !ok:
-			problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: "Foto harus berformat JPG, PNG, atau WebP."})
-		default:
-			// Metadata (notably the GPS position in EXIF) is removed before anything is stored.
-			clean, err := stripMetadata(kind, in.Photo)
-			if err != nil {
-				problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: "Foto rusak atau tidak dapat dibaca."})
-				break
+	// The photo is checked and re-encoded before the transaction opens (BR-16): CPU work stays out of it,
+	// and a bad photo is refused before anything is stored.
+	var prepared attachments.Prepared
+	hasPhoto := in.Photo != nil
+	if hasPhoto {
+		p, err := s.files.PreparePhoto(in.Photo, "photo")
+		if err != nil {
+			var domain *httpx.CustomDomainError
+			if errors.As(err, &domain) {
+				problems = append(problems, domain.Details...)
+			} else {
+				return Report{}, err
 			}
-			in.Photo = clean
-			photoName = uuid.NewString() + kind.ext
+		} else {
+			prepared = p
 		}
 	}
 	if len(problems) > 0 {
@@ -114,6 +111,7 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	}
 
 	var created Report
+	var stored attachments.Stored
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		now := s.clock.Now()
@@ -125,10 +123,16 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			return fmt.Errorf("reading room: %w", err)
 		}
 
-		row, err := q.CreateReport(ctx, dbgen.CreateReportParams{
-			RoomID: in.RoomID, ReporterID: actor.UserID, Description: in.Description, CreatedAt: now,
-			PhotoPath: pgtype.Text{String: photoName, Valid: photoName != ""},
-		})
+		params := dbgen.CreateReportParams{RoomID: in.RoomID, ReporterID: actor.UserID, Description: in.Description, CreatedAt: now}
+		if hasPhoto {
+			st, err := s.files.Insert(ctx, q, prepared, actor.UserID, "", now)
+			if err != nil {
+				return err
+			}
+			stored = st
+			params.AttachmentID = pgtype.UUID{Bytes: st.ID, Valid: true}
+		}
+		row, err := q.CreateReport(ctx, params)
 		if err != nil {
 			return fmt.Errorf("creating report: %w", err)
 		}
@@ -147,27 +151,19 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			return err
 		}
 
-		if photoName != "" {
-			return s.store.Save(photoName, in.Photo)
+		// The file is written last, so a failed write rolls the report back with it.
+		if hasPhoto {
+			return stored.Write()
 		}
 		return nil
 	})
 	if err != nil {
-		s.discardPhoto(ctx, photoName)
+		if hasPhoto && stored.ID != uuid.Nil {
+			stored.Remove(ctx) // the commit may be what failed
+		}
 		return Report{}, mapError(err)
 	}
 	return created, nil
-}
-
-// discardPhoto removes a stored file after a failed create. A leftover file is a leak, not a
-// correctness problem, so a failure to remove it is logged rather than returned.
-func (s *Service) discardPhoto(ctx context.Context, name string) {
-	if name == "" {
-		return
-	}
-	if err := s.store.Remove(name); err != nil {
-		s.log.ErrorContext(ctx, "removing photo of a failed report", slog.String("file", name), slog.String("error", err.Error()))
-	}
 }
 
 func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter) ([]Report, int64, error) {
@@ -246,36 +242,6 @@ func (s *Service) load(ctx context.Context, actor httpx.Principal, id uuid.UUID)
 		return dbgen.GetReportRow{}, err
 	}
 	return row, nil
-}
-
-// Photo is an open stored photo and what is needed to serve it. The caller closes File.
-type Photo struct {
-	File        *os.File
-	ContentType string
-	ModTime     time.Time
-}
-
-func (s *Service) Photo(ctx context.Context, actor httpx.Principal, id uuid.UUID) (Photo, error) {
-	row, err := s.load(ctx, actor, id)
-	if err != nil {
-		return Photo{}, err
-	}
-	if !row.PhotoPath.Valid {
-		return Photo{}, httpx.ErrNotFound
-	}
-	f, err := s.store.Open(row.PhotoPath.String)
-	if err != nil {
-		// A missing or malformed file is an operational problem, but the client only needs to know
-		// there is nothing to show; the details go to the log.
-		s.log.ErrorContext(ctx, "opening report photo", slog.String("report_id", id.String()), slog.String("error", err.Error()))
-		return Photo{}, httpx.ErrNotFound
-	}
-	info, err := f.Stat()
-	if err != nil {
-		closeErr := f.Close()
-		return Photo{}, errors.Join(fmt.Errorf("reading photo file info: %w", err), closeErr)
-	}
-	return Photo{File: f, ContentType: imageForName(row.PhotoPath.String).contentType, ModTime: info.ModTime()}, nil
 }
 
 // UpdateStatus moves a report exactly one step forward (BR-08), records the event and tells the

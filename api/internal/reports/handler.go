@@ -34,7 +34,6 @@ func (h *Handler) Register(r chi.Router) {
 	r.Post("/", h.create)
 	r.Get("/", h.list)
 	r.Get("/{id}", h.get)
-	r.Get("/{id}/photo", h.photo)
 	r.With(httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin)).Patch("/{id}/status", h.updateStatus)
 }
 
@@ -169,33 +168,6 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, d)
-}
-
-// photo serves the stored image to the people allowed to see the report. The type comes from our own
-// record of the file, and nosniff stops browsers from second-guessing it.
-func (h *Handler) photo(w http.ResponseWriter, r *http.Request) {
-	actor, _ := httpx.PrincipalFrom(r.Context())
-	id, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	p, err := h.svc.Photo(r.Context(), actor, id)
-	if err != nil {
-		httpx.WriteError(w, r, err)
-		return
-	}
-	defer func() {
-		if err := p.File.Close(); err != nil {
-			httpx.LogError(r, "closing report photo", err)
-		}
-	}()
-
-	hdr := w.Header()
-	hdr.Set("Content-Type", p.ContentType)
-	hdr.Set("X-Content-Type-Options", "nosniff")
-	hdr.Set("Content-Disposition", "inline")
-	hdr.Set("Cache-Control", "private, max-age=3600")
-	http.ServeContent(w, r, "", p.ModTime, p.File)
 }
 
 type statusRequest struct {
