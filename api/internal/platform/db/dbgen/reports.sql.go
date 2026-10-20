@@ -113,6 +113,7 @@ const getReport = `-- name: GetReport :one
 SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS reporter_identifier, u.name AS reporter_name
 FROM damage_reports d
 JOIN rooms r ON r.id = d.room_id
@@ -136,6 +137,8 @@ type GetReportRow struct {
 	RoomCapacity       int32        `json:"room_capacity"`
 	RoomFacilities     []string     `json:"room_facilities"`
 	RoomIsActive       bool         `json:"room_is_active"`
+	RoomOpenTime       pgtype.Time  `json:"room_open_time"`
+	RoomCloseTime      pgtype.Time  `json:"room_close_time"`
 	ReporterIdentifier string       `json:"reporter_identifier"`
 	ReporterName       string       `json:"reporter_name"`
 }
@@ -160,6 +163,8 @@ func (q *Queries) GetReport(ctx context.Context, id uuid.UUID) (GetReportRow, er
 		&i.RoomCapacity,
 		&i.RoomFacilities,
 		&i.RoomIsActive,
+		&i.RoomOpenTime,
+		&i.RoomCloseTime,
 		&i.ReporterIdentifier,
 		&i.ReporterName,
 	)
@@ -209,6 +214,7 @@ const listReports = `-- name: ListReports :many
 SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS reporter_identifier, u.name AS reporter_name
 FROM damage_reports d
 JOIN rooms r ON r.id = d.room_id
@@ -249,6 +255,8 @@ type ListReportsRow struct {
 	RoomCapacity       int32        `json:"room_capacity"`
 	RoomFacilities     []string     `json:"room_facilities"`
 	RoomIsActive       bool         `json:"room_is_active"`
+	RoomOpenTime       pgtype.Time  `json:"room_open_time"`
+	RoomCloseTime      pgtype.Time  `json:"room_close_time"`
 	ReporterIdentifier string       `json:"reporter_identifier"`
 	ReporterName       string       `json:"reporter_name"`
 }
@@ -286,6 +294,8 @@ func (q *Queries) ListReports(ctx context.Context, arg ListReportsParams) ([]Lis
 			&i.RoomCapacity,
 			&i.RoomFacilities,
 			&i.RoomIsActive,
+			&i.RoomOpenTime,
+			&i.RoomCloseTime,
 			&i.ReporterIdentifier,
 			&i.ReporterName,
 		); err != nil {

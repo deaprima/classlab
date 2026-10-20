@@ -53,6 +53,7 @@ func fromRow(r dbgen.GetBookingRow) Booking {
 		Room: rooms.FromRow(rooms.Row{
 			ID: r.RoomID, OrgUnitID: r.RoomOrgUnitID, Code: r.RoomCode, Name: r.RoomName,
 			Type: r.RoomType, Capacity: r.RoomCapacity, Facilities: r.RoomFacilities, IsActive: r.RoomIsActive,
+			OpenTime: r.RoomOpenTime, CloseTime: r.RoomCloseTime,
 		}),
 		RequesterID: r.RequesterID,
 		Requester:   Requester{ID: r.RequesterID, Identifier: r.RequesterIdentifier, Name: r.RequesterName},

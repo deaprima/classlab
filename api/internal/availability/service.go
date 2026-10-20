@@ -14,6 +14,7 @@ import (
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
 	"classlab/api/internal/rooms"
+	"classlab/api/internal/roomtypes"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,15 +33,30 @@ const (
 type Conflict struct {
 	Kind    string    `json:"kind"`
 	Title   string    `json:"title"`
-	Status  string    `json:"status,omitempty"` // BOOKING only: MENUNGGU or DISETUJUI
+	Status  string    `json:"status,omitempty"` // BOOKING only: MENUNGGU, DISETUJUI or BERLANGSUNG
 	StartAt time.Time `json:"start_at"`
 	EndAt   time.Time `json:"end_at"`
 }
 
+// OperatingHours is the window a room can be booked in: its own hours when it has them, otherwise the
+// default of its type (BR-29). Clients draw the calendar grid from it.
+type OperatingHours struct {
+	OpenTime  string `json:"open_time"`
+	CloseTime string `json:"close_time"`
+	Custom    bool   `json:"custom"` // true when the room sets its own hours
+}
+
 type RoomAvailability struct {
-	Room      rooms.Room `json:"room"`
-	Status    string     `json:"status"`
-	Conflicts []Conflict `json:"conflicts"`
+	Room           rooms.Room     `json:"room"`
+	OperatingHours OperatingHours `json:"operating_hours"`
+	Status         string         `json:"status"`
+	Conflicts      []Conflict     `json:"conflicts"`
+}
+
+// TimelineResult is a room's schedule plus the hours it can be booked in.
+type TimelineResult struct {
+	Data           []TimelineItem `json:"data"`
+	OperatingHours OperatingHours `json:"operating_hours"`
 }
 
 type TimelineItem struct {
@@ -59,11 +75,22 @@ type Filter struct {
 }
 
 type Service struct {
-	q *dbgen.Queries
+	q     *dbgen.Queries
+	types *roomtypes.Store
 }
 
-func NewService(pool *db.Pool) *Service {
-	return &Service{q: dbgen.New(pool)}
+func NewService(pool *db.Pool, types *roomtypes.Store) *Service {
+	return &Service{q: dbgen.New(pool), types: types}
+}
+
+// effectiveHours picks the room's own hours when it has them, else the type's default.
+func effectiveHours(p roomtypes.Policy, open, closing pgtype.Time) OperatingHours {
+	o, hasOpen := roomtypes.MinutesOf(open)
+	c, hasClose := roomtypes.MinutesOf(closing)
+	if hasOpen && hasClose {
+		return OperatingHours{OpenTime: roomtypes.FormatClock(o), CloseTime: roomtypes.FormatClock(c), Custom: true}
+	}
+	return OperatingHours{OpenTime: roomtypes.FormatClock(p.OpenMinute), CloseTime: roomtypes.FormatClock(p.CloseMinute)}
 }
 
 // Check reports the status of every bookable room (active, not deleted) for [Start, End).
@@ -102,17 +129,29 @@ func (s *Service) Check(ctx context.Context, f Filter) ([]RoomAvailability, erro
 	}
 	books, err := s.q.ListBookingsOverlapping(ctx, dbgen.ListBookingsOverlappingParams{
 		RoomIds:    ids,
-		Statuses:   []string{string(dbgen.BookingStatusMENUNGGU), string(dbgen.BookingStatusDISETUJUI)},
+		Statuses:   []string{string(dbgen.BookingStatusMENUNGGU), string(dbgen.BookingStatusDISETUJUI), string(dbgen.BookingStatusBERLANGSUNG)},
 		RangeStart: f.Start, RangeEnd: f.End,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("loading bookings: %w", err)
 	}
 
+	policies, err := s.types.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	policyOf := make(map[string]roomtypes.Policy, len(policies))
+	for _, p := range policies {
+		policyOf[p.Type] = p
+	}
+
 	out := make([]RoomAvailability, len(roomRows))
 	index := make(map[uuid.UUID]int, len(roomRows))
 	for i, r := range roomRows {
-		out[i] = RoomAvailability{Room: rooms.FromRow(rooms.Row(r)), Status: StatusTersedia, Conflicts: []Conflict{}}
+		out[i] = RoomAvailability{
+			Room: rooms.FromRow(rooms.Row(r)), Status: StatusTersedia, Conflicts: []Conflict{},
+			OperatingHours: effectiveHours(policyOf[string(r.Type)], r.OpenTime, r.CloseTime),
+		}
 		index[r.ID] = i
 	}
 	for _, c := range scheds {
@@ -125,7 +164,7 @@ func (s *Service) Check(ctx context.Context, f Filter) ([]RoomAvailability, erro
 	for _, c := range books {
 		ra := &out[index[c.RoomID]]
 		switch c.Status {
-		case dbgen.BookingStatusDISETUJUI:
+		case dbgen.BookingStatusDISETUJUI, dbgen.BookingStatusBERLANGSUNG:
 			ra.Status = StatusDigunakan
 		case dbgen.BookingStatusMENUNGGU:
 			if ra.Status == StatusTersedia {
@@ -145,30 +184,35 @@ func (s *Service) Check(ctx context.Context, f Filter) ([]RoomAvailability, erro
 
 // Timeline merges a room's academic schedules with its approved bookings (BR-05). Approved
 // bookings are an overlay: they never change room_schedules. Pending bookings are not shown here.
-func (s *Service) Timeline(ctx context.Context, roomID uuid.UUID, from, to time.Time) ([]TimelineItem, error) {
+func (s *Service) Timeline(ctx context.Context, roomID uuid.UUID, from, to time.Time) (TimelineResult, error) {
 	if p := validateRange("from", "to", from, to); len(p) > 0 {
-		return nil, httpx.ValidationError(p...)
+		return TimelineResult{}, httpx.ValidationError(p...)
 	}
-	if _, err := s.q.GetRoom(ctx, roomID); err != nil {
+	room, err := s.q.GetRoom(ctx, roomID)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, httpx.ErrNotFound
+			return TimelineResult{}, httpx.ErrNotFound
 		}
-		return nil, fmt.Errorf("getting room: %w", err)
+		return TimelineResult{}, fmt.Errorf("getting room: %w", err)
+	}
+	policy, err := s.types.Get(ctx, string(room.Type))
+	if err != nil {
+		return TimelineResult{}, fmt.Errorf("loading room type policy: %w", err)
 	}
 
 	scheds, err := s.q.ListSchedulesOverlapping(ctx, dbgen.ListSchedulesOverlappingParams{
 		RoomIds: []uuid.UUID{roomID}, RangeStart: from, RangeEnd: to,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("loading schedules: %w", err)
+		return TimelineResult{}, fmt.Errorf("loading schedules: %w", err)
 	}
 	books, err := s.q.ListBookingsOverlapping(ctx, dbgen.ListBookingsOverlappingParams{
 		RoomIds:    []uuid.UUID{roomID},
-		Statuses:   []string{string(dbgen.BookingStatusDISETUJUI)},
+		Statuses:   []string{string(dbgen.BookingStatusDISETUJUI), string(dbgen.BookingStatusBERLANGSUNG)},
 		RangeStart: from, RangeEnd: to,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("loading bookings: %w", err)
+		return TimelineResult{}, fmt.Errorf("loading bookings: %w", err)
 	}
 
 	items := make([]TimelineItem, 0, len(scheds)+len(books))
@@ -184,7 +228,7 @@ func (s *Service) Timeline(ctx context.Context, roomID uuid.UUID, from, to time.
 		}
 		return items[i].ID.String() < items[j].ID.String()
 	})
-	return items, nil
+	return TimelineResult{Data: items, OperatingHours: effectiveHours(policy, room.OpenTime, room.CloseTime)}, nil
 }
 
 func sortConflicts(c []Conflict) {

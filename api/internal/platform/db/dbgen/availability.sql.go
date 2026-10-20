@@ -14,7 +14,7 @@ import (
 )
 
 const listBookableRooms = `-- name: ListBookableRooms :many
-SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 FROM rooms
 WHERE deleted_at IS NULL AND is_active
   AND ($1::room_type IS NULL OR type = $1::room_type)
@@ -39,6 +39,8 @@ type ListBookableRoomsRow struct {
 	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
 	CreatedAt  time.Time          `json:"created_at"`
 	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
 }
 
 func (q *Queries) ListBookableRooms(ctx context.Context, arg ListBookableRoomsParams) ([]ListBookableRoomsRow, error) {
@@ -62,6 +64,8 @@ func (q *Queries) ListBookableRooms(ctx context.Context, arg ListBookableRoomsPa
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OpenTime,
+			&i.CloseTime,
 		); err != nil {
 			return nil, err
 		}

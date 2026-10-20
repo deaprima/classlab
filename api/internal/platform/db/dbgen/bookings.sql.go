@@ -226,6 +226,7 @@ SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.parti
        b.status, b.decided_by, b.decided_at, b.decision_reason, b.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS requester_identifier, u.name AS requester_name
 FROM bookings b
 JOIN rooms r ON r.id = b.room_id
@@ -254,6 +255,8 @@ type GetBookingRow struct {
 	RoomCapacity        int32              `json:"room_capacity"`
 	RoomFacilities      []string           `json:"room_facilities"`
 	RoomIsActive        bool               `json:"room_is_active"`
+	RoomOpenTime        pgtype.Time        `json:"room_open_time"`
+	RoomCloseTime       pgtype.Time        `json:"room_close_time"`
 	RequesterIdentifier string             `json:"requester_identifier"`
 	RequesterName       string             `json:"requester_name"`
 }
@@ -283,6 +286,8 @@ func (q *Queries) GetBooking(ctx context.Context, id uuid.UUID) (GetBookingRow, 
 		&i.RoomCapacity,
 		&i.RoomFacilities,
 		&i.RoomIsActive,
+		&i.RoomOpenTime,
+		&i.RoomCloseTime,
 		&i.RequesterIdentifier,
 		&i.RequesterName,
 	)
@@ -380,6 +385,7 @@ SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.parti
        b.status, b.decided_by, b.decided_at, b.decision_reason, b.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS requester_identifier, u.name AS requester_name
 FROM bookings b
 JOIN rooms r ON r.id = b.room_id
@@ -426,6 +432,8 @@ type ListBookingsRow struct {
 	RoomCapacity        int32              `json:"room_capacity"`
 	RoomFacilities      []string           `json:"room_facilities"`
 	RoomIsActive        bool               `json:"room_is_active"`
+	RoomOpenTime        pgtype.Time        `json:"room_open_time"`
+	RoomCloseTime       pgtype.Time        `json:"room_close_time"`
 	RequesterIdentifier string             `json:"requester_identifier"`
 	RequesterName       string             `json:"requester_name"`
 }
@@ -469,6 +477,8 @@ func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]L
 			&i.RoomCapacity,
 			&i.RoomFacilities,
 			&i.RoomIsActive,
+			&i.RoomOpenTime,
+			&i.RoomCloseTime,
 			&i.RequesterIdentifier,
 			&i.RequesterName,
 		); err != nil {

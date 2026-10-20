@@ -64,13 +64,16 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 
 	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk, types))
 	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk, types))
-	availabilityHandler := availability.NewHandler(availability.NewService(pool))
+	availabilityHandler := availability.NewHandler(availability.NewService(pool, types))
 	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, rules, types))
 
 	importsHandler := imports.NewHandler(imports.NewService(pool, hasher, clk, imports.Options{
 		Limits:             imports.Limits{MaxBytes: cfg.Business.ImportMaxBytes, MaxRows: cfg.Business.ImportMaxRows},
 		TempPasswordLength: cfg.Business.TempPasswordLength,
+		MaxWeeks:           cfg.Business.ImportMaxWeeks,
 	}, log))
+
+	roomTypesHandler := roomtypes.NewHandler(roomtypes.NewService(pool, clk))
 
 	notificationsHandler := notifications.NewHandler(
 		notifications.NewService(pool, clk),
@@ -118,6 +121,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 				roomsHandler.Register(r)
 				r.Get("/{id}/schedule", availabilityHandler.Timeline)
 			})
+			r.Route("/room-types", roomTypesHandler.Register)
 			r.Route("/schedules", schedulesHandler.Register)
 			r.Route("/bookings", bookingsHandler.Register)
 			r.Route("/notifications", notificationsHandler.Register)

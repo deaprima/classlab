@@ -96,6 +96,8 @@ type createRequest struct {
 	Type       string    `json:"type"`
 	Capacity   int       `json:"capacity"`
 	Facilities []string  `json:"facilities"`
+	OpenTime   string    `json:"open_time"`
+	CloseTime  string    `json:"close_time"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -115,11 +117,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateRequest struct {
-	Name       *string   `json:"name"`
-	Type       *string   `json:"type"`
-	Capacity   *int      `json:"capacity"`
-	Facilities *[]string `json:"facilities"`
-	IsActive   *bool     `json:"is_active"`
+	Name                *string   `json:"name"`
+	Type                *string   `json:"type"`
+	Capacity            *int      `json:"capacity"`
+	Facilities          *[]string `json:"facilities"`
+	IsActive            *bool     `json:"is_active"`
+	OpenTime            *string   `json:"open_time"`
+	CloseTime           *string   `json:"close_time"`
+	ClearOperatingHours bool      `json:"clear_operating_hours"`
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {

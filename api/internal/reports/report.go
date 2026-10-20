@@ -60,6 +60,7 @@ func fromRow(r dbgen.GetReportRow) Report {
 		Room: rooms.FromRow(rooms.Row{
 			ID: r.RoomID, OrgUnitID: r.RoomOrgUnitID, Code: r.RoomCode, Name: r.RoomName,
 			Type: r.RoomType, Capacity: r.RoomCapacity, Facilities: r.RoomFacilities, IsActive: r.RoomIsActive,
+			OpenTime: r.RoomOpenTime, CloseTime: r.RoomCloseTime,
 		}),
 		ReporterID:  r.ReporterID,
 		Reporter:    Reporter{ID: r.ReporterID, Identifier: r.ReporterIdentifier, Name: r.ReporterName},

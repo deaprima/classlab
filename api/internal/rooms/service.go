@@ -59,6 +59,8 @@ type CreateInput struct {
 	Type       string
 	Capacity   int
 	Facilities []string
+	OpenTime   string // optional room-specific hours "HH:MM" (BR-29); both or neither
+	CloseTime  string
 }
 
 // UpdateInput holds only the fields the caller sent; nil means "leave unchanged".
@@ -69,10 +71,16 @@ type UpdateInput struct {
 	Capacity   *int
 	Facilities *[]string
 	IsActive   *bool
+	// OpenTime and CloseTime change the room's own hours; ClearOperatingHours puts it back on the type's
+	// default hours (BR-29).
+	OpenTime            *string
+	CloseTime           *string
+	ClearOperatingHours bool
 }
 
 func (in UpdateInput) empty() bool {
-	return in.Name == nil && in.Type == nil && in.Capacity == nil && in.Facilities == nil && in.IsActive == nil
+	return in.Name == nil && in.Type == nil && in.Capacity == nil && in.Facilities == nil && in.IsActive == nil &&
+		in.OpenTime == nil && in.CloseTime == nil && !in.ClearOperatingHours
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (Room, error) {
@@ -139,6 +147,8 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	problems = append(problems, validateCapacity(in.Capacity)...)
 	facilities, facilityProblems := normalizeFacilities(in.Facilities)
 	problems = append(problems, facilityProblems...)
+	open, closing, hoursProblems := parseOwnHours(in.OpenTime, in.CloseTime)
+	problems = append(problems, hoursProblems...)
 	if len(problems) > 0 {
 		return Room{}, httpx.ValidationError(problems...)
 	}
@@ -163,6 +173,8 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			Facilities:  facilities,
 			QrToken:     token,
 			QrRotatedAt: now,
+			OpenTime:    open,
+			CloseTime:   closing,
 		})
 		if err != nil {
 			return err
@@ -211,6 +223,10 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	if in.IsActive != nil {
 		params.IsActive = pgtype.Bool{Bool: *in.IsActive, Valid: true}
 	}
+	params.ClearOperatingHours = in.ClearOperatingHours
+	if in.ClearOperatingHours && (in.OpenTime != nil || in.CloseTime != nil) {
+		problems = append(problems, httpx.ErrorDetail{Field: "open_time", Message: "clear_operating_hours tidak dapat dikirim bersama open_time atau close_time."})
+	}
 	if len(problems) > 0 {
 		return Room{}, httpx.ValidationError(problems...)
 	}
@@ -224,6 +240,16 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 			return err
 		}
 		before := FromRow(Row(locked))
+
+		// Hours are judged as they will be after the change, so sending only one of the two is fine when
+		// the room already has the other.
+		if in.OpenTime != nil || in.CloseTime != nil {
+			open, closing, problems := mergeOwnHours(locked.OpenTime, locked.CloseTime, in.OpenTime, in.CloseTime)
+			if len(problems) > 0 {
+				return httpx.ValidationError(problems...)
+			}
+			params.OpenTime, params.CloseTime = open, closing
+		}
 
 		// The actor must manage the type the room has now, and the type it is moving to.
 		if err := s.types.RequireRoomManager(ctx, actor, before.Type); err != nil {
@@ -372,4 +398,45 @@ func constraintDetail(err error) (httpx.ErrorDetail, bool) {
 // escapeLike neutralises LIKE wildcards so user input is matched literally.
 func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// parseOwnHours reads the optional room-specific hours of a new room (BR-29): both or neither.
+func parseOwnHours(open, closing string) (pgtype.Time, pgtype.Time, []httpx.ErrorDetail) {
+	if open == "" && closing == "" {
+		return pgtype.Time{}, pgtype.Time{}, nil
+	}
+	return mergeOwnHours(pgtype.Time{}, pgtype.Time{}, &open, &closing)
+}
+
+// mergeOwnHours applies a requested change to a room's current hours and checks the result: both set or
+// both empty, "HH:MM", on the 30-minute grid, open before close. Room hours are not bounded by the type's
+// default window; a room may open longer than its type's default (BR-29).
+func mergeOwnHours(curOpen, curClose pgtype.Time, newOpen, newClose *string) (pgtype.Time, pgtype.Time, []httpx.ErrorDetail) {
+	open, hasOpen := roomtypes.MinutesOf(curOpen)
+	closing, hasClose := roomtypes.MinutesOf(curClose)
+	var problems []httpx.ErrorDetail
+	if newOpen != nil {
+		m, ok := roomtypes.ParseClock(*newOpen)
+		if !ok {
+			problems = append(problems, httpx.ErrorDetail{Field: "open_time", Message: "open_time harus berformat HH:MM."})
+		}
+		open, hasOpen = m, ok
+	}
+	if newClose != nil {
+		m, ok := roomtypes.ParseClock(*newClose)
+		if !ok {
+			problems = append(problems, httpx.ErrorDetail{Field: "close_time", Message: "close_time harus berformat HH:MM."})
+		}
+		closing, hasClose = m, ok
+	}
+	if len(problems) > 0 {
+		return pgtype.Time{}, pgtype.Time{}, problems
+	}
+	if hasOpen != hasClose {
+		return pgtype.Time{}, pgtype.Time{}, []httpx.ErrorDetail{{Field: "open_time", Message: "open_time dan close_time harus diisi bersamaan."}}
+	}
+	if !roomtypes.ValidHours(open, closing) {
+		return pgtype.Time{}, pgtype.Time{}, []httpx.ErrorDetail{{Field: "open_time", Message: fmt.Sprintf("Jam buka harus sebelum jam tutup dan berkelipatan %d menit.", roomtypes.MinutesPerSlot)}}
+	}
+	return roomtypes.PGTime(open), roomtypes.PGTime(closing), nil
 }

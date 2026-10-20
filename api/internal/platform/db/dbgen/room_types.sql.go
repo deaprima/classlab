@@ -112,3 +112,129 @@ func (q *Queries) ListRoomTypePolicies(ctx context.Context) ([]ListRoomTypePolic
 	}
 	return items, nil
 }
+
+const lockRoomTypePolicy = `-- name: LockRoomTypePolicy :one
+SELECT room_type, label, approver_roles::text[] AS approver_roles, requester_roles::text[] AS requester_roles,
+       approval_policy, letter_required, open_time, close_time, min_duration_min, max_duration_min,
+       max_advance_days, updated_at
+FROM room_type_policies
+WHERE room_type = $1
+FOR UPDATE
+`
+
+type LockRoomTypePolicyRow struct {
+	RoomType       RoomType       `json:"room_type"`
+	Label          string         `json:"label"`
+	ApproverRoles  []string       `json:"approver_roles"`
+	RequesterRoles []string       `json:"requester_roles"`
+	ApprovalPolicy ApprovalPolicy `json:"approval_policy"`
+	LetterRequired bool           `json:"letter_required"`
+	OpenTime       pgtype.Time    `json:"open_time"`
+	CloseTime      pgtype.Time    `json:"close_time"`
+	MinDurationMin int32          `json:"min_duration_min"`
+	MaxDurationMin int32          `json:"max_duration_min"`
+	MaxAdvanceDays int32          `json:"max_advance_days"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
+// Taken before an administrator's change so the before-state in the audit log and the cross-field
+// checks (open < close, min <= max) see the row as it is, not as another change leaves it.
+func (q *Queries) LockRoomTypePolicy(ctx context.Context, roomType RoomType) (LockRoomTypePolicyRow, error) {
+	row := q.db.QueryRow(ctx, lockRoomTypePolicy, roomType)
+	var i LockRoomTypePolicyRow
+	err := row.Scan(
+		&i.RoomType,
+		&i.Label,
+		&i.ApproverRoles,
+		&i.RequesterRoles,
+		&i.ApprovalPolicy,
+		&i.LetterRequired,
+		&i.OpenTime,
+		&i.CloseTime,
+		&i.MinDurationMin,
+		&i.MaxDurationMin,
+		&i.MaxAdvanceDays,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateRoomTypePolicy = `-- name: UpdateRoomTypePolicy :one
+UPDATE room_type_policies SET
+  approver_roles   = COALESCE($1::text[]::user_role[], approver_roles),
+  requester_roles  = COALESCE($2::text[]::user_role[], requester_roles),
+  approval_policy  = COALESCE($3::approval_policy, approval_policy),
+  letter_required  = COALESCE($4::boolean, letter_required),
+  open_time        = COALESCE($5::time, open_time),
+  close_time       = COALESCE($6::time, close_time),
+  min_duration_min = COALESCE($7::int, min_duration_min),
+  max_duration_min = COALESCE($8::int, max_duration_min),
+  max_advance_days = COALESCE($9::int, max_advance_days),
+  updated_at       = $10
+WHERE room_type = $11
+RETURNING room_type, label, approver_roles::text[] AS approver_roles, requester_roles::text[] AS requester_roles,
+          approval_policy, letter_required, open_time, close_time, min_duration_min, max_duration_min,
+          max_advance_days, updated_at
+`
+
+type UpdateRoomTypePolicyParams struct {
+	ApproverRoles  []string           `json:"approver_roles"`
+	RequesterRoles []string           `json:"requester_roles"`
+	ApprovalPolicy NullApprovalPolicy `json:"approval_policy"`
+	LetterRequired pgtype.Bool        `json:"letter_required"`
+	OpenTime       pgtype.Time        `json:"open_time"`
+	CloseTime      pgtype.Time        `json:"close_time"`
+	MinDurationMin pgtype.Int4        `json:"min_duration_min"`
+	MaxDurationMin pgtype.Int4        `json:"max_duration_min"`
+	MaxAdvanceDays pgtype.Int4        `json:"max_advance_days"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+	RoomType       RoomType           `json:"room_type"`
+}
+
+type UpdateRoomTypePolicyRow struct {
+	RoomType       RoomType       `json:"room_type"`
+	Label          string         `json:"label"`
+	ApproverRoles  []string       `json:"approver_roles"`
+	RequesterRoles []string       `json:"requester_roles"`
+	ApprovalPolicy ApprovalPolicy `json:"approval_policy"`
+	LetterRequired bool           `json:"letter_required"`
+	OpenTime       pgtype.Time    `json:"open_time"`
+	CloseTime      pgtype.Time    `json:"close_time"`
+	MinDurationMin int32          `json:"min_duration_min"`
+	MaxDurationMin int32          `json:"max_duration_min"`
+	MaxAdvanceDays int32          `json:"max_advance_days"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
+// The role arrays travel as text[] and are cast in SQL (see the note on GetRoomTypePolicy).
+func (q *Queries) UpdateRoomTypePolicy(ctx context.Context, arg UpdateRoomTypePolicyParams) (UpdateRoomTypePolicyRow, error) {
+	row := q.db.QueryRow(ctx, updateRoomTypePolicy,
+		arg.ApproverRoles,
+		arg.RequesterRoles,
+		arg.ApprovalPolicy,
+		arg.LetterRequired,
+		arg.OpenTime,
+		arg.CloseTime,
+		arg.MinDurationMin,
+		arg.MaxDurationMin,
+		arg.MaxAdvanceDays,
+		arg.UpdatedAt,
+		arg.RoomType,
+	)
+	var i UpdateRoomTypePolicyRow
+	err := row.Scan(
+		&i.RoomType,
+		&i.Label,
+		&i.ApproverRoles,
+		&i.RequesterRoles,
+		&i.ApprovalPolicy,
+		&i.LetterRequired,
+		&i.OpenTime,
+		&i.CloseTime,
+		&i.MinDurationMin,
+		&i.MaxDurationMin,
+		&i.MaxAdvanceDays,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
