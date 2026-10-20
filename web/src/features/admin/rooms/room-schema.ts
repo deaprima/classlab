@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ROOM_TYPES } from '@/features/rooms/labels'
 
 // Mirrors the API's room rules (decisions.md, Phase 2); the server re-checks them.
 const MAX_FACILITIES = 30
@@ -17,7 +18,7 @@ export const roomFormSchema = z.object({
     .trim()
     .min(1, 'Nama wajib diisi.')
     .max(120, 'Nama maksimal 120 karakter.'),
-  type: z.enum(['KELAS', 'LAB'], 'Pilih tipe ruang.'),
+  type: z.enum(ROOM_TYPES, 'Pilih tipe ruang.'),
   capacity: z
     .string()
     .trim()

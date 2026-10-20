@@ -25,16 +25,19 @@ afterEach(() => {
 
 describe('requireRole', () => {
   it('lets an allowed role through', () => {
-    signInAs('TU_KALAB')
+    signInAs('TU')
     expect(caught(() => requireRole(ACCESS.approveBookings))).toBeUndefined()
   })
 
   it.each<[UserRole, readonly UserRole[]]>([
     ['MAHASISWA', ACCESS.approveBookings],
-    ['KAPRODI', ACCESS.approveBookings],
-    ['TU_KALAB', ACCESS.createBooking],
+    ['ORGANISASI', ACCESS.approveBookings],
+    ['OB', ACCESS.approveBookings],
+    ['TU', ACCESS.createBooking],
+    ['ADMIN', ACCESS.createBooking],
     ['OB', ACCESS.viewBookings],
-    ['TU_KALAB', ACCESS.manageUsers],
+    ['TU', ACCESS.manageUsers],
+    ['KALAB', ACCESS.manageUsers],
   ])('redirects %s to 403', (role, roles) => {
     signInAs(role)
     const error = caught(() => requireRole(roles))
@@ -52,13 +55,21 @@ describe('navGroupsForRole', () => {
     expect(titles('MAHASISWA')).not.toContain('Kelola Ruang')
   })
 
-  it('gives TU/Kalab the approval queue and room admin, not user admin', () => {
-    expect(titles('TU_KALAB')).toEqual(
-      expect.arrayContaining(['Persetujuan', 'Kelola Ruang', 'Kelola Jadwal'])
-    )
-    expect(titles('TU_KALAB')).not.toContain('Kelola Pengguna')
-    expect(titles('TU_KALAB')).not.toContain('Ajukan Peminjaman')
+  it('lets organisations book too', () => {
+    expect(titles('ORGANISASI')).toContain('Ajukan Peminjaman')
+    expect(titles('ORGANISASI')).not.toContain('Persetujuan')
   })
+
+  it.each<UserRole>(['TU', 'KALAB'])(
+    'gives %s the approval queue and room admin, not user admin',
+    (role) => {
+      expect(titles(role)).toEqual(
+        expect.arrayContaining(['Persetujuan', 'Kelola Ruang', 'Kelola Jadwal'])
+      )
+      expect(titles(role)).not.toContain('Kelola Pengguna')
+      expect(titles(role)).not.toContain('Ajukan Peminjaman')
+    }
+  )
 
   it('hides the booking list from OB, which the API forbids', () => {
     expect(titles('OB')).not.toContain('Riwayat Peminjaman')
@@ -68,8 +79,8 @@ describe('navGroupsForRole', () => {
     )
   })
 
-  it('gives Kaprodi user admin', () => {
-    expect(titles('KAPRODI')).toContain('Kelola Pengguna')
+  it('gives Admin user admin', () => {
+    expect(titles('ADMIN')).toContain('Kelola Pengguna')
   })
 
   it('shows nothing without a role', () => {

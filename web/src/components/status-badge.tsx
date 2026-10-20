@@ -52,6 +52,11 @@ const bookingTone: Record<BookingStatus, Tone> = {
   DISETUJUI: 'green',
   DITOLAK: 'red',
   DIBATALKAN: 'gray',
+  BERLANGSUNG: 'green',
+  SELESAI: 'green',
+  TIDAK_HADIR: 'red',
+  TANPA_CHECKOUT: 'red',
+  KEDALUWARSA: 'gray',
 }
 
 export function BookingStatusBadge({ status }: { status: BookingStatus }) {

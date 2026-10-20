@@ -9,7 +9,7 @@ describe('notificationTarget', () => {
     expect(
       notificationTarget(
         { type: 'BOOKING_CREATED', ref_type: 'BOOKING', ref_id: id },
-        'TU_KALAB'
+        'TU'
       )
     ).toEqual({ to: '/approvals', search: { booking: id } })
   })

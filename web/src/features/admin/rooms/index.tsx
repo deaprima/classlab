@@ -28,7 +28,7 @@ import { Page } from '@/components/layout/page'
 import { Pager } from '@/components/pager'
 import { SearchInput } from '@/components/search-input'
 import { useRooms } from '@/features/rooms/api'
-import { ROOM_TYPE_LABELS } from '@/features/rooms/labels'
+import { ROOM_TYPE_LABELS, ROOM_TYPES } from '@/features/rooms/labels'
 import { useDeleteRoom } from './api'
 import { RoomFormDialog } from './room-form-dialog'
 
@@ -87,8 +87,11 @@ export function AdminRooms() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Semua tipe</SelectItem>
-              <SelectItem value='KELAS'>{ROOM_TYPE_LABELS.KELAS}</SelectItem>
-              <SelectItem value='LAB'>{ROOM_TYPE_LABELS.LAB}</SelectItem>
+              {ROOM_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {ROOM_TYPE_LABELS[t]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select

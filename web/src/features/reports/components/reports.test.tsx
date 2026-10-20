@@ -143,7 +143,7 @@ describe('ReportDetailSheet status action', () => {
   it('lets TU/Kalab move the report one step with a note', async () => {
     useAuthStore
       .getState()
-      .auth.setSession('t', { ...sampleUser, id: 'tu', role: 'TU_KALAB' })
+      .auth.setSession('t', { ...sampleUser, id: 'tu', role: 'TU' })
     const patches: unknown[] = []
     api.defaults.adapter = mockAdapter((config) => {
       if (config.method === 'patch') {

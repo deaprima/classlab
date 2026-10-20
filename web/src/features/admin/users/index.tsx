@@ -55,7 +55,7 @@ export function AdminUsers() {
   return (
     <Page
       title='Kelola Pengguna'
-      description='Akun mahasiswa, TU/Kepala Lab, OB, dan Kaprodi.'
+      description='Akun mahasiswa, organisasi, TU, Kepala Lab, OB, dan Admin.'
       actions={
         <Button onClick={() => setDialog({ mode: 'create' })}>
           <UserPlus />
@@ -160,7 +160,7 @@ export function AdminUsers() {
                   )}
                 </TableCell>
                 <TableCell className='tabular-nums'>{u.identifier}</TableCell>
-                <TableCell>{u.email}</TableCell>
+                <TableCell>{u.email ?? '-'}</TableCell>
                 <TableCell>{ROLE_LABELS[u.role]}</TableCell>
                 <TableCell>
                   {u.is_active ? (

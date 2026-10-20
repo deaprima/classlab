@@ -19,7 +19,7 @@ const originalAdapter = api.defaults.adapter
 const TU = {
   ...sampleUser,
   id: 'tu-id',
-  role: 'TU_KALAB' as const,
+  role: 'TU' as const,
   name: 'Siti',
 }
 
@@ -141,10 +141,10 @@ describe('BookingActions', () => {
     )
   })
 
-  it('renders nothing for Kaprodi', async () => {
+  it('renders nothing for a role that neither owns nor approves', async () => {
     useAuthStore
       .getState()
-      .auth.setSession('t', { ...sampleUser, id: 'k', role: 'KAPRODI' })
+      .auth.setSession('t', { ...sampleUser, id: 'k', role: 'OB' })
     const screen = await renderActions()
 
     expect(screen.container.querySelectorAll('button')).toHaveLength(0)

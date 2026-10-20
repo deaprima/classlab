@@ -86,3 +86,5 @@ export type CreateUserRequest =
   paths['/users']['post']['requestBody']['content']['application/json']
 export type UpdateUserRequest =
   paths['/users/{id}']['patch']['requestBody']['content']['application/json']
+export type ResetPasswordResponse =
+  paths['/users/{id}/reset-password']['post']['responses']['200']['content']['application/json']

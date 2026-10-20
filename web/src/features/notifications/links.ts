@@ -14,7 +14,10 @@ export function notificationTarget(
   if (!n.ref_id || !role) return null
   if (n.ref_type === 'BOOKING') {
     // A new request is something TU/Kalab acts on in the queue.
-    if (n.type === 'BOOKING_CREATED' && role === 'TU_KALAB') {
+    if (
+      n.type === 'BOOKING_CREATED' &&
+      (ACCESS.approveBookings as readonly UserRole[]).includes(role)
+    ) {
       return { to: '/approvals', search: { booking: n.ref_id } }
     }
     if ((ACCESS.viewBookings as readonly UserRole[]).includes(role)) {
