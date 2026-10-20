@@ -1,6 +1,7 @@
 package bookings
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -33,18 +34,29 @@ func (h *Handler) Register(r chi.Router) {
 	r.With(reader).Get("/", h.list)
 	r.With(reader).Get("/{id}", h.get)
 	r.With(reader).Get("/{id}/events", h.events)
+	r.With(requester).Patch("/{id}", h.edit)
 	r.With(manager).Post("/{id}/approve", h.approve)
 	r.With(manager).Post("/{id}/reject", h.reject)
 	r.With(reader).Post("/{id}/cancel", h.cancel)
 }
 
+type occurrenceRequest struct {
+	StartAt time.Time `json:"start_at"`
+	EndAt   time.Time `json:"end_at"`
+}
+
+// createRequest takes either start_at and end_at (one date) or occurrences (one to MAX_OCCURRENCES dates).
 type createRequest struct {
-	RoomID       uuid.UUID `json:"room_id"`
-	StartAt      time.Time `json:"start_at"`
-	EndAt        time.Time `json:"end_at"`
-	Purpose      string    `json:"purpose"`
-	Participants *int      `json:"participants"`
-	Notes        *string   `json:"notes"`
+	RoomID             uuid.UUID            `json:"room_id"`
+	StartAt            time.Time            `json:"start_at"`
+	EndAt              time.Time            `json:"end_at"`
+	Occurrences        *[]occurrenceRequest `json:"occurrences"`
+	Purpose            string               `json:"purpose"`
+	Participants       *int                 `json:"participants"`
+	Notes              *string              `json:"notes"`
+	Details            json.RawMessage      `json:"details"`
+	LetterAttachmentID *uuid.UUID           `json:"letter_attachment_id"`
+	LetterNumber       *string              `json:"letter_number"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -56,18 +68,32 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, replayed, err := h.svc.Create(r.Context(), actor, CreateInput{
+	in := CreateInput{
 		RoomID: req.RoomID, StartAt: req.StartAt, EndAt: req.EndAt, Purpose: req.Purpose,
-		Participants: req.Participants, Notes: req.Notes, IdempotencyKey: r.Header.Get("Idempotency-Key"),
-	})
+		Participants: req.Participants, Notes: req.Notes, Details: req.Details,
+		LetterAttachmentID: req.LetterAttachmentID, LetterNumber: req.LetterNumber,
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+	}
+	if req.Occurrences != nil {
+		in.HasOccurrences = true
+		for _, o := range *req.Occurrences {
+			in.Occurrences = append(in.Occurrences, Occurrence{StartAt: o.StartAt, EndAt: o.EndAt})
+		}
+	}
+
+	res, err := h.svc.Create(r.Context(), actor, in)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	if replayed {
+	if res.Replayed {
 		w.Header().Set("Idempotency-Replayed", "true")
 	}
-	httpx.JSON(w, http.StatusCreated, created)
+	if res.Group != nil {
+		httpx.JSON(w, http.StatusCreated, res.Group)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, res.Booking)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +121,21 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.RoomID = &id
+	}
+	if v := q.Get("type"); v != "" {
+		if !dbgen.RoomType(v).Valid() {
+			httpx.WriteError(w, r, httpx.ValidationError(httpx.ErrorDetail{Field: "type", Message: "Tipe ruang tidak dikenal."}))
+			return
+		}
+		f.RoomType = &v
+	}
+	if v := q.Get("group_id"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			httpx.WriteError(w, r, httpx.ValidationError(httpx.ErrorDetail{Field: "group_id", Message: "group_id harus berupa UUID."}))
+			return
+		}
+		f.GroupID = &id
 	}
 	if v := q.Get("mine"); v != "" {
 		mine, err := strconv.ParseBool(v)
@@ -174,16 +215,17 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
 
 type reasonRequest struct {
 	Reason string `json:"reason"`
+	Scope  string `json:"scope"`
 }
 
 // decodeReason reads an optional {"reason": "..."} body. An empty body means no reason, so the
 // service decides whether that is acceptable (422 for reject, fine for a student cancelling).
-func decodeReason(w http.ResponseWriter, r *http.Request) (string, error) {
+func decodeReason(w http.ResponseWriter, r *http.Request) (reasonRequest, error) {
 	var req reasonRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil && !errors.Is(err, io.EOF) {
-		return "", err
+		return reasonRequest{}, err
 	}
-	return req.Reason, nil
+	return req, nil
 }
 
 func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
@@ -192,12 +234,12 @@ func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	reason, err := decodeReason(w, r)
+	req, err := decodeReason(w, r)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	b, err := h.svc.Reject(r.Context(), actor, id, reason)
+	b, err := h.svc.Reject(r.Context(), actor, id, req.Reason)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
@@ -211,12 +253,43 @@ func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	reason, err := decodeReason(w, r)
+	req, err := decodeReason(w, r)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	b, err := h.svc.Cancel(r.Context(), actor, id, reason)
+	b, err := h.svc.Cancel(r.Context(), actor, id, req.Reason, req.Scope)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, b)
+}
+
+type editRequest struct {
+	StartAt            *time.Time       `json:"start_at"`
+	EndAt              *time.Time       `json:"end_at"`
+	Purpose            *string          `json:"purpose"`
+	Participants       *int             `json:"participants"`
+	Notes              *string          `json:"notes"`
+	Details            *json.RawMessage `json:"details"`
+	LetterAttachmentID *uuid.UUID       `json:"letter_attachment_id"`
+	LetterNumber       *string          `json:"letter_number"`
+}
+
+// edit serves PATCH /bookings/{id}. The room is not editable: an unknown field such as room_id is a 400.
+func (h *Handler) edit(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	var req editRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	b, err := h.svc.Edit(r.Context(), actor, id, EditInput(req))
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return

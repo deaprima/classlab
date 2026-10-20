@@ -12,23 +12,21 @@ import (
 )
 
 type Config struct {
-	AppEnv                  string
-	Port                    string
-	LogLevel                string
-	DatabaseURL             string
-	JWTSecret               string
-	JWTAccessExpiry         time.Duration
-	RefreshTokenExpiry      time.Duration
-	CookieSecure            bool
-	Argon2MemoryKiB         uint32
-	Argon2Iterations        uint32
-	Argon2Parallelism       uint8
-	CORSAllowedOrigins      []string
-	BookingMaxActivePerUser int
-	UploadDir               string
-	UploadMaxBytes          int64
-	SSEHeartbeat            time.Duration
-	DBLockTimeout           time.Duration
+	AppEnv             string
+	Port               string
+	LogLevel           string
+	DatabaseURL        string
+	JWTSecret          string
+	JWTAccessExpiry    time.Duration
+	RefreshTokenExpiry time.Duration
+	CookieSecure       bool
+	Argon2MemoryKiB    uint32
+	Argon2Iterations   uint32
+	Argon2Parallelism  uint8
+	CORSAllowedOrigins []string
+	UploadDir          string
+	SSEHeartbeat       time.Duration
+	DBLockTimeout      time.Duration
 
 	// Business holds the BR-11 to BR-28 settings. The older booking and upload settings above stay until
 	// the phase that replaces the code reading them (bookings: Phase 3, uploads: Phase 3).
@@ -42,23 +40,21 @@ func Load() (*Config, error) {
 	_ = godotenv.Load("../.env")
 
 	cfg := &Config{
-		AppEnv:                  getEnv("APP_ENV", "development"),
-		Port:                    getEnv("PORT", "8080"),
-		LogLevel:                getEnv("LOG_LEVEL", "info"),
-		DatabaseURL:             getEnv("DATABASE_URL", ""),
-		JWTSecret:               getEnv("JWT_SECRET", ""),
-		JWTAccessExpiry:         getDurationEnv("JWT_ACCESS_EXPIRY", 15*time.Minute),
-		RefreshTokenExpiry:      getDurationEnv("REFRESH_TOKEN_EXPIRY", 7*24*time.Hour),
-		CookieSecure:            getBoolEnv("COOKIE_SECURE", false),
-		Argon2MemoryKiB:         uint32(getIntEnv("ARGON2_MEMORY_KIB", 19*1024)),
-		Argon2Iterations:        uint32(getIntEnv("ARGON2_ITERATIONS", 2)),
-		Argon2Parallelism:       uint8(getIntEnv("ARGON2_PARALLELISM", 1)),
-		CORSAllowedOrigins:      getStringSliceEnv("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173"}),
-		BookingMaxActivePerUser: getIntEnv("BOOKING_MAX_ACTIVE_PER_USER", 5),
-		UploadDir:               getEnv("UPLOAD_DIR", "./uploads"),
-		UploadMaxBytes:          getInt64Env("UPLOAD_MAX_BYTES", 5*1024*1024),
-		SSEHeartbeat:            getDurationEnv("SSE_HEARTBEAT", 25*time.Second),
-		DBLockTimeout:           getDurationEnv("DB_LOCK_TIMEOUT", 5*time.Second),
+		AppEnv:             getEnv("APP_ENV", "development"),
+		Port:               getEnv("PORT", "8080"),
+		LogLevel:           getEnv("LOG_LEVEL", "info"),
+		DatabaseURL:        getEnv("DATABASE_URL", ""),
+		JWTSecret:          getEnv("JWT_SECRET", ""),
+		JWTAccessExpiry:    getDurationEnv("JWT_ACCESS_EXPIRY", 15*time.Minute),
+		RefreshTokenExpiry: getDurationEnv("REFRESH_TOKEN_EXPIRY", 7*24*time.Hour),
+		CookieSecure:       getBoolEnv("COOKIE_SECURE", false),
+		Argon2MemoryKiB:    uint32(getIntEnv("ARGON2_MEMORY_KIB", 19*1024)),
+		Argon2Iterations:   uint32(getIntEnv("ARGON2_ITERATIONS", 2)),
+		Argon2Parallelism:  uint8(getIntEnv("ARGON2_PARALLELISM", 1)),
+		CORSAllowedOrigins: getStringSliceEnv("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173"}),
+		UploadDir:          getEnv("UPLOAD_DIR", "./uploads"),
+		SSEHeartbeat:       getDurationEnv("SSE_HEARTBEAT", 25*time.Second),
+		DBLockTimeout:      getDurationEnv("DB_LOCK_TIMEOUT", 5*time.Second),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -79,8 +75,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("COOKIE_SECURE must be true when APP_ENV=production")
 	}
 
-	if cfg.UploadDir == "" || cfg.UploadMaxBytes < 1 {
-		return nil, fmt.Errorf("UPLOAD_DIR must be set and UPLOAD_MAX_BYTES must be positive")
+	if cfg.UploadDir == "" {
+		return nil, fmt.Errorf("UPLOAD_DIR must be set")
 	}
 	if cfg.SSEHeartbeat < time.Second {
 		return nil, fmt.Errorf("SSE_HEARTBEAT must be at least 1s")
@@ -91,10 +87,6 @@ func Load() (*Config, error) {
 	if err := validateCORSOrigins(cfg.CORSAllowedOrigins); err != nil {
 		return nil, err
 	}
-	if _, err := cfg.BookingRules(); err != nil {
-		return nil, err
-	}
-
 	business, err := loadBusiness(os.Getenv)
 	if err != nil {
 		return nil, fmt.Errorf("invalid business settings: %w", err)
@@ -172,24 +164,6 @@ func getStringSliceEnv(key string, defaultVal []string) []string {
 		}
 	}
 	return defaultVal
-}
-
-// BookingRules holds the booking settings that are still global. Operating hours, durations and how far
-// ahead a booking may be made follow the room type's policy (BR-20) and the room's own hours (BR-29), not
-// the environment; the quota moves to the business settings in Phase 3.
-type BookingRules struct {
-	// MaxActivePerUser caps how many pending or approved upcoming bookings one requester may hold, so
-	// nobody can hold the calendar hostage with requests (a pending one holds its slot, BR-03).
-	MaxActivePerUser int
-}
-
-// BookingRules validates the booking settings. Load calls it so a bad value stops the server at start
-// instead of rejecting every booking later.
-func (c *Config) BookingRules() (BookingRules, error) {
-	if c.BookingMaxActivePerUser < 1 {
-		return BookingRules{}, fmt.Errorf("BOOKING_MAX_ACTIVE_PER_USER must be at least 1")
-	}
-	return BookingRules{MaxActivePerUser: c.BookingMaxActivePerUser}, nil
 }
 
 // validateCORSOrigins refuses a wildcard: the API always answers with credentials allowed, and a

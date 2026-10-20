@@ -4,11 +4,11 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"classlab/api/internal/attachments"
 	"classlab/api/internal/audit"
 	"classlab/api/internal/auth"
 	"classlab/api/internal/availability"
@@ -25,6 +25,7 @@ import (
 	"classlab/api/internal/roomtypes"
 	"classlab/api/internal/schedules"
 	"classlab/api/internal/users"
+	"classlab/api/internal/violations"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -38,15 +39,10 @@ const (
 	maxStreamsPerUser = 5
 )
 
-// NewRouter fails only on an invalid booking configuration; config.Load already rejects that at start.
+// NewRouter wires configuration, services and routes; config.Load has already validated every setting at start.
 // ctx bounds background work owned by the router (the notification listener) and should last as long
 // as the server.
 func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog.Logger, clk clock.Clock) (http.Handler, error) {
-	rules, err := cfg.BookingRules()
-	if err != nil {
-		return nil, fmt.Errorf("booking configuration: %w", err)
-	}
-
 	hasher := password.NewHasher(cfg.Argon2MemoryKiB, cfg.Argon2Iterations, cfg.Argon2Parallelism)
 
 	types := roomtypes.NewStore(pool)
@@ -65,7 +61,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk, types))
 	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk, types))
 	availabilityHandler := availability.NewHandler(availability.NewService(pool, types))
-	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, rules, types))
+	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, types, bookingSettings(cfg)))
 
 	importsHandler := imports.NewHandler(imports.NewService(pool, hasher, clk, imports.Options{
 		Limits:             imports.Limits{MaxBytes: cfg.Business.ImportMaxBytes, MaxRows: cfg.Business.ImportMaxRows},
@@ -74,6 +70,11 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 	}, log))
 
 	roomTypesHandler := roomtypes.NewHandler(roomtypes.NewService(pool, clk))
+	files := attachments.NewService(pool, attachments.NewStorage(cfg.UploadDir), clk, attachments.Limits{
+		MaxLetterBytes: cfg.Business.MaxLetterBytes,
+		MaxPhotoBytes:  cfg.Business.MaxUploadBytes,
+	}, types, log)
+	attachmentsHandler := attachments.NewHandler(files)
 
 	notificationsHandler := notifications.NewHandler(
 		notifications.NewService(pool, clk),
@@ -83,8 +84,8 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 		log,
 	)
 	reportsHandler := reports.NewHandler(
-		reports.NewService(pool, clk, reports.NewStorage(cfg.UploadDir), cfg.UploadMaxBytes, log, types),
-		cfg.UploadMaxBytes,
+		reports.NewService(pool, clk, files, log, types),
+		cfg.Business.MaxUploadBytes,
 	)
 
 	r := chi.NewRouter()
@@ -121,6 +122,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 				roomsHandler.Register(r)
 				r.Get("/{id}/schedule", availabilityHandler.Timeline)
 			})
+			r.Route("/attachments", attachmentsHandler.Register)
 			r.Route("/room-types", roomTypesHandler.Register)
 			r.Route("/schedules", schedulesHandler.Register)
 			r.Route("/bookings", bookingsHandler.Register)
@@ -150,5 +152,17 @@ func health(pool *db.Pool, clk clock.Clock) http.HandlerFunc {
 		httpx.JSON(w, http.StatusOK, map[string]any{
 			"status": "healthy", "database": "ok", "version": "0.1.0", "time": now,
 		})
+	}
+}
+
+// bookingSettings maps the business configuration (BR-11 to BR-28) to what the booking workflow reads.
+func bookingSettings(cfg *config.Config) bookings.Settings {
+	b := cfg.Business
+	return bookings.Settings{
+		PendingTTL: b.PendingTTL, EditCutoff: b.EditCutoff, LateCancel: b.LateCancel,
+		MaxOccurrences: b.MaxOccurrences, AutoApproveMaxPoints: b.AutoApproveMaxPoints,
+		MaxActiveBookings: b.MaxActiveBookings, MaxActiveBookingsOrg: b.MaxActiveBookingsOrg,
+		PointsLateCancel: b.PointsLateCancel,
+		Violations:       violations.Settings{Window: b.ViolationWindow, Threshold: b.BlockThresholdPoints, BlockFor: b.BlockDuration},
 	}
 }

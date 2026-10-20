@@ -897,15 +897,15 @@ type BookingEvent struct {
 }
 
 type DamageReport struct {
-	ID          uuid.UUID    `json:"id"`
-	RoomID      uuid.UUID    `json:"room_id"`
-	ReporterID  uuid.UUID    `json:"reporter_id"`
-	Description string       `json:"description"`
-	PhotoPath   pgtype.Text  `json:"photo_path"`
-	Status      ReportStatus `json:"status"`
-	HandledBy   pgtype.UUID  `json:"handled_by"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ID           uuid.UUID    `json:"id"`
+	RoomID       uuid.UUID    `json:"room_id"`
+	ReporterID   uuid.UUID    `json:"reporter_id"`
+	Description  string       `json:"description"`
+	Status       ReportStatus `json:"status"`
+	HandledBy    pgtype.UUID  `json:"handled_by"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	AttachmentID pgtype.UUID  `json:"attachment_id"`
 }
 
 type Import struct {
