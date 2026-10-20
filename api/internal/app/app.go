@@ -47,6 +47,9 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 
 	types := roomtypes.NewStore(pool)
 
+	// In-app is the only channel for now; Web Push (Phase 8) is added here as one more Medium.
+	notifier := notifications.NewNotifier(notifications.InApp{})
+
 	usersSvc := users.NewService(pool, hasher, clk, users.Options{
 		MinPasswordLength:  cfg.Business.MinPasswordLength,
 		TempPasswordLength: cfg.Business.TempPasswordLength,
@@ -61,9 +64,9 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 	roomsHandler := rooms.NewHandler(rooms.NewService(pool, clk, types))
 	schedulesHandler := schedules.NewHandler(schedules.NewService(pool, clk, types))
 	availabilityHandler := availability.NewHandler(availability.NewService(pool, types))
-	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, types, bookingSettings(cfg)))
+	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, types, notifier, bookingSettings(cfg)))
 
-	importsHandler := imports.NewHandler(imports.NewService(pool, hasher, clk, imports.Options{
+	importsHandler := imports.NewHandler(imports.NewService(pool, hasher, clk, notifier, imports.Options{
 		Limits:             imports.Limits{MaxBytes: cfg.Business.ImportMaxBytes, MaxRows: cfg.Business.ImportMaxRows},
 		TempPasswordLength: cfg.Business.TempPasswordLength,
 		MaxWeeks:           cfg.Business.ImportMaxWeeks,
@@ -84,7 +87,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 		log,
 	)
 	reportsHandler := reports.NewHandler(
-		reports.NewService(pool, clk, files, log, types),
+		reports.NewService(pool, clk, files, log, types, notifier),
 		cfg.Business.MaxUploadBytes,
 	)
 

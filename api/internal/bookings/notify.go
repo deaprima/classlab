@@ -5,20 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db/dbgen"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-)
-
-const (
-	typeCreated    = "BOOKING_CREATED"
-	typeApproved   = "BOOKING_APPROVED"
-	typeRejected   = "BOOKING_REJECTED"
-	typeCancelled  = "BOOKING_CANCELLED"
-	typeEdited     = "BOOKING_EDITED"
-	refTypeBooking = "BOOKING"
 )
 
 // The notify helpers take the transaction's *dbgen.Queries on purpose: a notification must commit or
@@ -27,42 +18,28 @@ const (
 
 // notifyCreated tells every active approver of the room's type that a request awaits a decision. It is
 // only called for requests that need a person; an automatically approved one tells nobody (BR-17).
-func notifyCreated(ctx context.Context, q *dbgen.Queries, b Booking, dates int, now time.Time) error {
-	err := q.CreateNotificationForApprovers(ctx, dbgen.CreateNotificationForApproversParams{
-		RoomType:  dbgen.RoomType(b.Room.Type),
-		Type:      typeCreated,
-		Title:     "Pengajuan booking baru",
-		Body:      fmt.Sprintf("%s mengajukan %s %s.", b.Requester.Name, b.Room.Code, whenText(b, dates)),
-		RefType:   pgtype.Text{String: refTypeBooking, Valid: true},
-		RefID:     pgtype.UUID{Bytes: b.ID, Valid: true},
-		CreatedAt: now,
-	})
-	if err != nil {
-		return fmt.Errorf("notifying approvers: %w", err)
-	}
-	return nil
+func (s *Service) notifyCreated(ctx context.Context, q *dbgen.Queries, b Booking, dates int, now time.Time) error {
+	return s.notifier.ToApprovers(ctx, q, b.Room.Type, notifications.Message{
+		Type:    notifications.TypeBookingCreated,
+		Title:   "Pengajuan booking baru",
+		Body:    fmt.Sprintf("%s mengajukan %s %s.", b.Requester.Name, b.Room.Code, whenText(b, dates)),
+		RefType: notifications.RefBooking, RefID: b.ID,
+	}, uuid.Nil, now)
 }
 
 // notifyEdited tells the approvers that a request they may have been looking at changed and waits again (BR-26).
-func notifyEdited(ctx context.Context, q *dbgen.Queries, b Booking, now time.Time) error {
-	err := q.CreateNotificationForApprovers(ctx, dbgen.CreateNotificationForApproversParams{
-		RoomType:  dbgen.RoomType(b.Room.Type),
-		Type:      typeEdited,
-		Title:     "Pengajuan booking diubah",
-		Body:      fmt.Sprintf("%s mengubah pengajuan %s pada %s dan menunggu persetujuan.", b.Requester.Name, b.Room.Code, slotText(b)),
-		RefType:   pgtype.Text{String: refTypeBooking, Valid: true},
-		RefID:     pgtype.UUID{Bytes: b.ID, Valid: true},
-		CreatedAt: now,
-	})
-	if err != nil {
-		return fmt.Errorf("notifying approvers of an edit: %w", err)
-	}
-	return nil
+func (s *Service) notifyEdited(ctx context.Context, q *dbgen.Queries, b Booking, now time.Time) error {
+	return s.notifier.ToApprovers(ctx, q, b.Room.Type, notifications.Message{
+		Type:    notifications.TypeBookingEdited,
+		Title:   "Pengajuan booking diubah",
+		Body:    fmt.Sprintf("%s mengubah pengajuan %s pada %s dan menunggu persetujuan.", b.Requester.Name, b.Room.Code, slotText(b)),
+		RefType: notifications.RefBooking, RefID: b.ID,
+	}, uuid.Nil, now)
 }
 
 // notifyDecided tells the requester about the outcome. When the requester made the change themselves
 // (cancelling their own request) there is nobody to inform.
-func notifyDecided(ctx context.Context, q *dbgen.Queries, b Booking, dates int, actorID uuid.UUID, reason string, now time.Time) error {
+func (s *Service) notifyDecided(ctx context.Context, q *dbgen.Queries, b Booking, dates int, actorID uuid.UUID, reason string, now time.Time) error {
 	if actorID == b.RequesterID {
 		return nil
 	}
@@ -70,28 +47,21 @@ func notifyDecided(ctx context.Context, q *dbgen.Queries, b Booking, dates int, 
 	var typ, title, body string
 	switch dbgen.BookingStatus(b.Status) {
 	case dbgen.BookingStatusDISETUJUI:
-		typ, title = typeApproved, "Booking disetujui"
+		typ, title = notifications.TypeBookingApproved, "Booking disetujui"
 		body = fmt.Sprintf("Pengajuan %s %s telah disetujui.", b.Room.Code, whenText(b, dates))
 	case dbgen.BookingStatusDITOLAK:
-		typ, title = typeRejected, "Booking ditolak"
+		typ, title = notifications.TypeBookingRejected, "Booking ditolak"
 		body = fmt.Sprintf("Pengajuan %s %s ditolak. Alasan: %s", b.Room.Code, whenText(b, dates), reason)
 	case dbgen.BookingStatusDIBATALKAN:
-		typ, title = typeCancelled, "Booking dibatalkan"
+		typ, title = notifications.TypeBookingCancelled, "Booking dibatalkan"
 		body = fmt.Sprintf("Booking %s %s dibatalkan oleh pengelola. Alasan: %s", b.Room.Code, whenText(b, dates), reason)
 	default:
 		return fmt.Errorf("no notification for status %s", b.Status)
 	}
 
-	err := q.CreateNotification(ctx, dbgen.CreateNotificationParams{
-		UserID: b.RequesterID, Type: typ, Title: title, Body: body,
-		RefType:   pgtype.Text{String: refTypeBooking, Valid: true},
-		RefID:     pgtype.UUID{Bytes: b.ID, Valid: true},
-		CreatedAt: now,
-	})
-	if err != nil {
-		return fmt.Errorf("notifying requester: %w", err)
-	}
-	return nil
+	return s.notifier.ToUser(ctx, q, b.RequesterID, notifications.Message{
+		Type: typ, Title: title, Body: body, RefType: notifications.RefBooking, RefID: b.ID,
+	}, now)
 }
 
 // slotText renders a booking's slot for people, e.g. "20/10/2026 13:00-15:00 WIB".

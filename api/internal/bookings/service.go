@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/overlap"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
@@ -61,11 +62,12 @@ type Service struct {
 	q        *dbgen.Queries
 	clock    clock.Clock
 	types    *roomtypes.Store
+	notifier *notifications.Notifier
 	settings Settings
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store, settings Settings) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types, settings: settings}
+func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store, notifier *notifications.Notifier, settings Settings) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types, notifier: notifier, settings: settings}
 }
 
 // isRequester reports whether the role submits bookings: students and organisations.

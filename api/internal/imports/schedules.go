@@ -16,6 +16,7 @@ import (
 
 	"classlab/api/internal/audit"
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db/dbgen"
 
@@ -27,9 +28,6 @@ import (
 
 const (
 	pgExclusionViolation = "23P01"
-
-	typeBookingCancelled = "BOOKING_CANCELLED"
-	refTypeBooking       = "BOOKING"
 
 	// maxConflictNotes keeps one line's error list readable: the first few collisions, then a count.
 	maxConflictNotes = 3
@@ -213,7 +211,7 @@ func (s *Service) ApplySchedules(ctx context.Context, actor httpx.Principal, fil
 		// The displaced bookings go first: their slots are held by the booking exclusion constraint, not
 		// the schedule one, but cancelling first keeps the order of events readable in the history.
 		for _, c := range fresh.Cancels {
-			if err := cancelForImport(ctx, q, actor, c, now); err != nil {
+			if err := s.cancelForImport(ctx, q, actor, c, now); err != nil {
 				return err
 			}
 		}
@@ -260,7 +258,7 @@ func (s *Service) ApplySchedules(ctx context.Context, actor httpx.Principal, fil
 
 // cancelForImport cancels one booking, records who and why in its history and tells its owner; it runs
 // inside the import's transaction, so none of the three can exist without the others.
-func cancelForImport(ctx context.Context, q *dbgen.Queries, actor httpx.Principal, c cancelItem, now time.Time) error {
+func (s *Service) cancelForImport(ctx context.Context, q *dbgen.Queries, actor httpx.Principal, c cancelItem, now time.Time) error {
 	reason := "Jadwal akademik: " + c.ConflictsWith
 	n, err := q.CancelBookingForImport(ctx, dbgen.CancelBookingForImportParams{
 		DecidedBy: pgtype.UUID{Bytes: actor.UserID, Valid: true}, Now: pgtype.Timestamptz{Time: now, Valid: true},
@@ -280,14 +278,12 @@ func cancelForImport(ctx context.Context, q *dbgen.Queries, actor httpx.Principa
 		return fmt.Errorf("recording cancellation of booking %s: %w", c.BookingID, err)
 	}
 	// No violation points: the requester did nothing wrong (BR-23).
-	return q.CreateNotification(ctx, dbgen.CreateNotificationParams{
-		UserID: c.requesterID, Type: typeBookingCancelled, Title: "Booking dibatalkan",
+	return s.notifier.ToUser(ctx, q, c.requesterID, notifications.Message{
+		Type: notifications.TypeBookingCancelled, Title: "Booking dibatalkan",
 		Body: fmt.Sprintf("Booking %s pada %s-%s WIB dibatalkan karena jadwal akademik: %s.",
 			c.roomCode, clock.ToWIB(c.Start).Format("02/01/2006 15:04"), clock.ToWIB(c.End).Format("15:04"), c.ConflictsWith),
-		RefType:   pgtype.Text{String: refTypeBooking, Valid: true},
-		RefID:     pgtype.UUID{Bytes: c.BookingID, Valid: true},
-		CreatedAt: now,
-	})
+		RefType: notifications.RefBooking, RefID: c.BookingID,
+	}, now)
 }
 
 // RollbackResult is returned by a rollback.

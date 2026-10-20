@@ -174,7 +174,7 @@ func (s *Service) Edit(ctx context.Context, actor httpx.Principal, id uuid.UUID,
 		result = fromRow(view)
 		// Approvers hear about a request that waits again, not about a change they need not act on.
 		if material && row.Status == dbgen.BookingStatusMENUNGGU {
-			return notifyEdited(ctx, q, result, now)
+			return s.notifyEdited(ctx, q, result, now)
 		}
 		return nil
 	})

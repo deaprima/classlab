@@ -2268,10 +2268,33 @@ components:
       required: [id, type, title, body, created_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string }
+        type:
+          type: string
+          description: |
+            Jenis notifikasi. Penerima: `BOOKING_CREATED` dan `BOOKING_EDITED` ke approver tipe ruang;
+            `BOOKING_APPROVED/REJECTED/CANCELLED/NO_SHOW/AUTO_CLOSED/BLOCKED/EXPIRED` dan `REMINDER_*` ke peminjam;
+            `REPORT_CREATED` ke approver tipe ruang; `REPORT_STATUS_CHANGED` ke pelapor.
+          enum:
+            - BOOKING_CREATED
+            - BOOKING_APPROVED
+            - BOOKING_REJECTED
+            - BOOKING_CANCELLED
+            - BOOKING_EDITED
+            - BOOKING_NO_SHOW
+            - BOOKING_AUTO_CLOSED
+            - BOOKING_BLOCKED
+            - BOOKING_EXPIRED
+            - REMINDER_CHECKIN
+            - REMINDER_CHECKIN_LAST
+            - REMINDER_CHECKOUT
+            - REPORT_CREATED
+            - REPORT_STATUS_CHANGED
         title: { type: string }
         body: { type: string }
-        ref_type: { type: string }
+        ref_type:
+          type: string
+          enum: [BOOKING, REPORT]
+          description: Jenis objek yang dirujuk `ref_id`
         ref_id: { type: string, format: uuid }
         read_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }

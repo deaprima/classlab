@@ -221,7 +221,7 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			if err != nil {
 				return fmt.Errorf("reading created booking: %w", err)
 			}
-			return notifyCreated(ctx, q, fromRow(first), len(rows), now)
+			return s.notifyCreated(ctx, q, fromRow(first), len(rows), now)
 		}
 		return nil
 	})

@@ -11,6 +11,7 @@ import (
 
 	"classlab/api/internal/attachments"
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
@@ -38,10 +39,12 @@ type Service struct {
 	files *attachments.Service
 	log   *slog.Logger
 	types *roomtypes.Store
+
+	notifier *notifications.Notifier
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, files *attachments.Service, log *slog.Logger, types *roomtypes.Store) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, files: files, log: log, types: types}
+func NewService(pool *db.Pool, clk clock.Clock, files *attachments.Service, log *slog.Logger, types *roomtypes.Store, notifier *notifications.Notifier) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, files: files, log: log, types: types, notifier: notifier}
 }
 
 type CreateInput struct {
@@ -147,7 +150,7 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			return fmt.Errorf("reading created report: %w", err)
 		}
 		created = fromRow(view)
-		if err := notifyCreated(ctx, q, created, now); err != nil {
+		if err := s.notifyCreated(ctx, q, created, now); err != nil {
 			return err
 		}
 
@@ -305,7 +308,7 @@ func (s *Service) UpdateStatus(ctx context.Context, actor httpx.Principal, id uu
 			return fmt.Errorf("reading updated report: %w", err)
 		}
 		updated = fromRow(view)
-		return notifyStatusChanged(ctx, q, updated, actor, note, now)
+		return s.notifyStatusChanged(ctx, q, updated, actor, note, now)
 	})
 	if err != nil {
 		return Report{}, mapError(err)
