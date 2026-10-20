@@ -3,6 +3,7 @@
 SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS reporter_identifier, u.name AS reporter_name
 FROM damage_reports d
 JOIN rooms r ON r.id = d.room_id
@@ -13,6 +14,7 @@ WHERE d.id = $1;
 SELECT d.id, d.room_id, d.reporter_id, d.description, d.photo_path, d.status, d.handled_by, d.created_at,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS reporter_identifier, u.name AS reporter_name
 FROM damage_reports d
 JOIN rooms r ON r.id = d.room_id
