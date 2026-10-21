@@ -1,13 +1,7 @@
-import { MoreHorizontal } from 'lucide-react'
+import { Ban, Eye, Pencil } from 'lucide-react'
 import { type Booking, type BookingEvent } from '@/lib/api-types'
 import { formatTimeRange } from '@/lib/datetime'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Step } from '@/components/step'
 import { ROOM_TYPE_LABELS } from '@/features/rooms/labels'
 import { dayShort } from './format'
@@ -73,55 +67,60 @@ export function BookingFacts({ booking }: { booking: Booking }) {
   )
 }
 
-/** The "…" menu of a list row: detail, and edit or cancel while they are still allowed. */
-export function RowMenu({
+/** Icon buttons of a list row: detail (where it is not beside the list), edit and cancel while allowed. */
+export function RowActions({
   booking,
   now,
-  withChanges,
   onDetail,
   onEdit,
   onCancel,
 }: {
   booking: Booking
   now: Date
-  /** Pengajuan Saya offers edit and cancel; the history only offers the detail. */
-  withChanges: boolean
   /** Left out where the detail is already beside the list. */
   onDetail?: (booking: Booking) => void
   onEdit?: (booking: Booking) => void
   onCancel?: (booking: Booking) => void
 }) {
-  const edit = withChanges && canEdit(booking, now)
-  const cancel = withChanges && canCancel(booking, now)
+  const edit = canEdit(booking, now)
+  const cancel = canCancel(booking, now)
   if (!onDetail && !edit && !cancel) return null
+  const where = `${booking.room.code}, ${dayShort(booking.start_at)}`
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
+    <div className='flex items-center justify-start gap-1'>
+      {onDetail && (
         <Button
           variant='ghost'
           size='icon'
-          aria-label={`Aksi ${booking.room.code}, ${dayShort(booking.start_at)}`}
+          title='Lihat detail'
+          aria-label={`Lihat detail ${where}`}
+          onClick={() => onDetail(booking)}
         >
-          <MoreHorizontal />
+          <Eye />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align='end'>
-        {onDetail && (
-          <DropdownMenuItem onSelect={() => onDetail(booking)}>
-            Lihat detail
-          </DropdownMenuItem>
-        )}
-        {edit && (
-          <DropdownMenuItem onSelect={() => onEdit?.(booking)}>
-            Ubah
-          </DropdownMenuItem>
-        )}
-        {cancel && (
-          <DropdownMenuItem onSelect={() => onCancel?.(booking)}>
-            Batalkan
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      )}
+      {edit && (
+        <Button
+          variant='ghost'
+          size='icon'
+          title='Ubah'
+          aria-label={`Ubah ${where}`}
+          onClick={() => onEdit?.(booking)}
+        >
+          <Pencil />
+        </Button>
+      )}
+      {cancel && (
+        <Button
+          variant='ghost'
+          size='icon'
+          title='Batalkan'
+          aria-label={`Batalkan ${where}`}
+          onClick={() => onCancel?.(booking)}
+        >
+          <Ban />
+        </Button>
+      )}
+    </div>
   )
 }

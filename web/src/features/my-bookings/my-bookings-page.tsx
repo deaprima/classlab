@@ -14,6 +14,7 @@ import {
   ResponsiveDataList,
   type DataColumn,
 } from '@/components/responsive-data-list'
+import { SearchInput } from '@/components/search-input'
 import { SegmentedControl } from '@/components/segmented-control'
 import { BookingStatusBadge } from '@/components/status-badge'
 import {
@@ -25,10 +26,13 @@ import { CancelDialog } from './cancel-dialog'
 import { BookingDetailDialog } from './detail-dialog'
 import { EditDialog } from './edit-dialog'
 import { whenShort } from './format'
-import { BookingFacts, RowMenu, StatusTimeline } from './parts'
-import { canCancel, canEdit } from './rules'
+import { ListFooter, RoomTypeFilter } from './list-controls'
+import { BookingFacts, RowActions, StatusTimeline } from './parts'
+import { canCancel, canEdit, matchesQuery } from './rules'
 
 const route = getRouteApi('/_authenticated/bookings/')
+
+const PER_PAGE = 10
 
 /** What belongs on "Pengajuan Saya": requests that are waiting, approved, running or refused. */
 const LISTED: readonly BookingStatus[] = [
@@ -70,8 +74,25 @@ export function MyBookings() {
   const all = (bookings.data?.data ?? [])
     .filter((b) => LISTED.includes(b.status))
     .sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at))
-  const shown = all.filter((b) => inTab(b, tab))
-  const count = (t: Tab) => all.filter((b) => inTab(b, t)).length
+  // Search and room type narrow the whole list; the tab and the page narrow what is left.
+  const narrowed = all.filter(
+    (b) =>
+      (!search.type || b.room.type === search.type) && matchesQuery(b, search.q)
+  )
+  const inTabs = narrowed.filter((b) => inTab(b, tab))
+  const count = (t: Tab) => narrowed.filter((b) => inTab(b, t)).length
+  const pages = Math.max(1, Math.ceil(inTabs.length / PER_PAGE))
+  const page = Math.min(search.page ?? 1, pages)
+  const shown = inTabs.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+  const refine = (patch: Record<string, unknown>) =>
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        page: undefined,
+        booking: undefined,
+        ...patch,
+      }),
+    })
   const selectedId = search.booking ?? shown[0]?.id
 
   const select = (booking: Booking) => {
@@ -115,12 +136,12 @@ export function MyBookings() {
       key: 'actions',
       header: 'Aksi',
       actions: true,
-      className: 'w-12 text-end',
+      showHeader: true,
+      className: 'w-32',
       cell: (b) => (
-        <RowMenu
+        <RowActions
           booking={b}
           now={now}
-          withChanges
           onDetail={wide ? undefined : (b) => setDetailId(b.id)}
           onEdit={setEditing}
           onCancel={setCancelling}
@@ -161,45 +182,76 @@ export function MyBookings() {
             className='flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'
           >
             <h2 className='type-section text-fg'>Daftar Pengajuan</h2>
-            <SegmentedControl
-              aria-label='Filter status'
-              value={tab}
-              onValueChange={(t) =>
-                navigate({
-                  search: (prev) => ({
-                    ...prev,
-                    status: t === 'ALL' ? undefined : t,
-                  }),
-                })
-              }
-              options={[
-                { value: 'ALL', label: 'Semua', count: count('ALL') },
-                {
-                  value: 'MENUNGGU',
-                  label: 'Menunggu',
-                  count: count('MENUNGGU'),
-                },
-                {
-                  value: 'DISETUJUI',
-                  label: 'Disetujui',
-                  count: count('DISETUJUI'),
-                },
-                { value: 'DITOLAK', label: 'Ditolak', count: count('DITOLAK') },
-              ]}
-            />
-            {shown.length === 0 ? (
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <SegmentedControl
+                aria-label='Filter status'
+                value={tab}
+                onValueChange={(t) =>
+                  refine({ status: t === 'ALL' ? undefined : t })
+                }
+                options={[
+                  { value: 'ALL', label: 'Semua', count: count('ALL') },
+                  {
+                    value: 'MENUNGGU',
+                    label: 'Menunggu',
+                    count: count('MENUNGGU'),
+                  },
+                  {
+                    value: 'DISETUJUI',
+                    label: 'Disetujui',
+                    count: count('DISETUJUI'),
+                  },
+                  {
+                    value: 'DITOLAK',
+                    label: 'Ditolak',
+                    count: count('DITOLAK'),
+                  },
+                ]}
+              />
+              <div className='flex flex-wrap items-center gap-2'>
+                <div className='min-w-48 flex-1 sm:max-w-72'>
+                  <SearchInput
+                    label='Cari pengajuan'
+                    placeholder='Cari ruang atau kegiatan'
+                    value={search.q}
+                    onCommit={(q) => refine({ q })}
+                  />
+                </div>
+                <RoomTypeFilter
+                  value={search.type}
+                  onChange={(type) => refine({ type })}
+                />
+              </div>
+            </div>
+            {inTabs.length === 0 ? (
               <p className='type-body text-fg-secondary'>
-                Tidak ada pengajuan dengan status ini.
+                Tidak ada pengajuan yang cocok dengan filter ini.
               </p>
             ) : (
-              <ResponsiveDataList
-                caption='Daftar pengajuan'
-                rows={shown}
-                columns={columns}
-                rowKey={(b) => b.id}
-                onRowClick={select}
-                isRowActive={wide ? (b) => b.id === selectedId : undefined}
-              />
+              <>
+                <ResponsiveDataList
+                  caption='Daftar pengajuan'
+                  rows={shown}
+                  columns={columns}
+                  rowKey={(b) => b.id}
+                  onRowClick={select}
+                  isRowActive={wide ? (b) => b.id === selectedId : undefined}
+                />
+                <ListFooter
+                  page={page}
+                  perPage={PER_PAGE}
+                  total={inTabs.length}
+                  onPageChange={(p) =>
+                    navigate({
+                      search: (prev) => ({
+                        ...prev,
+                        page: p,
+                        booking: undefined,
+                      }),
+                    })
+                  }
+                />
+              </>
             )}
           </section>
 
@@ -233,16 +285,19 @@ export function MyBookings() {
   )
 }
 
-function SidePanel({
+export function SidePanel({
   id,
   now,
+  title = 'Detail Pengajuan',
   onEdit,
   onCancel,
 }: {
   id: string
   now: Date
-  onEdit: (b: Booking) => void
-  onCancel: (b: Booking) => void
+  title?: string
+  /** Left out where the panel is read-only (Riwayat). */
+  onEdit?: (b: Booking) => void
+  onCancel?: (b: Booking) => void
 }) {
   const booking = useBooking(id)
   const events = useBookingEvents(id)
@@ -250,10 +305,10 @@ function SidePanel({
 
   return (
     <aside
-      aria-label='Detail pengajuan'
+      aria-label={title}
       className='flex h-fit min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'
     >
-      <h2 className='type-section text-fg'>Detail Pengajuan</h2>
+      <h2 className='type-section text-fg'>{title}</h2>
       {booking.isError && (
         <p className='type-body text-fg-error'>
           {getErrorMessage(booking.error)}
@@ -274,14 +329,14 @@ function SidePanel({
             <p className='mb-3 type-overline text-fg-secondary'>Status</p>
             <StatusTimeline booking={b} events={events.data ?? []} stackMeta />
           </div>
-          {(canEdit(b, now) || canCancel(b, now)) && (
+          {((onEdit && canEdit(b, now)) || (onCancel && canCancel(b, now))) && (
             <div className='flex flex-col gap-2 border-t pt-4'>
-              {canEdit(b, now) && (
+              {onEdit && canEdit(b, now) && (
                 <Button variant='secondary' onClick={() => onEdit(b)}>
                   Ubah Pengajuan
                 </Button>
               )}
-              {canCancel(b, now) && (
+              {onCancel && canCancel(b, now) && (
                 <Button variant='secondary' onClick={() => onCancel(b)}>
                   Batalkan Pengajuan
                 </Button>

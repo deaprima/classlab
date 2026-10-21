@@ -183,8 +183,8 @@ describe('Dashboard', () => {
     const screen = await renderDashboard()
     await expect.element(screen.getByText('Sedang berlangsung')).toBeVisible()
     await expect
-      .element(screen.getByRole('button', { name: 'Check-out' }))
-      .toBeEnabled()
+      .element(screen.getByRole('link', { name: 'Check-out' }))
+      .toHaveAttribute('href', '/check-out/$id')
     await expect
       .element(screen.getByRole('button', { name: 'Check-in' }))
       .toBeDisabled()

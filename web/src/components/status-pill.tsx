@@ -13,14 +13,21 @@ export type PillStatus =
   | 'Diproses'
   | 'Selesai'
 
-// No green or blue: state is carried by ink, outline and the orange accent; red marks what was refused or missed.
+// Approved is green, refused or missed red, waiting yellow (the user's call, overriding the
+// no-green rule of DESIGN.md section 9 for these three); the rest stays ink, outline and orange.
 const PILL_STYLE: Record<PillStatus, { pill: string; dot: string }> = {
   Tersedia: { pill: 'border border-line bg-surface text-fg', dot: 'bg-fg' },
   Digunakan: { pill: 'bg-inverse text-fg-inverse', dot: 'bg-fg-inverse' },
-  Disetujui: { pill: 'bg-inverse text-fg-inverse', dot: 'bg-fg-inverse' },
+  Disetujui: {
+    pill: 'bg-success-subtle text-fg-success',
+    dot: 'bg-fg-success',
+  },
   Selesai: { pill: 'bg-inverse text-fg-inverse', dot: 'bg-fg-inverse' },
   Diajukan: { pill: 'bg-accent-subtle text-fg-accent', dot: 'bg-indicator' },
-  Menunggu: { pill: 'bg-accent-subtle text-fg-accent', dot: 'bg-indicator' },
+  Menunggu: {
+    pill: 'bg-warning-subtle text-fg-warning',
+    dot: 'bg-fg-warning',
+  },
   Diproses: { pill: 'bg-accent-subtle text-fg-accent', dot: 'bg-indicator' },
   Terbatas: { pill: 'bg-muted text-fg-secondary', dot: 'bg-fg-secondary' },
   Ditolak: { pill: 'bg-error-subtle text-fg-error', dot: 'bg-fg-error' },

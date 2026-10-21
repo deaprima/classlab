@@ -17,6 +17,8 @@ export type DataColumn<T> = {
   primary?: boolean
   /** Not shown as a labelled line on mobile (e.g. an actions column rendered at the card's end). */
   actions?: boolean
+  /** Keeps the header of an `actions` column visible instead of screen-reader only. */
+  showHeader?: boolean
   className?: string
 }
 
@@ -84,7 +86,7 @@ export function ResponsiveDataList<T>({
                     col.className
                   )}
                 >
-                  {col.actions ? (
+                  {col.actions && !col.showHeader ? (
                     <span className='sr-only'>{col.header}</span>
                   ) : (
                     col.header

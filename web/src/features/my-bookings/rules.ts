@@ -132,3 +132,17 @@ export function statusNote(
       }
   }
 }
+
+/** Free-text filter of the "Pengajuan Saya" list: room code, room name or activity. */
+export function matchesQuery(
+  booking: Pick<Booking, 'purpose'> & {
+    room: Pick<Booking['room'], 'code' | 'name'>
+  },
+  query: string | undefined
+): boolean {
+  const q = query?.trim().toLowerCase()
+  if (!q) return true
+  return [booking.room.code, booking.room.name, booking.purpose].some((v) =>
+    v.toLowerCase().includes(q)
+  )
+}

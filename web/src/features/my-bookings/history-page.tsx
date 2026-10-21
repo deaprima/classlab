@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
-import { AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { getErrorMessage } from '@/lib/api-error'
 import { type Booking, type BookingListQuery } from '@/lib/api-types'
 import { formatDuration, toApiDateTime, todayWib } from '@/lib/datetime'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useNow } from '@/hooks/use-now'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -27,7 +27,8 @@ import { BookingStatusBadge } from '@/components/status-badge'
 import { useBookings } from '@/features/bookings/api'
 import { BookingDetailDialog } from './detail-dialog'
 import { whenShort } from './format'
-import { RowMenu } from './parts'
+import { ListFooter, RoomTypeFilter } from './list-controls'
+import { SidePanel } from './my-bookings-page'
 
 const route = getRouteApi('/_authenticated/history')
 
@@ -71,6 +72,7 @@ export function History() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const now = useNow()
+  const wide = useMediaQuery('(min-width: 1024px)')
   const [detailId, setDetailId] = useState<string | null>(null)
   const today = todayWib(now)
   const months = recentMonths(today)
@@ -82,7 +84,7 @@ export function History() {
   const range: Pick<BookingListQuery, 'from' | 'to'> = month
     ? monthRange(month)
     : {}
-  const base = { mine: true, ...range }
+  const base = { mine: true, type: search.type, ...range }
   const list = useBookings({
     ...base,
     status: tab === 'ALL' ? undefined : tab,
@@ -105,9 +107,13 @@ export function History() {
 
   const rows = list.data?.data ?? []
   const meta = list.data?.meta
-  const from = rows.length > 0 ? (page - 1) * PER_PAGE + 1 : 0
-  const to = (page - 1) * PER_PAGE + rows.length
-  const pages = Math.max(1, Math.ceil((meta?.total ?? 0) / PER_PAGE))
+
+  const selectedId = search.booking ?? rows[0]?.id
+  // Beside the list there is a detail panel; on a narrow screen the row opens the popup.
+  const select = (booking: Booking) => {
+    if (wide) go({ booking: booking.id })
+    else setDetailId(booking.id)
+  }
 
   const go = (patch: Partial<typeof search>) =>
     navigate({ search: (prev) => ({ ...prev, ...patch }) })
@@ -140,20 +146,6 @@ export function History() {
       header: 'Status',
       cell: (b) => <BookingStatusBadge status={b.status} />,
     },
-    {
-      key: 'actions',
-      header: 'Aksi',
-      actions: true,
-      className: 'w-12 text-end',
-      cell: (b) => (
-        <RowMenu
-          booking={b}
-          now={now}
-          withChanges={false}
-          onDetail={(row) => setDetailId(row.id)}
-        />
-      ),
-    },
   ]
 
   return (
@@ -176,101 +168,108 @@ export function History() {
         <StatCard title='Ditolak' value={refusedCount ?? '–'} />
       </div>
 
-      <section
-        aria-label='Riwayat booking'
-        className='mt-5 flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'
-      >
-        <div className='flex flex-wrap items-center justify-between gap-3'>
+      <div className='mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]'>
+        <section
+          aria-label='Riwayat booking'
+          className='flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'
+        >
           <h2 className='type-section text-fg'>Riwayat Booking</h2>
-          <Select
-            value={month ?? ALL_TIME}
-            onValueChange={(v) =>
-              go({ month: v === ALL_TIME ? undefined : v, page: undefined })
-            }
-          >
-            <SelectTrigger aria-label='Bulan' className='w-40'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_TIME}>Semua waktu</SelectItem>
-              {months.map((m) => (
-                <SelectItem key={m} value={m}>
-                  {monthLabel(m)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
 
-        <SegmentedControl
-          aria-label='Filter status'
-          value={tab}
-          onValueChange={(t) =>
-            go({ status: t === 'ALL' ? undefined : t, page: undefined })
-          }
-          options={[
-            { value: 'ALL', label: 'Semua', count: totalCount },
-            {
-              value: 'SELESAI',
-              label: 'Selesai',
-              count: finished.data ? finishedTotal : undefined,
-            },
-            { value: 'DITOLAK', label: 'Ditolak', count: refusedCount },
-          ]}
-        />
-
-        {list.isError && (
-          <Alert variant='error'>
-            <AlertCircle />
-            <AlertDescription>{getErrorMessage(list.error)}</AlertDescription>
-          </Alert>
-        )}
-
-        {list.isPending ? (
-          <Skeleton className='h-64' />
-        ) : rows.length === 0 ? (
-          <EmptyState
-            title='Belum ada riwayat'
-            description='Booking yang sudah selesai, ditolak, atau dibatalkan tampil di sini.'
-          />
-        ) : (
-          <>
-            <ResponsiveDataList
-              caption='Riwayat booking'
-              rows={rows}
-              columns={columns}
-              rowKey={(b) => b.id}
-              onRowClick={(b) => setDetailId(b.id)}
+          <div className='flex flex-wrap items-center justify-between gap-3'>
+            <SegmentedControl
+              aria-label='Filter status'
+              value={tab}
+              onValueChange={(t) =>
+                go({
+                  status: t === 'ALL' ? undefined : t,
+                  page: undefined,
+                  booking: undefined,
+                })
+              }
+              options={[
+                { value: 'ALL', label: 'Semua', count: totalCount },
+                {
+                  value: 'SELESAI',
+                  label: 'Selesai',
+                  count: finished.data ? finishedTotal : undefined,
+                },
+                { value: 'DITOLAK', label: 'Ditolak', count: refusedCount },
+              ]}
             />
-            <nav
-              aria-label='Halaman'
-              className='flex items-center justify-end gap-3'
-            >
-              <p className='type-body-sm text-fg-secondary'>
-                {from}–{to} dari {meta?.total ?? 0}
-              </p>
-              <Button
-                variant='secondary'
-                size='icon'
-                aria-label='Halaman sebelumnya'
-                disabled={page <= 1}
-                onClick={() => go({ page: page - 1 })}
+            <div className='flex flex-wrap items-center gap-2'>
+              <RoomTypeFilter
+                value={search.type}
+                onChange={(type) =>
+                  go({ type, page: undefined, booking: undefined })
+                }
+              />
+              <Select
+                value={month ?? ALL_TIME}
+                onValueChange={(v) =>
+                  go({
+                    month: v === ALL_TIME ? undefined : v,
+                    page: undefined,
+                    booking: undefined,
+                  })
+                }
               >
-                <ChevronLeft />
-              </Button>
-              <Button
-                variant='secondary'
-                size='icon'
-                aria-label='Halaman berikutnya'
-                disabled={page >= pages}
-                onClick={() => go({ page: page + 1 })}
-              >
-                <ChevronRight />
-              </Button>
-            </nav>
-          </>
+                <SelectTrigger aria-label='Bulan' className='w-40'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_TIME}>Semua waktu</SelectItem>
+                  {months.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {monthLabel(m)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {list.isError && (
+            <Alert variant='error'>
+              <AlertCircle />
+              <AlertDescription>{getErrorMessage(list.error)}</AlertDescription>
+            </Alert>
+          )}
+
+          {list.isPending ? (
+            <Skeleton className='h-64' />
+          ) : rows.length === 0 ? (
+            <EmptyState
+              title='Belum ada riwayat'
+              description='Booking yang sudah selesai, ditolak, atau dibatalkan tampil di sini.'
+            />
+          ) : (
+            <>
+              <ResponsiveDataList
+                caption='Riwayat booking'
+                rows={rows}
+                columns={columns}
+                rowKey={(b) => b.id}
+                onRowClick={select}
+                isRowActive={wide ? (b) => b.id === selectedId : undefined}
+              />
+              <ListFooter
+                page={page}
+                perPage={PER_PAGE}
+                total={meta?.total ?? 0}
+                onPageChange={(p) => go({ page: p, booking: undefined })}
+              />
+            </>
+          )}
+        </section>
+        {wide && selectedId && (
+          <SidePanel
+            key={selectedId}
+            id={selectedId}
+            now={now}
+            title='Detail Riwayat Pengajuan'
+          />
         )}
-      </section>
+      </div>
       <BookingDetailDialog
         id={detailId}
         onOpenChange={(o) => !o && setDetailId(null)}

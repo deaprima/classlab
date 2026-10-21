@@ -4,6 +4,7 @@ import {
   canCancel,
   canEdit,
   isLateCancel,
+  matchesQuery,
   mayNeedReapproval,
   statusNote,
 } from './rules'
@@ -135,5 +136,24 @@ describe('statusNote', () => {
         statusNote(booking({ status }), at('10:00'), 'TU').title
       ).toBeTruthy()
     }
+  })
+})
+
+describe('matchesQuery', () => {
+  const b = {
+    purpose: 'Praktikum Basis Data',
+    room: { code: 'LAB-RPL-02', name: 'Lab RPL' },
+  }
+
+  it('matches everything without a query', () => {
+    expect(matchesQuery(b, undefined)).toBe(true)
+    expect(matchesQuery(b, '  ')).toBe(true)
+  })
+
+  it('looks in the room code, room name and activity, ignoring case', () => {
+    expect(matchesQuery(b, 'rpl-02')).toBe(true)
+    expect(matchesQuery(b, 'lab rpl')).toBe(true)
+    expect(matchesQuery(b, 'BASIS')).toBe(true)
+    expect(matchesQuery(b, 'kimia')).toBe(false)
   })
 })
