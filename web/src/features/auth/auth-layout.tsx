@@ -3,7 +3,7 @@ import logoMark from '@/assets/logo-mark.svg'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 /** Figma `Logo / Full`: the orange-dot mark and the product name. */
-export function BrandLogo() {
+function BrandLogo() {
   return (
     <div className='flex items-center gap-2'>
       <img src={logoMark} alt='' className='size-8' />

@@ -30,7 +30,7 @@ export function useCheckIn() {
   })
 }
 
-export type CheckOutInput = {
+type CheckOutInput = {
   bookingId: string
   condition: CheckoutCondition
   note?: string
