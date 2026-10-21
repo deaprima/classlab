@@ -40,7 +40,11 @@ export function NotificationBell() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align='end' className='w-[22rem] p-0'>
+      <PopoverContent
+        align='end'
+        collisionPadding={16}
+        className='w-[min(22rem,calc(100vw-2rem))] p-0'
+      >
         {open && <BellContent count={count} close={() => setOpen(false)} />}
       </PopoverContent>
     </Popover>

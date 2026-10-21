@@ -17,6 +17,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
 import { Page } from '@/components/layout/page'
+import { ListFooter } from '@/components/list-footer'
 import {
   ResponsiveDataList,
   type DataColumn,
@@ -27,7 +28,7 @@ import { BookingStatusBadge } from '@/components/status-badge'
 import { useBookings } from '@/features/bookings/api'
 import { BookingDetailDialog } from './detail-dialog'
 import { whenShort } from './format'
-import { ListFooter, RoomTypeFilter } from './list-controls'
+import { RoomTypeFilter } from './list-controls'
 import { SidePanel } from './my-bookings-page'
 
 const route = getRouteApi('/_authenticated/history')
