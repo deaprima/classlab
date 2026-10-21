@@ -12,6 +12,7 @@ import { History } from './history-page'
 const mocks = vi.hoisted(() => ({
   search: {} as Record<string, unknown>,
   navigate: vi.fn(),
+  wide: false,
 }))
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -36,6 +37,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ),
   }
 })
+
+vi.mock('@/hooks/use-media-query', () => ({ useMediaQuery: () => mocks.wide }))
 
 // A table on every width, so rows can be counted.
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
@@ -76,9 +79,10 @@ type Seen = {
   to?: string
   page?: string
   per_page?: string
+  type?: string
 }
 
-function serve() {
+function serve(all: Booking[] = ALL) {
   const seen: Seen[] = []
   api.defaults.adapter = mockAdapter((config) => {
     if (config.url === '/room-types') {
@@ -87,7 +91,7 @@ function serve() {
     if (config.url === '/bookings') {
       const q = (config.params ?? {}) as Seen
       seen.push(q)
-      let list = ALL
+      let list = all
       if (q.status) list = list.filter((b) => b.status === q.status)
       const per = Number(q.per_page ?? 20)
       const page = Number(q.page ?? 1)
@@ -117,6 +121,7 @@ describe('History (Riwayat)', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-21T10:00:00+07:00'))
     vi.clearAllMocks()
+    mocks.wide = false
     mocks.search = {}
     useAuthStore.getState().auth.setSession('token', { ...sampleUser })
   })
@@ -159,21 +164,27 @@ describe('History (Riwayat)', () => {
       .toHaveTextContent('5')
   })
 
-  it('lists the bookings with their status and a way to open each one', async () => {
+  it('lists the bookings with their status', async () => {
     serve()
     const screen = await renderPage()
     await expect.element(screen.getByText('Selesai 1')).toBeVisible()
     await expect.element(screen.getByText('Ditolak 2')).toBeVisible()
-    await userEvent.click(
-      screen.getByRole('button', { name: /^Aksi LAB-RPL-02/ }).first()
-    )
     await expect
-      .element(screen.getByRole('menuitem', { name: 'Lihat detail' }))
-      .toBeVisible()
-    // The history only offers the detail, not edit or cancel.
-    await expect
-      .element(screen.getByRole('menuitem', { name: 'Ubah' }))
+      .element(screen.getByRole('columnheader', { name: 'Detail' }))
       .not.toBeInTheDocument()
+  })
+
+  it('shows the detail beside the list on a wide screen', async () => {
+    mocks.wide = true
+    serve()
+    const screen = await renderPage()
+    await expect
+      .element(
+        screen.getByRole('complementary', { name: 'Detail Riwayat Pengajuan' })
+      )
+      .toBeVisible()
+    await userEvent.click(screen.getByText('Ditolak 1'))
+    expect(mocks.navigate).toHaveBeenCalled()
   })
 
   it('opens the detail in a popup when a row is clicked', async () => {
@@ -183,6 +194,17 @@ describe('History (Riwayat)', () => {
     await expect
       .element(screen.getByRole('dialog', { name: 'Detail Pengajuan' }))
       .toBeVisible()
+  })
+
+  it('sends the room type filter to the API', async () => {
+    mocks.search = { type: 'LAB' }
+    const seen = serve()
+    await renderPage()
+    await vi.waitFor(() =>
+      expect(
+        seen.some((q) => q.type === 'LAB' && Number(q.per_page) === 10)
+      ).toBe(true)
+    )
   })
 
   it('asks the API for the tab of the URL', async () => {
@@ -240,12 +262,27 @@ describe('History (Riwayat)', () => {
     expect(search({})).toMatchObject({ month: '2026-09' })
   })
 
-  it('shows the range and pages through the list', async () => {
+  it('hides the pager while everything fits on one page', async () => {
     serve()
     const screen = await renderPage()
-    await expect.element(screen.getByText('1–5 dari 5')).toBeVisible()
+    await expect.element(screen.getByText('Selesai 1')).toBeVisible()
     await expect
-      .element(screen.getByRole('button', { name: 'Halaman berikutnya' }))
-      .toBeDisabled()
+      .element(screen.getByRole('navigation', { name: 'Halaman' }))
+      .not.toBeInTheDocument()
+  })
+
+  it('shows the range and pages through a longer list', async () => {
+    serve(
+      Array.from({ length: 12 }, (_, i) =>
+        makeBooking({ id: `p${i}`, status: 'SELESAI', purpose: `Acara ${i}` })
+      )
+    )
+    const screen = await renderPage()
+    await expect.element(screen.getByText('1–10 dari 12')).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Halaman berikutnya' })
+    )
+    const { search } = mocks.navigate.mock.calls[0][0]
+    expect(search({})).toMatchObject({ page: 2 })
   })
 })

@@ -13,6 +13,10 @@
   --bg-disabled: #ededec;
   --bg-accent-subtle: #fff3ea;
   --bg-error-subtle: #fef2f2;
+  --bg-success-subtle: #ecfdf3;
+  --bg-warning-subtle: #fefce8;
+  --text-success: #15803d;
+  --text-warning: #a16207;
   /* Color/text */
   --text-primary: #0a0a0a;
   --text-secondary: #737373;
@@ -97,6 +101,10 @@
   --bg-disabled: #202020;
   --bg-accent-subtle: #3a1a0a;
   --bg-error-subtle: #450a0a;
+  --bg-success-subtle: #052e16;
+  --bg-warning-subtle: #422006;
+  --text-success: #4ade80;
+  --text-warning: #facc15;
   --text-primary: #ffffff;
   --text-secondary: #a3a3a3;
   --text-tertiary: #737373;
@@ -133,6 +141,8 @@
   --color-disabled: var(--bg-disabled);
   --color-accent-subtle: var(--bg-accent-subtle);
   --color-error-subtle: var(--bg-error-subtle);
+  --color-success-subtle: var(--bg-success-subtle);
+  --color-warning-subtle: var(--bg-warning-subtle);
   /* Text: text-fg, text-fg-secondary, ... (the name `text-text-*` would be unreadable). */
   --color-fg: var(--text-primary);
   --color-fg-secondary: var(--text-secondary);
@@ -140,6 +150,8 @@
   --color-fg-inverse: var(--text-inverse);
   --color-fg-accent: var(--text-accent);
   --color-fg-error: var(--text-error);
+  --color-fg-success: var(--text-success);
+  --color-fg-warning: var(--text-warning);
   /* Borders: border-line, border-line-strong, ... */
   --color-line: var(--border-default);
   --color-line-strong: var(--border-strong);

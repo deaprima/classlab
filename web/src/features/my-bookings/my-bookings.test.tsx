@@ -168,6 +168,47 @@ describe('MyBookings (Pengajuan Saya)', () => {
     })
   })
 
+  it('narrows the list by search text and room type', async () => {
+    mocks.search = { q: 'fisika' }
+    serve([waiting, approved, refused])
+    const screen = await renderPage()
+    await expect
+      .element(screen.getByText('Kuliah Fisika').first())
+      .toBeVisible()
+    await expect
+      .element(screen.getByText('Praktikum Basis Data'))
+      .not.toBeInTheDocument()
+    await expect
+      .element(screen.getByRole('radio', { name: /Semua/ }))
+      .toHaveTextContent('1')
+  })
+
+  it('filters by room type', async () => {
+    mocks.search = { type: 'LAB' }
+    serve([waiting, approved, refused])
+    const screen = await renderPage()
+    await expect
+      .element(screen.getByText('Praktikum Basis Data').first())
+      .toBeVisible()
+    await expect
+      .element(screen.getByText('Kuliah Fisika'))
+      .not.toBeInTheDocument()
+  })
+
+  it('pages the list ten at a time', async () => {
+    const many = Array.from({ length: 12 }, (_, i) =>
+      makeBooking({ id: `m${i}`, status: 'MENUNGGU', purpose: `Acara ${i}` })
+    )
+    serve(many)
+    const screen = await renderPage()
+    await expect.element(screen.getByText('1–10 dari 12')).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Halaman berikutnya' })
+    )
+    const { search } = mocks.navigate.mock.calls[0][0]
+    expect(search({})).toMatchObject({ page: 2 })
+  })
+
   it('filters by the status tab from the URL', async () => {
     mocks.search = { status: 'MENUNGGU' }
     serve([refused, waiting, approved])
@@ -188,9 +229,11 @@ describe('MyBookings (Pengajuan Saya)', () => {
     const screen = await renderPage()
     await userEvent.click(screen.getByRole('radio', { name: /Disetujui/ }))
     const { search } = mocks.navigate.mock.calls[0][0]
-    expect(search({ booking: 'x' })).toMatchObject({
+    // Another tab clears the selection and goes back to page 1.
+    expect(search({ booking: 'x', page: 3 })).toMatchObject({
       status: 'DISETUJUI',
-      booking: 'x',
+      booking: undefined,
+      page: undefined,
     })
   })
 
@@ -225,34 +268,30 @@ describe('MyBookings (Pengajuan Saya)', () => {
       .toBeVisible()
   })
 
-  it('offers edit and cancel in the row menu of a changeable request, and no menu for the others', async () => {
+  it('offers edit and cancel as icon buttons on a changeable request', async () => {
     serve([waiting, refused])
     const screen = await renderPage()
-    await userEvent.click(
-      screen.getByRole('button', { name: /^Aksi LAB-RPL-02/ }).first()
-    )
     await expect
-      .element(screen.getByRole('menuitem', { name: 'Ubah' }))
+      .element(screen.getByRole('columnheader', { name: 'Aksi' }))
       .toBeVisible()
     await expect
-      .element(screen.getByRole('menuitem', { name: 'Batalkan' }))
+      .element(screen.getByRole('button', { name: /^Ubah LAB-RPL-02/ }))
       .toBeVisible()
-    // The detail is beside the list, and a refused request has nothing to change.
     await expect
-      .element(screen.getByRole('menuitem', { name: 'Lihat detail' }))
+      .element(screen.getByRole('button', { name: /^Batalkan LAB-RPL-02/ }))
+      .toBeVisible()
+    // The detail is beside the list.
+    await expect
+      .element(screen.getByRole('button', { name: /^Lihat detail/ }))
       .not.toBeInTheDocument()
-    await expect
-      .element(screen.getByRole('button', { name: /^Aksi LAB-RPL-02, .*/ }))
-      .toHaveLength(1)
   })
 
-  it('opens the edit dialog from the row menu', async () => {
+  it('opens the edit dialog from the Ubah icon', async () => {
     serve([waiting])
     const screen = await renderPage()
     await userEvent.click(
-      screen.getByRole('button', { name: /^Aksi LAB-RPL-02/ }).first()
+      screen.getByRole('button', { name: /^Ubah LAB-RPL-02/ })
     )
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Ubah' }))
     await expect
       .element(screen.getByRole('heading', { name: 'Ubah pengajuan' }))
       .toBeVisible()
@@ -280,15 +319,12 @@ describe('MyBookings (Pengajuan Saya)', () => {
       .toBeVisible()
   })
 
-  it('opens the detail popup from the row menu on a narrow screen', async () => {
+  it('opens the detail popup from the Lihat detail icon on a narrow screen', async () => {
     mocks.wide = false
     serve([waiting])
     const screen = await renderPage()
     await userEvent.click(
-      screen.getByRole('button', { name: /^Aksi LAB-RPL-02/ }).first()
-    )
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: 'Lihat detail' })
+      screen.getByRole('button', { name: /^Lihat detail LAB-RPL-02/ })
     )
     await expect
       .element(screen.getByRole('dialog', { name: 'Detail Pengajuan' }))

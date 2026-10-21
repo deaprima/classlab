@@ -21,6 +21,12 @@ const searchSchema = z.object({
     .optional()
     .catch(undefined),
   room_id: uuidParam,
+  type: z
+    .enum(['KELAS', 'LAB', 'AUDITORIUM', 'RUANG_UJIAN', 'RUANG_SIDANG'])
+    .optional()
+    .catch(undefined),
+  /** Free-text filter of Pengajuan Saya. */
+  q: z.string().optional().catch(undefined),
   date: dateParam,
   /** Open detail panel; notifications link here. */
   booking: uuidParam,
