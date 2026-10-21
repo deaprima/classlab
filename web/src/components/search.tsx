@@ -1,34 +1,32 @@
 import { SearchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSearch } from '@/context/search-provider'
-import { Button } from './ui/button'
 
+/** Figma `Search Input` in the Top Bar; opens the command menu. */
 export function Search({
   className = '',
-  placeholder = 'Cari',
+  placeholder = 'Cari halaman',
   ...props
 }: React.ComponentProps<'button'> & { placeholder?: string }) {
   const { setOpen } = useSearch()
   return (
-    <Button
+    <button
+      type='button'
       {...props}
-      variant='outline'
       className={cn(
-        'group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64',
+        'group relative flex h-10 items-center gap-2 rounded-full border bg-subtle px-3 type-body text-fg-tertiary outline-none hover:border-line-hover focus-visible:ring-2 focus-visible:ring-ring',
+        'max-md:size-10 max-md:justify-center max-md:px-0 md:w-56 lg:w-72',
         className
       )}
+      aria-label='Cari halaman atau perintah'
       aria-keyshortcuts='Meta+K Control+K'
       onClick={() => setOpen(true)}
     >
-      <SearchIcon
-        aria-hidden='true'
-        className='absolute inset-s-1.5 top-1/2 -translate-y-1/2'
-        size={16}
-      />
-      <span className='ms-4'>{placeholder}</span>
-      <kbd className='pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex'>
-        <span className='text-xs'>⌘</span>K
+      <SearchIcon aria-hidden className='size-4 shrink-0' />
+      <span className='max-md:hidden'>{placeholder}</span>
+      <kbd className='pointer-events-none ms-auto hidden rounded-full border bg-surface px-2 py-0.5 type-label-sm select-none lg:block'>
+        Ctrl K
       </kbd>
-    </Button>
+    </button>
   )
 }

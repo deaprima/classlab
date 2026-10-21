@@ -62,10 +62,15 @@ export function AdminRooms() {
       title='Kelola Ruang'
       description='Data ruang kelas dan laboratorium yang bisa dipinjam.'
       actions={
-        <Button onClick={() => setEditing({ mode: 'create' })}>
-          <Plus />
-          Tambah Ruang
-        </Button>
+        <>
+          <Button variant='secondary' asChild>
+            <Link to='/admin/schedules'>Kelola Jadwal</Link>
+          </Button>
+          <Button onClick={() => setEditing({ mode: 'create' })}>
+            <Plus />
+            Tambah Ruang
+          </Button>
+        </>
       }
     >
       <Card className='mb-6'>

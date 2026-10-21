@@ -17,7 +17,6 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Badge } from '../ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,7 +58,11 @@ export function NavGroup({ title, items }: NavGroupProps) {
 }
 
 function NavBadge({ children }: { children: ReactNode }) {
-  return <Badge className='rounded-full px-1 py-0 text-xs'>{children}</Badge>
+  return (
+    <span className='ms-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 type-label-sm text-on-brand'>
+      {children}
+    </span>
+  )
 }
 
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {

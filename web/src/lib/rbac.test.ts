@@ -2,9 +2,21 @@ import { isRedirect } from '@tanstack/react-router'
 import { sampleUser } from '@/test-utils/mock-adapter'
 import { afterEach, describe, expect, it } from 'vitest'
 import { useAuthStore } from '@/stores/auth-store'
-import { navGroupsForRole } from '@/components/layout/data/sidebar-data'
+import {
+  navGroupsForRole,
+  plannedMenuForRole,
+} from '@/components/layout/data/sidebar-data'
 import { type UserRole } from './api-types'
 import { ACCESS, requireRole } from './rbac'
+
+const ROLES: UserRole[] = [
+  'MAHASISWA',
+  'ORGANISASI',
+  'TU',
+  'KALAB',
+  'OB',
+  'ADMIN',
+]
 
 function signInAs(role: UserRole) {
   useAuthStore.getState().auth.setSession('token', { ...sampleUser, role })
@@ -45,42 +57,88 @@ describe('requireRole', () => {
   })
 })
 
-describe('navGroupsForRole', () => {
-  const titles = (role: UserRole) =>
+describe('sidebar menu per role (DESIGN.md section 5)', () => {
+  const planned = (role: UserRole) =>
+    plannedMenuForRole(role).map((i) => i.title)
+  const shown = (role: UserRole) =>
     navGroupsForRole(role).flatMap((g) => g.items.map((i) => i.title))
 
-  it('shows students how to book but not how to approve', () => {
-    expect(titles('MAHASISWA')).toContain('Ajukan Peminjaman')
-    expect(titles('MAHASISWA')).not.toContain('Persetujuan')
-    expect(titles('MAHASISWA')).not.toContain('Kelola Ruang')
+  it.each<[UserRole, string[]]>([
+    [
+      'MAHASISWA',
+      [
+        'Dashboard',
+        'Jadwal Ruang',
+        'Ajukan Ruang',
+        'Pengajuan Saya',
+        'Riwayat',
+        'Lapor Kerusakan',
+      ],
+    ],
+    [
+      'ORGANISASI',
+      [
+        'Dashboard',
+        'Jadwal Ruang',
+        'Ajukan Ruang',
+        'Pengajuan Saya',
+        'Riwayat',
+        'Lapor Kerusakan',
+      ],
+    ],
+    [
+      'TU',
+      [
+        'Beranda',
+        'Approval',
+        'Ruang & Jadwal',
+        'Verifikasi',
+        'Laporan',
+        'Mahasiswa',
+      ],
+    ],
+    ['KALAB', ['Beranda', 'Approval Lab', 'Ruang & Jadwal', 'Laporan']],
+    ['OB', ['Beranda', 'Verifikasi', 'Laporan', 'Notifikasi']],
+    [
+      'ADMIN',
+      [
+        'Beranda',
+        'Approval',
+        'Ruang & Jadwal',
+        'Pengguna',
+        'Kebijakan Ruang',
+        'Audit Log',
+      ],
+    ],
+  ])('%s sees the designed menu in order', (role, titles) => {
+    expect(planned(role)).toEqual(titles)
+    expect(titles.length).toBeLessThanOrEqual(6)
   })
 
-  it('lets organisations book too', () => {
-    expect(titles('ORGANISASI')).toContain('Ajukan Peminjaman')
-    expect(titles('ORGANISASI')).not.toContain('Persetujuan')
-  })
-
-  it.each<UserRole>(['TU', 'KALAB'])(
-    'gives %s the approval queue and room admin, not user admin',
-    (role) => {
-      expect(titles(role)).toEqual(
-        expect.arrayContaining(['Persetujuan', 'Kelola Ruang', 'Kelola Jadwal'])
-      )
-      expect(titles(role)).not.toContain('Kelola Pengguna')
-      expect(titles(role)).not.toContain('Ajukan Peminjaman')
+  it('only links to pages that exist, and never shows a link without a page', () => {
+    expect(shown('MAHASISWA')).toEqual([
+      'Dashboard',
+      'Ajukan Ruang',
+      'Pengajuan Saya',
+      'Lapor Kerusakan',
+    ])
+    for (const role of ROLES) {
+      for (const item of navGroupsForRole(role).flatMap((g) => g.items)) {
+        expect(item.url).toBeTruthy()
+      }
     }
-  )
-
-  it('hides the booking list from OB, which the API forbids', () => {
-    expect(titles('OB')).not.toContain('Riwayat Peminjaman')
-    expect(titles('OB')).toContain('Laporan Kerusakan')
-    expect(navGroupsForRole('OB').map((g) => g.title)).not.toContain(
-      'Administrasi'
-    )
   })
 
-  it('gives Admin user admin', () => {
-    expect(titles('ADMIN')).toContain('Kelola Pengguna')
+  it('keeps approval and administration away from requesters', () => {
+    expect(shown('MAHASISWA')).not.toContain('Approval')
+    expect(shown('ORGANISASI')).not.toContain('Ruang & Jadwal')
+    expect(shown('TU')).not.toContain('Pengguna')
+    expect(shown('KALAB')).not.toContain('Ajukan Ruang')
+  })
+
+  it('gives Admin user management and OB no booking list', () => {
+    expect(shown('ADMIN')).toContain('Pengguna')
+    expect(planned('OB')).not.toContain('Pengajuan Saya')
   })
 
   it('shows nothing without a role', () => {

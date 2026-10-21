@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api-client'
 import { applyFieldErrors, getApiError, getErrorMessage } from '@/lib/api-error'
 import { type LoginRequest, type LoginResponse } from '@/lib/api-types'
-import { safeRedirectPath } from '@/lib/session'
+import { CHANGE_PASSWORD_PATH, safeRedirectPath } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -51,7 +51,13 @@ export function UserAuthForm({
       (await api.post<LoginResponse>('/auth/login', body)).data,
     onSuccess: (data) => {
       useAuthStore.getState().auth.setSession(data.access_token, data.user)
-      router.history.replace(safeRedirectPath(redirectTo))
+      const target = safeRedirectPath(redirectTo)
+      // A temporary password must be replaced before anything else; the change page returns to `target`.
+      router.history.replace(
+        data.user.must_change_password
+          ? `${CHANGE_PASSWORD_PATH}?redirect=${encodeURIComponent(target)}`
+          : target
+      )
     },
     onError: (error) => {
       const details = getApiError(error)?.details ?? []
@@ -83,7 +89,7 @@ export function UserAuthForm({
         {...props}
       >
         {rootError && (
-          <Alert variant='destructive'>
+          <Alert variant='error'>
             <AlertCircle />
             <AlertDescription>{rootError}</AlertDescription>
           </Alert>
@@ -96,7 +102,7 @@ export function UserAuthForm({
               <FormLabel>NIM / NIP</FormLabel>
               <FormControl>
                 <Input
-                  placeholder='Contoh: 220101001'
+                  placeholder='Contoh: 2021101001'
                   autoComplete='username'
                   autoFocus
                   {...field}

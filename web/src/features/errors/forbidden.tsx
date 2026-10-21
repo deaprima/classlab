@@ -5,16 +5,16 @@ export function ForbiddenError() {
   const navigate = useNavigate()
   const { history } = useRouter()
   return (
-    <div className='h-svh'>
-      <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
-        <h1 className='text-[7rem] leading-tight font-bold'>403</h1>
-        <span className='font-medium'>Akses Ditolak</span>
-        <p className='text-center text-muted-foreground'>
-          Peran Anda tidak memiliki izin <br />
-          untuk membuka halaman ini.
+    <div className='flex min-h-svh items-center justify-center px-4'>
+      <div className='flex w-full max-w-md flex-col items-center gap-3 rounded-3xl border bg-card p-8 text-center'>
+        <p className='type-stat-xl text-fg-tertiary'>403</p>
+        <h1 className='type-page-title text-fg'>Akses ditolak</h1>
+        <p className='type-body text-fg-secondary'>
+          Perannya tidak punya izin untuk membuka halaman ini. Kembali ke
+          halaman sebelumnya atau ke beranda.
         </p>
-        <div className='mt-6 flex gap-4'>
-          <Button variant='outline' onClick={() => history.go(-1)}>
+        <div className='mt-4 flex w-full flex-col gap-3 sm:flex-row sm:justify-center'>
+          <Button variant='secondary' onClick={() => history.go(-1)}>
             Kembali
           </Button>
           <Button onClick={() => navigate({ to: '/' })}>Ke Beranda</Button>

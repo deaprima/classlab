@@ -2,17 +2,18 @@ import { Toaster as Sonner, ToasterProps } from 'sonner'
 import { useTheme } from '@/context/theme-provider'
 
 export function Toaster({ ...props }: ToasterProps) {
-  const { theme = 'system' } = useTheme()
+  const { resolvedTheme } = useTheme()
 
   return (
     <Sonner
-      theme={theme as ToasterProps['theme']}
+      theme={resolvedTheme}
       className='toaster group [&_div[data-content]]:w-full'
+      toastOptions={{ classNames: { toast: '!rounded-2xl !px-5' } }}
       style={
         {
-          '--normal-bg': 'var(--popover)',
-          '--normal-text': 'var(--popover-foreground)',
-          '--normal-border': 'var(--border)',
+          '--normal-bg': 'var(--bg-inverse)',
+          '--normal-text': 'var(--text-inverse)',
+          '--normal-border': 'var(--bg-inverse)',
         } as React.CSSProperties
       }
       {...props}
