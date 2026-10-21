@@ -8,6 +8,8 @@ package dbgen
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const createOrgUnit = `-- name: CreateOrgUnit :one
@@ -60,4 +62,15 @@ func (q *Queries) GetOrgUnitByNameAndType(ctx context.Context, arg GetOrgUnitByN
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getOrgUnitNameByID = `-- name: GetOrgUnitNameByID :one
+SELECT name FROM org_units WHERE id = $1
+`
+
+func (q *Queries) GetOrgUnitNameByID(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getOrgUnitNameByID, id)
+	var name string
+	err := row.Scan(&name)
+	return name, err
 }

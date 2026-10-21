@@ -18,10 +18,10 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Register mounts the routes on the authenticated API router. Reading is for the approvers' roles and
-// annulling for ADMIN; the service checks the roles again.
+// Register mounts the routes on the authenticated API router. Reading is for the approvers' roles and,
+// for their own record only, for requesters; annulling is for ADMIN. The service checks the roles again.
 func (h *Handler) Register(r chi.Router) {
-	r.With(httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin)).Get("/users/{id}/violations", h.list)
+	r.With(httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin, httpx.RoleMahasiswa, httpx.RoleOrganisasi)).Get("/users/{id}/violations", h.list)
 	r.With(httpx.RequireRoles(httpx.RoleAdmin)).Post("/violations/{id}/annul", h.annul)
 }
 

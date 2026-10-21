@@ -28,6 +28,8 @@ type User struct {
 	CreatedAt           time.Time  `json:"created_at"`
 	// ActivePoints is only set on /auth/me, for roles that can book (BR-14).
 	ActivePoints *int `json:"active_points,omitempty"`
+	// OrgUnitName is only set on /auth/me: the name of the unit (study programme) the account belongs to.
+	OrgUnitName *string `json:"org_unit_name,omitempty"`
 }
 
 // userRow has the same shape as the sqlc row types of every user query that omits password_hash,

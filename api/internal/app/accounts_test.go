@@ -186,6 +186,10 @@ func TestMeReportsActivePointsForRequesters(t *testing.T) {
 		t.Error("student booking_blocked_until missing")
 	}
 
+	if unit, ok := student.json()["org_unit_name"].(string); !ok || unit == "" {
+		t.Errorf("student org_unit_name = %v, want the unit's name", student.json()["org_unit_name"])
+	}
+
 	tu := e.do("GET", "/api/v1/auth/me", nil, bearer(e.login(acctTU).accessToken))
 	mustStatus(t, tu, http.StatusOK)
 	if _, present := tu.json()["active_points"]; present {

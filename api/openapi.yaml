@@ -1289,11 +1289,12 @@ paths:
 
   /users/{id}/violations:
     get:
-      summary: Riwayat pelanggaran pemohon (TU, KALAB, ADMIN)
+      summary: Riwayat pelanggaran pemohon (TU, KALAB, ADMIN; MAHASISWA dan ORGANISASI untuk dirinya sendiri)
       description: >
         Pelanggaran satu pemohon (MAHASISWA atau ORGANISASI), terbaru lebih dulu, beserta total poin aktif
         (tidak di-annul dan di dalam `VIOLATION_WINDOW_DAYS`) dan `booking_blocked_until` bila masih berlaku.
-        Akun yang bukan pemohon dijawab 404.
+        Akun yang bukan pemohon dijawab 404. MAHASISWA dan ORGANISASI hanya boleh membaca catatan milik sendiri;
+        id akun lain dijawab 404. OB dijawab 403.
       security:
         - BearerAuth: []
       parameters:
@@ -2144,6 +2145,9 @@ components:
         active_points:
           type: integer
           description: Poin pelanggaran aktif. Hanya ada pada `GET /auth/me` untuk MAHASISWA dan ORGANISASI.
+        org_unit_name:
+          type: string
+          description: Nama unit organisasi (program studi) akun. Hanya ada pada `GET /auth/me`.
         created_at: { type: string, format: date-time }
 
     AuditLog:
