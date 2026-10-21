@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { SearchProvider } from '@/context/search-provider'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
+import { Footer } from '@/components/layout/footer'
 import { SkipToMain } from '@/components/skip-to-main'
 import { useNotificationStream } from '@/features/notifications/use-notification-stream'
 
@@ -33,6 +34,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
           )}
         >
           {children ?? <Outlet />}
+          <Footer />
         </SidebarInset>
       </SidebarProvider>
     </SearchProvider>
