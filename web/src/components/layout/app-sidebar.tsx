@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { LogOut, SlidersHorizontal } from 'lucide-react'
 import { Logo } from '@/assets/logo'
 import { useAuthStore } from '@/stores/auth-store'
+import { ACCESS, hasRole } from '@/lib/rbac'
 import useDialogState from '@/hooks/use-dialog-state'
 import {
   Sidebar,
@@ -18,6 +19,7 @@ import {
 } from '@/components/ui/sidebar'
 import { SignOutDialog } from '@/components/sign-out-dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { useBookings } from '@/features/bookings/api'
 import { useUnreadCount } from '@/features/notifications/api'
 import { navGroupsForRole } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
@@ -26,18 +28,27 @@ import { NavGroup } from './nav-group'
 export function AppSidebar() {
   const role = useAuthStore((state) => state.auth.user?.role)
   const unread = useUnreadCount().data ?? 0
+  // Requests waiting for this approver's decision, shown as the orange badge of "Approval".
+  const isApprover = hasRole(role ? { role } : null, ACCESS.approveBookings)
+  const waiting =
+    useBookings({ status: 'MENUNGGU', per_page: 1 }, isApprover).data?.meta
+      .total ?? 0
   const menu = useMemo(
     () => ({
       title: 'Menu',
       items: navGroupsForRole(role)
         .flatMap((group) => group.items)
-        .map((item) =>
-          item.url === '/notifications' && unread > 0
-            ? { ...item, badge: unread > 99 ? '99+' : String(unread) }
-            : item
-        ),
+        .map((item) => {
+          if (item.url === '/notifications' && unread > 0) {
+            return { ...item, badge: unread > 99 ? '99+' : String(unread) }
+          }
+          if (item.url === '/approvals' && waiting > 0) {
+            return { ...item, badge: waiting > 99 ? '99+' : String(waiting) }
+          }
+          return item
+        }),
     }),
-    [role, unread]
+    [role, unread, waiting]
   )
 
   return (
