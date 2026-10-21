@@ -36,15 +36,16 @@ export function RequestDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className='max-h-[92svh] overflow-y-auto max-sm:top-0 max-sm:left-0 max-sm:h-svh max-sm:max-h-svh max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none sm:max-w-2xl'
+        className='flex max-h-[90svh] flex-col gap-0 overflow-hidden p-0 max-sm:top-0 max-sm:left-0 max-sm:h-svh max-sm:max-h-svh max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none sm:max-w-2xl'
         onInteractOutside={(e) => e.preventDefault()}
         // Not the date field: on a phone the keyboard would open before anything is read.
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader>
+        <DialogHeader className='px-6 pt-6 pb-4 text-start'>
           <DialogTitle>Ajukan Ruang</DialogTitle>
           <DialogDescription>
-            {room.code} · {roomTypeConfig(room.type).label}
+            {room.code} · {roomTypeConfig(room.type).label} · {room.capacity}{' '}
+            orang
           </DialogDescription>
         </DialogHeader>
         {/* Mounted only while open, so every opening starts from the slots picked now. */}

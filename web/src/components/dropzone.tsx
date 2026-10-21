@@ -10,6 +10,10 @@ type DropzoneProps = {
   disabled?: boolean
   title?: string
   hint?: string
+  /** One slim row (text left, buttons right) for forms where the file is a side detail. */
+  compact?: boolean
+  /** Extra control next to the "Pilih berkas" button, e.g. "Pilih surat lama". */
+  extra?: React.ReactNode
   className?: string
 }
 
@@ -21,6 +25,8 @@ export function Dropzone({
   disabled,
   title = 'Tarik berkas ke sini atau pilih dari perangkat',
   hint,
+  compact,
+  extra,
   className,
 }: DropzoneProps) {
   const inputId = useId()
@@ -48,7 +54,10 @@ export function Dropzone({
         if (!disabled) take(e.dataTransfer.files)
       }}
       className={cn(
-        'flex flex-col items-center gap-2 rounded-2xl border border-dashed px-4 py-8 text-center transition-colors',
+        'flex rounded-2xl border border-dashed transition-colors',
+        compact
+          ? 'flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between'
+          : 'flex-col items-center gap-2 px-4 py-8 text-center',
         active
           ? 'border-line-accent bg-accent-subtle'
           : 'border-line-strong bg-subtle',
@@ -56,11 +65,20 @@ export function Dropzone({
         className
       )}
     >
-      <Upload aria-hidden className='size-5 text-fg-secondary' />
-      <label htmlFor={inputId} className='type-card-title text-fg'>
-        {title}
-      </label>
-      {hint && <p className='type-body-sm text-fg-secondary'>{hint}</p>}
+      <div
+        className={cn(
+          'flex min-w-0',
+          compact ? 'items-center gap-3' : 'flex-col items-center gap-2'
+        )}
+      >
+        <Upload aria-hidden className='size-5 shrink-0 text-fg-secondary' />
+        <div className='min-w-0'>
+          <label htmlFor={inputId} className='block type-card-title text-fg'>
+            {title}
+          </label>
+          {hint && <p className='type-body-sm text-fg-secondary'>{hint}</p>}
+        </div>
+      </div>
       <input
         id={inputId}
         ref={inputRef}
@@ -74,14 +92,19 @@ export function Dropzone({
           e.target.value = ''
         }}
       />
-      <button
-        type='button'
-        disabled={disabled}
-        onClick={() => inputRef.current?.click()}
-        className='mt-1 inline-flex h-8 items-center rounded-full border border-line-strong bg-surface px-3 type-button hover:border-line-hover disabled:pointer-events-none disabled:text-fg-tertiary'
+      <div
+        className={cn('flex shrink-0 items-center gap-2', !compact && 'mt-1')}
       >
-        Pilih berkas
-      </button>
+        <button
+          type='button'
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+          className='inline-flex h-8 items-center rounded-full border border-line-strong bg-surface px-3 type-button hover:border-line-hover disabled:pointer-events-none disabled:text-fg-tertiary'
+        >
+          Pilih berkas
+        </button>
+        {extra}
+      </div>
     </div>
   )
 }

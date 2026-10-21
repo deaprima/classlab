@@ -27,8 +27,9 @@ import {
 type OccurrenceFieldsProps = {
   hours: { open: string; close: string }
   minDate: string
-  /** Last date the policy allows; its helper text is shown under the first row. */
+  /** Last date the policy allows. */
   maxDate?: string
+  /** Shown beside the "Tambah Tanggal" button, e.g. "Bisa dipilih sampai Jum, 20 Nov 2026". */
   maxDateHint?: string
 }
 
@@ -46,25 +47,28 @@ export function OccurrenceFields({
   })
   const times = slotTimes(hours.open, hours.close, SLOT_MINUTES)
   const listError = form.formState.errors.occurrences?.root?.message
+  const many = fields.length > 1
 
   return (
-    <div className='grid gap-3'>
+    <div className='grid gap-4'>
       {fields.map((row, i) => (
-        <div key={row.id} className='grid items-start gap-3 sm:grid-cols-3'>
+        <div
+          key={row.id}
+          className={
+            many
+              ? 'grid grid-cols-2 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_2.5rem]'
+              : 'grid grid-cols-2 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem]'
+          }
+        >
           <FormField
             control={form.control}
             name={`occurrences.${i}.date`}
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Tanggal{fields.length > 1 && ` ${i + 1}`}</FormLabel>
+              <FormItem className='col-span-2 sm:col-span-1'>
+                <FormLabel>Tanggal{many && ` ${i + 1}`}</FormLabel>
                 <FormControl>
                   <Input type='date' min={minDate} max={maxDate} {...field} />
                 </FormControl>
-                {i === 0 && maxDateHint && (
-                  <p className='type-body-sm text-fg-secondary'>
-                    {maxDateHint}
-                  </p>
-                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -74,42 +78,47 @@ export function OccurrenceFields({
             label='Mulai'
             options={times.slice(0, -1)}
           />
-          <div className='flex items-start gap-2'>
-            <div className='min-w-0 grow'>
-              <TimeField
-                name={`occurrences.${i}.end_time`}
-                label='Selesai'
-                options={times.slice(1)}
-              />
-            </div>
-            {fields.length > 1 && (
-              <Button
-                type='button'
-                variant='ghost'
-                size='icon'
-                className='mt-6 shrink-0'
-                aria-label={`Hapus tanggal ${i + 1}`}
-                onClick={() => remove(i)}
-              >
-                <X />
-              </Button>
-            )}
-          </div>
+          <TimeField
+            name={`occurrences.${i}.end_time`}
+            label='Selesai'
+            options={times.slice(1)}
+          />
+          {many && (
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon'
+              className='col-span-2 mt-0 justify-self-end sm:col-span-1 sm:mt-6 sm:justify-self-auto'
+              aria-label={`Hapus tanggal ${i + 1}`}
+              onClick={() => remove(i)}
+            >
+              <X />
+            </Button>
+          )}
         </div>
       ))}
+
       {listError && <p className='type-body-sm text-fg-error'>{listError}</p>}
-      {fields.length < MAX_OCCURRENCES && (
-        <Button
-          type='button'
-          variant='ghost'
-          size='sm'
-          className='justify-self-start'
-          onClick={() => append(emptyOccurrence())}
-        >
-          <Plus />
-          Tambah Tanggal
-        </Button>
-      )}
+
+      <div className='flex flex-wrap items-center justify-between gap-x-4 gap-y-1'>
+        {fields.length < MAX_OCCURRENCES ? (
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className='-ms-3'
+            onClick={() => append(emptyOccurrence())}
+          >
+            <Plus />
+            Tambah Tanggal
+          </Button>
+        ) : (
+          <span />
+        )}
+        {maxDateHint && (
+          <p className='type-body-sm text-fg-secondary'>{maxDateHint}</p>
+        )}
+      </div>
     </div>
   )
 }

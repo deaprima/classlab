@@ -205,7 +205,12 @@ describe('RoomDetail', () => {
 
     const dialog = screen.getByRole('dialog')
     await expect.element(dialog).toBeVisible()
-    await expect.element(dialog.getByText('09:00 – 11:00')).toBeVisible()
+    await expect
+      .element(dialog.getByRole('combobox', { name: 'Mulai' }))
+      .toHaveTextContent('09:00')
+    await expect
+      .element(dialog.getByRole('combobox', { name: 'Selesai' }))
+      .toHaveTextContent('11:00')
     await expect.element(dialog.getByLabelText('Nama kegiatan')).toBeVisible()
   })
 

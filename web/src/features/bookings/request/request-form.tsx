@@ -27,7 +27,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { type ConflictItem } from '@/components/conflict-list'
 import { useMe } from '@/features/auth/api'
 import { useRoomTypes } from '@/features/room-types/api'
-import { roomTypeConfig } from '@/features/room-types/config'
 import { useCreateBooking, useIdempotencyKey } from '../api'
 import { LetterField } from './letter-field'
 import { OccurrenceFields } from './occurrence-fields'
@@ -38,6 +37,7 @@ import {
   participantsRequired,
   previewOutcome,
 } from './policy'
+import { RequestFooter } from './request-footer'
 import {
   createRequestSchema,
   emptyOccurrence,
@@ -51,7 +51,6 @@ import {
   type RequestContext,
   type RequestFormValues,
 } from './request-schema'
-import { RequestSummary } from './request-summary'
 import { useSlotCheck } from './slot-checks'
 
 type Problem =
@@ -107,7 +106,6 @@ export function RequestForm({
   })
 
   const occurrences = useWatch({ control: form.control, name: 'occurrences' })
-  const participants = useWatch({ control: form.control, name: 'participants' })
   const slot = useSlotCheck(room.id, occurrences)
 
   const blockedUntil =
@@ -147,10 +145,16 @@ export function RequestForm({
     create.mutate({ body, idempotencyKey: keyFor(body) })
   }
 
-  if (policies.isPending) return <Skeleton className='h-96 rounded-2xl' />
+  if (policies.isPending) {
+    return (
+      <div className='px-6 pb-6'>
+        <Skeleton className='h-80 rounded-2xl' />
+      </div>
+    )
+  }
   if (policies.isError || !policy) {
     return (
-      <Alert variant='error'>
+      <Alert variant='error' className='mx-6 mb-6 w-auto'>
         <AlertCircle />
         <AlertDescription>
           {policies.isError
@@ -188,86 +192,103 @@ export function RequestForm({
     problem?.kind === 'conflict'
 
   return (
-    <div className='flex min-w-0 flex-col gap-5'>
-      {blocked && blockedUntil && (
-        <Alert variant='error'>
-          <AlertCircle />
-          <AlertTitle>
-            Booking baru diblokir sampai {formatDate(blockedUntil)}
-          </AlertTitle>
-          <AlertDescription>
-            Poin pelanggaran aktif mencapai{' '}
-            {attendanceRules.blockThresholdPoints}. Booking yang sudah disetujui
-            tetap berlaku. Hubungi Admin bila ada keliruan.
-          </AlertDescription>
-        </Alert>
-      )}
-      {problem?.kind === 'quota' && (
-        <Alert variant='error'>
-          <AlertCircle />
-          <AlertTitle>Kuota booking aktif penuh</AlertTitle>
-          <AlertDescription>{problem.message}</AlertDescription>
-        </Alert>
-      )}
+    <>
+      <div className='flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6'>
+        {blocked && blockedUntil && (
+          <Alert variant='error'>
+            <AlertCircle />
+            <AlertTitle>
+              Booking baru diblokir sampai {formatDate(blockedUntil)}
+            </AlertTitle>
+            <AlertDescription>
+              Poin pelanggaran aktif mencapai{' '}
+              {attendanceRules.blockThresholdPoints}. Booking yang sudah
+              disetujui tetap berlaku. Hubungi Admin bila ada keliruan.
+            </AlertDescription>
+          </Alert>
+        )}
+        {problem?.kind === 'quota' && (
+          <Alert variant='error'>
+            <AlertCircle />
+            <AlertTitle>Kuota booking aktif penuh</AlertTitle>
+            <AlertDescription>{problem.message}</AlertDescription>
+          </Alert>
+        )}
 
-      <Form {...form}>
-        <form
-          id='booking-request-form'
-          onSubmit={form.handleSubmit(onSubmit)}
-          className='flex min-w-0 flex-col gap-6'
-          noValidate
-        >
-          <div className='grid gap-3'>
-            <p className='type-overline text-fg-secondary'>Ruang &amp; waktu</p>
-            <p className='type-card-title text-fg'>
-              {room.code}
-              <span className='type-body font-normal text-fg-secondary'>
-                {' '}
-                · {roomTypeConfig(room.type).label} · {room.capacity} orang
-              </span>
-            </p>
-            <OccurrenceFields
-              hours={hours}
-              minDate={toWibDate(now)}
-              maxDate={lastDate}
-              maxDateHint={`Bisa dipilih sampai ${formatDateShort(`${lastDate}T00:00:00+07:00`)}`}
-            />
-          </div>
-
-          <div className='grid gap-4'>
-            <p className='type-overline text-fg-secondary'>Kegiatan</p>
-            <div className='grid items-start gap-4 sm:grid-cols-[1fr_12rem]'>
-              <FormField
-                control={form.control}
-                name='purpose'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nama kegiatan</FormLabel>
-                    <FormControl>
-                      <Input
-                        maxLength={PURPOSE_MAX}
-                        placeholder='Contoh: Kuliah pengganti Kalkulus'
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+        <Form {...form}>
+          <form
+            id='booking-request-form'
+            onSubmit={form.handleSubmit(onSubmit)}
+            className='flex min-w-0 flex-col gap-6'
+            noValidate
+          >
+            <div className='grid gap-3'>
+              <p className='type-overline text-fg-secondary'>Waktu</p>
+              <OccurrenceFields
+                hours={hours}
+                minDate={toWibDate(now)}
+                maxDate={lastDate}
+                maxDateHint={`Bisa dipilih sampai ${formatDateShort(`${lastDate}T00:00:00+07:00`)}`}
               />
+            </div>
+
+            <div className='grid gap-4'>
+              <p className='type-overline text-fg-secondary'>Kegiatan</p>
+              <div className='grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]'>
+                <FormField
+                  control={form.control}
+                  name='purpose'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nama kegiatan</FormLabel>
+                      <FormControl>
+                        <Input
+                          maxLength={PURPOSE_MAX}
+                          placeholder='Contoh: Kuliah pengganti Kalkulus'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='participants'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Jumlah peserta
+                        {participantsRequired(room.type) ? ' (wajib)' : ''}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          min={1}
+                          inputMode='numeric'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <FormField
                 control={form.control}
-                name='participants'
+                name='notes'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Jumlah peserta
-                      {participantsRequired(room.type) ? ' (wajib)' : ''}
+                      {room.type === 'AUDITORIUM'
+                        ? 'Kebutuhan perlengkapan'
+                        : 'Catatan (opsional)'}
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        type='number'
-                        min={1}
-                        inputMode='numeric'
+                      <Textarea
+                        rows={2}
+                        maxLength={NOTES_MAX}
+                        placeholder='Tulis catatan singkat…'
                         {...field}
                       />
                     </FormControl>
@@ -276,42 +297,16 @@ export function RequestForm({
                 )}
               />
             </div>
-            <FormField
-              control={form.control}
-              name='notes'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {room.type === 'AUDITORIUM'
-                      ? 'Kebutuhan perlengkapan'
-                      : 'Catatan (opsional)'}
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      rows={3}
-                      maxLength={NOTES_MAX}
-                      placeholder='Tulis catatan singkat…'
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
 
-          <LetterField required={needLetter} />
-        </form>
-      </Form>
+            <LetterField required={needLetter} />
+          </form>
+        </Form>
+      </div>
 
-      <RequestSummary
-        room={room}
-        occurrences={occurrences}
-        participants={participants}
+      <RequestFooter
         outcome={outcome}
         conflicts={conflicts}
         problem={problem?.kind === 'other' ? problem.message : undefined}
-        footnote={`${policy.approval_policy === 'AUTO_IF_ELIGIBLE' ? 'Ruang kosong disetujui otomatis bila riwayatmu baik. Selain itu menunggu validasi ' : 'Pengajuan menunggu validasi '}${approverLabel(policy)}.`}
         actions={
           <>
             <Button type='button' variant='secondary' onClick={onCancel}>
@@ -329,6 +324,6 @@ export function RequestForm({
           </>
         }
       />
-    </div>
+    </>
   )
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useFormContext } from 'react-hook-form'
-import { FileText, Loader2 } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { applyFieldErrors, getErrorMessage } from '@/lib/api-error'
 import { type Attachment } from '@/lib/api-types'
 import { formatDateShort } from '@/lib/datetime'
@@ -144,34 +144,29 @@ export function LetterField({ required }: LetterFieldProps) {
                 />
               </div>
             ) : (
-              <div className='grid gap-2'>
-                <Dropzone
-                  accept={LETTER_ACCEPT}
-                  disabled={upload.isPending}
-                  title={
-                    upload.isPending
-                      ? 'Mengunggah…'
-                      : 'Tarik surat ke sini atau pilih berkas'
-                  }
-                  hint='PDF atau foto, maks 5 MB'
-                  onFiles={onFiles}
-                />
-                {upload.isPending && (
-                  <p className='flex items-center gap-2 type-body-sm text-fg-secondary'>
-                    <Loader2 className='size-4 animate-spin' aria-hidden />
-                    Mengunggah surat…
-                  </p>
-                )}
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='sm'
-                  className='justify-self-start'
-                  onClick={() => setOldOpen(true)}
-                >
-                  Pilih surat lama
-                </Button>
-              </div>
+              <Dropzone
+                compact
+                accept={LETTER_ACCEPT}
+                disabled={upload.isPending}
+                title={
+                  upload.isPending
+                    ? 'Mengunggah surat…'
+                    : 'Tarik surat ke sini atau pilih berkas'
+                }
+                hint='PDF atau foto, maks 5 MB'
+                onFiles={onFiles}
+                extra={
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    disabled={upload.isPending}
+                    onClick={() => setOldOpen(true)}
+                  >
+                    Pilih surat lama
+                  </Button>
+                }
+              />
             )}
             <FormMessage />
           </FormItem>

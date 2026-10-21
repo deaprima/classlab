@@ -208,7 +208,6 @@ describe('RequestForm', () => {
       await expect
         .element(screen.getByText('Akan disetujui otomatis'))
         .toBeVisible()
-      await expect.element(screen.getByText('2 jam')).toBeVisible()
     })
 
     it('names the approver for a lab', async () => {
@@ -376,7 +375,9 @@ describe('RequestForm', () => {
         screen.getByLabelText('Nama kegiatan'),
         'Kuliah pengganti'
       )
-      await expect.element(screen.getByText('2 tanggal')).toBeVisible()
+      await expect
+        .element(screen.getByLabelText('Tanggal 1', { exact: true }))
+        .toBeVisible()
 
       await userEvent.click(submitButton(screen))
 

@@ -322,7 +322,12 @@ describe('Schedule (Jadwal Ruang)', () => {
     const dialog = screen.getByRole('dialog')
     await expect.element(dialog).toBeVisible()
     await expect.element(dialog.getByLabelText('Nama kegiatan')).toBeVisible()
-    await expect.element(dialog.getByText('12:00 – 12:30')).toBeVisible()
+    await expect
+      .element(dialog.getByRole('combobox', { name: 'Mulai' }))
+      .toHaveTextContent('12:00')
+    await expect
+      .element(dialog.getByRole('combobox', { name: 'Selesai' }))
+      .toHaveTextContent('12:30')
   })
 
   it('sends the request from the popup and clears the picked slots', async () => {

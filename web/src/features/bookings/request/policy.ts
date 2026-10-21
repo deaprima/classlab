@@ -130,7 +130,7 @@ export function previewOutcome(input: OutcomeInput): Outcome {
     title: `Menunggu validasi ${who}`,
     description:
       role === 'ORGANISASI'
-        ? 'Pengajuan organisasi selalu divalidasi manual. Kedaluwarsa otomatis bila tidak diputuskan dalam 24 jam.'
-        : 'Kedaluwarsa otomatis bila tidak diputuskan dalam 24 jam.',
+        ? 'Pengajuan organisasi divalidasi manual. Kedaluwarsa dalam 24 jam bila tidak diputuskan.'
+        : 'Kedaluwarsa dalam 24 jam bila tidak diputuskan.',
   }
 }
