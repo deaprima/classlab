@@ -102,6 +102,77 @@ export function lastBookableDate(
   return addDays(toWibDate(now), policy.max_advance_days)
 }
 
+type OccurrenceIssue = {
+  field: 'date' | 'start_time' | 'end_time'
+  message: string
+}
+
+/**
+ * What is wrong with one date of a request, or of an edit: slot step, order, the duration limits of
+ * the policy, the hours of the room, not in the past, and the advance limit. Empty when it is fine.
+ */
+export function occurrenceIssues(
+  o: OccurrenceValues,
+  ctx: { policy?: RoomTypePolicy; room?: Room; now: Date }
+): OccurrenceIssue[] {
+  if (
+    !DATE_RE.test(o.date) ||
+    !TIME_RE.test(o.start_time) ||
+    !TIME_RE.test(o.end_time)
+  ) {
+    return []
+  }
+  const { policy, room, now } = ctx
+  const issues: OccurrenceIssue[] = []
+  const at = (field: OccurrenceIssue['field'], message: string) =>
+    issues.push({ field, message })
+  const start = minutesOfDay(o.start_time)
+  const end = minutesOfDay(o.end_time)
+
+  if (start % SLOT_MINUTES !== 0) {
+    at('start_time', `Jam mulai harus kelipatan ${SLOT_MINUTES} menit.`)
+  }
+  if (end % SLOT_MINUTES !== 0) {
+    at('end_time', `Jam selesai harus kelipatan ${SLOT_MINUTES} menit.`)
+  }
+  if (end <= start) {
+    at('end_time', 'Jam selesai harus setelah jam mulai.')
+  } else if (policy) {
+    if (end - start < policy.min_duration_min) {
+      at(
+        'end_time',
+        `Durasi minimal ${formatDuration(policy.min_duration_min)}.`
+      )
+    } else if (end - start > policy.max_duration_min) {
+      at(
+        'end_time',
+        `Durasi maksimal ${formatDuration(policy.max_duration_min)}.`
+      )
+    }
+  }
+  if (policy && room) {
+    const hours = effectiveHours(room, policy)
+    if (start < minutesOfDay(hours.open)) {
+      at('start_time', `Ruang buka mulai pukul ${hours.open} WIB.`)
+    }
+    if (end > minutesOfDay(hours.close)) {
+      at('end_time', `Ruang tutup pukul ${hours.close} WIB.`)
+    }
+  }
+  if (o.date < toWibDate(now)) {
+    at('date', 'Tanggal sudah lewat.')
+  } else if (Date.parse(toApiDateTime(o.date, o.start_time)) < now.getTime()) {
+    at('start_time', 'Jam mulai sudah lewat.')
+  }
+  if (policy && o.date > lastBookableDate(policy, now)) {
+    at(
+      'date',
+      `Bisa diajukan maksimal ${policy.max_advance_days} hari ke depan.`
+    )
+  }
+  return issues
+}
+
 type Interval = { index: number; start: number; end: number }
 
 /**
@@ -118,7 +189,6 @@ export function createRequestSchema(ctx: RequestContext) {
       ctx2.addIssue({ code: 'custom', path, message })
 
     const current = now()
-    const today = toWibDate(current)
     const byDate = new Map<string, Interval[]>()
 
     v.occurrences.forEach((o, i) => {
@@ -131,52 +201,8 @@ export function createRequestSchema(ctx: RequestContext) {
       }
       const start = minutesOfDay(o.start_time)
       const end = minutesOfDay(o.end_time)
-      const at = (field: 'date' | 'start_time' | 'end_time', msg: string) =>
-        add(['occurrences', i, field], msg)
-
-      if (start % SLOT_MINUTES !== 0) {
-        at('start_time', `Jam mulai harus kelipatan ${SLOT_MINUTES} menit.`)
-      }
-      if (end % SLOT_MINUTES !== 0) {
-        at('end_time', `Jam selesai harus kelipatan ${SLOT_MINUTES} menit.`)
-      }
-      if (end <= start) {
-        at('end_time', 'Jam selesai harus setelah jam mulai.')
-      } else if (policy) {
-        if (end - start < policy.min_duration_min) {
-          at(
-            'end_time',
-            `Durasi minimal ${formatDuration(policy.min_duration_min)}.`
-          )
-        } else if (end - start > policy.max_duration_min) {
-          at(
-            'end_time',
-            `Durasi maksimal ${formatDuration(policy.max_duration_min)}.`
-          )
-        }
-      }
-      if (policy && room) {
-        const hours = effectiveHours(room, policy)
-        if (start < minutesOfDay(hours.open)) {
-          at('start_time', `Ruang buka mulai pukul ${hours.open} WIB.`)
-        }
-        if (end > minutesOfDay(hours.close)) {
-          at('end_time', `Ruang tutup pukul ${hours.close} WIB.`)
-        }
-      }
-
-      if (o.date < today) {
-        at('date', 'Tanggal sudah lewat.')
-      } else if (
-        Date.parse(toApiDateTime(o.date, o.start_time)) < current.getTime()
-      ) {
-        at('start_time', 'Jam mulai sudah lewat.')
-      }
-      if (policy && o.date > lastBookableDate(policy, current)) {
-        at(
-          'date',
-          `Bisa diajukan maksimal ${policy.max_advance_days} hari ke depan.`
-        )
+      for (const issue of occurrenceIssues(o, { policy, room, now: current })) {
+        add(['occurrences', i, issue.field], issue.message)
       }
 
       if (end > start) {

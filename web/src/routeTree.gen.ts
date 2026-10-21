@@ -14,6 +14,7 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
+import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
@@ -54,6 +55,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
 const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
@@ -160,6 +166,7 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/account': typeof AuthenticatedAccountRoute
+  '/history': typeof AuthenticatedHistoryRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
@@ -182,6 +189,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/account': typeof AuthenticatedAccountRoute
+  '/history': typeof AuthenticatedHistoryRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
@@ -207,6 +215,7 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/account': typeof AuthenticatedAccountRoute
+  '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/rooms': typeof AuthenticatedAdminRoomsRoute
@@ -233,6 +242,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/account'
+    | '/history'
     | '/schedule'
     | '/admin/rooms'
     | '/admin/schedules'
@@ -255,6 +265,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/account'
+    | '/history'
     | '/schedule'
     | '/'
     | '/admin/rooms'
@@ -279,6 +290,7 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/account'
+    | '/_authenticated/history'
     | '/_authenticated/schedule'
     | '/_authenticated/'
     | '/_authenticated/admin/rooms'
@@ -340,6 +352,13 @@ declare module '@tanstack/react-router' {
       path: '/schedule'
       fullPath: '/schedule'
       preLoaderRoute: typeof AuthenticatedScheduleRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/history': {
+      id: '/_authenticated/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof AuthenticatedHistoryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/account': {
@@ -466,6 +485,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
+  AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminRoomsRoute: typeof AuthenticatedAdminRoomsRoute
@@ -482,6 +502,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccountRoute: AuthenticatedAccountRoute,
+  AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminRoomsRoute: AuthenticatedAdminRoomsRoute,

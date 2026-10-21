@@ -11,3 +11,12 @@ export const attendanceRules = {
   /** How long that block lasts. */
   blockDays: 14,
 } as const
+
+// Edit and cancel rules of the owner (brief BR-14, BR-26). The server reads EDIT_CUTOFF_MIN and
+// LATE_CANCEL_HOURS from its env and stays the authority.
+export const bookingChangeRules = {
+  /** The owner may edit until this many minutes before the start. */
+  editCutoffMinutes: 60,
+  /** Cancelling an approved booking closer than this to the start costs a violation point. */
+  lateCancelHours: 2,
+} as const
