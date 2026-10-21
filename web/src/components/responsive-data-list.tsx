@@ -28,6 +28,10 @@ type ResponsiveDataListProps<T> = {
   caption: string
   /** Forces a layout; by default a table from 768 px up and cards below. */
   layout?: 'table' | 'cards'
+  /** Makes rows selectable: click or Enter/Space. Controls in an `actions` column do not trigger it. */
+  onRowClick?: (row: T) => void
+  /** Highlights the selected row. */
+  isRowActive?: (row: T) => boolean
   className?: string
 }
 
@@ -38,10 +42,29 @@ export function ResponsiveDataList<T>({
   rowKey,
   caption,
   layout,
+  onRowClick,
+  isRowActive,
   className,
 }: ResponsiveDataListProps<T>) {
   const isMobile = useIsMobile()
   const mode = layout ?? (isMobile ? 'cards' : 'table')
+
+  const clickable = (row: T) =>
+    onRowClick
+      ? {
+          onClick: () => onRowClick(row),
+          onKeyDown: (e: React.KeyboardEvent) => {
+            if (e.target !== e.currentTarget) return
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onRowClick(row)
+            }
+          },
+          tabIndex: 0,
+          'aria-selected': isRowActive ? isRowActive(row) : undefined,
+        }
+      : {}
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation()
 
   if (mode === 'table') {
     return (
@@ -51,7 +74,7 @@ export function ResponsiveDataList<T>({
         <Table>
           <caption className='sr-only'>{caption}</caption>
           <TableHeader>
-            <TableRow className='hover:bg-transparent'>
+            <TableRow className='bg-subtle hover:bg-subtle'>
               {columns.map((col) => (
                 <TableHead
                   scope='col'
@@ -72,11 +95,21 @@ export function ResponsiveDataList<T>({
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={rowKey(row)}>
+              <TableRow
+                key={rowKey(row)}
+                {...clickable(row)}
+                className={cn(
+                  onRowClick &&
+                    'cursor-pointer outline-none focus-visible:bg-subtle',
+                  isRowActive?.(row) && 'bg-subtle'
+                )}
+              >
                 {columns.map((col) => (
                   <TableCell
                     key={col.key}
                     className={cn('px-5 py-3', col.className)}
+                    onClick={col.actions ? stop : undefined}
+                    onKeyDown={col.actions ? stop : undefined}
                   >
                     {col.cell(row)}
                   </TableCell>
@@ -98,7 +131,13 @@ export function ResponsiveDataList<T>({
       {rows.map((row) => (
         <li
           key={rowKey(row)}
-          className='flex flex-col gap-3 rounded-2xl border bg-card p-4'
+          {...clickable(row)}
+          className={cn(
+            'flex flex-col gap-3 rounded-2xl border bg-card p-4',
+            onRowClick &&
+              'cursor-pointer outline-none focus-visible:border-line-hover',
+            isRowActive?.(row) && 'border-line-hover'
+          )}
         >
           {primary && (
             <div className='type-card-title text-fg'>{primary.cell(row)}</div>
@@ -119,7 +158,11 @@ export function ResponsiveDataList<T>({
             ))}
           </dl>
           {actions.length > 0 && (
-            <div className='flex flex-wrap justify-end gap-2'>
+            <div
+              className='flex flex-wrap justify-end gap-2'
+              onClick={stop}
+              onKeyDown={stop}
+            >
               {actions.map((col) => (
                 <div key={col.key}>{col.cell(row)}</div>
               ))}

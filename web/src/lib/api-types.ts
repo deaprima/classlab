@@ -94,3 +94,5 @@ export type RoomTypeListResponse =
 export type RoomTypePolicy = Schemas['RoomTypePolicy']
 export type Attachment = Schemas['Attachment']
 export type BookingGroupResult = Schemas['BookingGroupResult']
+export type EditBookingRequest =
+  paths['/bookings/{id}']['patch']['requestBody']['content']['application/json']

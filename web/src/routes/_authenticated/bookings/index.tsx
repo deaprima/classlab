@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { createFileRoute } from '@tanstack/react-router'
 import { ACCESS, requireRole } from '@/lib/rbac'
 import { dateParam, positiveIntParam, uuidParam } from '@/lib/search-params'
-import { Bookings } from '@/features/bookings'
+import { BookingsEntry } from '@/features/my-bookings/entry'
 
 const searchSchema = z.object({
   page: positiveIntParam,
@@ -29,5 +29,5 @@ const searchSchema = z.object({
 export const Route = createFileRoute('/_authenticated/bookings/')({
   validateSearch: searchSchema,
   beforeLoad: () => requireRole(ACCESS.viewBookings),
-  component: Bookings,
+  component: BookingsEntry,
 })

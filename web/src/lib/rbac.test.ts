@@ -118,6 +118,7 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
       'Dashboard',
       'Jadwal Ruang',
       'Pengajuan Saya',
+      'Riwayat',
       'Lapor Kerusakan',
     ])
     for (const role of ROLES) {
