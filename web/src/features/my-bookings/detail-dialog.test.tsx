@@ -10,39 +10,10 @@ import { userEvent } from 'vitest/browser'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api-client'
 import { type Booking, type BookingEvent } from '@/lib/api-types'
-import { BookingDetailPage } from './booking-detail-page'
+import { BookingDetailDialog } from './detail-dialog'
 import { makeBooking, POLICIES, slotOn } from './fixtures'
 
 const mocks = vi.hoisted(() => ({ id: 'b1' }))
-
-vi.mock('@tanstack/react-router', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
-  return {
-    ...actual,
-    getRouteApi: () => ({ useParams: () => ({ id: mocks.id }) }),
-    Link: ({
-      to,
-      children,
-      ...props
-    }: {
-      to: string
-      children?: React.ReactNode
-    }) => (
-      <a href={to} {...props}>
-        {children}
-      </a>
-    ),
-  }
-})
-
-vi.mock('@/components/layout/page', () => ({
-  Page: ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div>
-      <h1>{title}</h1>
-      {children}
-    </div>
-  ),
-}))
 
 const originalAdapter = api.defaults.adapter
 
@@ -76,16 +47,26 @@ function serve(
   })
 }
 
-function renderPage() {
+const onEdit = vi.fn()
+const onCancel = vi.fn()
+const onOpenChange = vi.fn()
+
+function renderPage(withChanges = true) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <BookingDetailPage />
+      <BookingDetailDialog
+        id={mocks.id}
+        onOpenChange={onOpenChange}
+        onEdit={withChanges ? onEdit : undefined}
+        onCancel={withChanges ? onCancel : undefined}
+      />
     </QueryClientProvider>
   )
 }
 
-describe('BookingDetailPage', () => {
+describe('BookingDetailDialog', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     mocks.id = 'b1'
     useAuthStore.getState().auth.setSession('token', { ...sampleUser })
   })
@@ -104,7 +85,7 @@ describe('BookingDetailPage', () => {
     )
     const screen = await renderPage()
     await expect
-      .element(screen.getByRole('heading', { name: 'Status Pengajuan' }))
+      .element(screen.getByRole('heading', { name: 'Detail Pengajuan' }))
       .toBeVisible()
     await expect.element(screen.getByText('LAB-RPL-02').first()).toBeVisible()
     await expect
@@ -117,17 +98,29 @@ describe('BookingDetailPage', () => {
     await expect.element(screen.getByText('Ditinjau Kepala Lab')).toBeVisible()
   })
 
-  it('offers edit and cancel to the owner', async () => {
+  it('hands edit and cancel to the page and closes itself', async () => {
     serve(makeBooking({ id: 'b1' }))
     const screen = await renderPage()
-    await expect
-      .element(screen.getByRole('button', { name: 'Ubah Pengajuan' }))
-      .toBeVisible()
     await userEvent.click(
       screen.getByRole('button', { name: 'Batalkan Pengajuan' })
     )
+    expect(onCancel).toHaveBeenCalledWith(expect.objectContaining({ id: 'b1' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Ubah Pengajuan' })
+    )
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 'b1' }))
+  })
+
+  it('only shows the booking when no actions are given', async () => {
+    serve(makeBooking({ id: 'b1' }))
+    const screen = await renderPage(false)
+    await expect.element(screen.getByText('LAB-RPL-02').first()).toBeVisible()
     await expect
-      .element(screen.getByRole('heading', { name: 'Batalkan pengajuan?' }))
+      .element(screen.getByRole('button', { name: 'Ubah Pengajuan' }))
+      .not.toBeInTheDocument()
+    await expect
+      .element(screen.getByRole('button', { name: 'Tutup' }).first())
       .toBeVisible()
   })
 

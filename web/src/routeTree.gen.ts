@@ -29,7 +29,6 @@ import { Route as AuthenticatedApprovalsIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedRoomsIdRouteImport } from './routes/_authenticated/rooms/$id'
 import { Route as AuthenticatedBookingsNewRouteImport } from './routes/_authenticated/bookings/new'
-import { Route as AuthenticatedBookingsIdRouteImport } from './routes/_authenticated/bookings/$id'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminSchedulesRouteImport } from './routes/_authenticated/admin/schedules'
 import { Route as AuthenticatedAdminRoomsRouteImport } from './routes/_authenticated/admin/rooms'
@@ -139,11 +138,6 @@ const AuthenticatedBookingsNewRoute =
     path: '/bookings/new',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedBookingsIdRoute = AuthenticatedBookingsIdRouteImport.update({
-  id: '/bookings/$id',
-  path: '/bookings/$id',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
@@ -177,7 +171,6 @@ export interface FileRoutesByFullPath {
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
-  '/bookings/$id': typeof AuthenticatedBookingsIdRoute
   '/bookings/new': typeof AuthenticatedBookingsNewRoute
   '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -202,7 +195,6 @@ export interface FileRoutesByTo {
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
-  '/bookings/$id': typeof AuthenticatedBookingsIdRoute
   '/bookings/new': typeof AuthenticatedBookingsNewRoute
   '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -229,7 +221,6 @@ export interface FileRoutesById {
   '/_authenticated/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/_authenticated/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
-  '/_authenticated/bookings/$id': typeof AuthenticatedBookingsIdRoute
   '/_authenticated/bookings/new': typeof AuthenticatedBookingsNewRoute
   '/_authenticated/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -256,7 +247,6 @@ export interface FileRouteTypes {
     | '/admin/rooms'
     | '/admin/schedules'
     | '/admin/users'
-    | '/bookings/$id'
     | '/bookings/new'
     | '/rooms/$id'
     | '/settings/appearance'
@@ -281,7 +271,6 @@ export interface FileRouteTypes {
     | '/admin/rooms'
     | '/admin/schedules'
     | '/admin/users'
-    | '/bookings/$id'
     | '/bookings/new'
     | '/rooms/$id'
     | '/settings/appearance'
@@ -307,7 +296,6 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/rooms'
     | '/_authenticated/admin/schedules'
     | '/_authenticated/admin/users'
-    | '/_authenticated/bookings/$id'
     | '/_authenticated/bookings/new'
     | '/_authenticated/rooms/$id'
     | '/_authenticated/settings/appearance'
@@ -471,13 +459,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBookingsNewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/bookings/$id': {
-      id: '/_authenticated/bookings/$id'
-      path: '/bookings/$id'
-      fullPath: '/bookings/$id'
-      preLoaderRoute: typeof AuthenticatedBookingsIdRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
       path: '/admin/users'
@@ -510,7 +491,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoomsRoute: typeof AuthenticatedAdminRoomsRoute
   AuthenticatedAdminSchedulesRoute: typeof AuthenticatedAdminSchedulesRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
-  AuthenticatedBookingsIdRoute: typeof AuthenticatedBookingsIdRoute
   AuthenticatedBookingsNewRoute: typeof AuthenticatedBookingsNewRoute
   AuthenticatedRoomsIdRoute: typeof AuthenticatedRoomsIdRoute
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
@@ -528,7 +508,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoomsRoute: AuthenticatedAdminRoomsRoute,
   AuthenticatedAdminSchedulesRoute: AuthenticatedAdminSchedulesRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
-  AuthenticatedBookingsIdRoute: AuthenticatedBookingsIdRoute,
   AuthenticatedBookingsNewRoute: AuthenticatedBookingsNewRoute,
   AuthenticatedRoomsIdRoute: AuthenticatedRoomsIdRoute,
   AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,

@@ -176,6 +176,15 @@ describe('History (Riwayat)', () => {
       .not.toBeInTheDocument()
   })
 
+  it('opens the detail in a popup when a row is clicked', async () => {
+    serve()
+    const screen = await renderPage()
+    await userEvent.click(screen.getByText('Selesai 1'))
+    await expect
+      .element(screen.getByRole('dialog', { name: 'Detail Pengajuan' }))
+      .toBeVisible()
+  })
+
   it('asks the API for the tab of the URL', async () => {
     mocks.search = { status: 'DITOLAK' }
     const seen = serve()

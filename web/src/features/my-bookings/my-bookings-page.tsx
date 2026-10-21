@@ -22,6 +22,7 @@ import {
   useBookings,
 } from '@/features/bookings/api'
 import { CancelDialog } from './cancel-dialog'
+import { BookingDetailDialog } from './detail-dialog'
 import { EditDialog } from './edit-dialog'
 import { whenShort } from './format'
 import { BookingFacts, RowMenu, StatusTimeline } from './parts'
@@ -63,6 +64,7 @@ export function MyBookings() {
   const bookings = useBookings({ mine: true, from, per_page: 100 })
   const [editing, setEditing] = useState<Booking | null>(null)
   const [cancelling, setCancelling] = useState<Booking | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
 
   const tab = tabOf(search.status)
   const all = (bookings.data?.data ?? [])
@@ -73,11 +75,11 @@ export function MyBookings() {
   const selectedId = search.booking ?? shown[0]?.id
 
   const select = (booking: Booking) => {
-    // Beside the list there is a detail panel; on a narrow screen the row opens the full page.
+    // Beside the list there is a detail panel; on a narrow screen the row opens the popup.
     if (wide) {
       navigate({ search: (prev) => ({ ...prev, booking: booking.id }) })
     } else {
-      navigate({ to: '/bookings/$id', params: { id: booking.id } })
+      setDetailId(booking.id)
     }
   }
 
@@ -119,6 +121,7 @@ export function MyBookings() {
           booking={b}
           now={now}
           withChanges
+          onDetail={wide ? undefined : (b) => setDetailId(b.id)}
           onEdit={setEditing}
           onCancel={setCancelling}
         />
@@ -212,6 +215,12 @@ export function MyBookings() {
         </div>
       )}
 
+      <BookingDetailDialog
+        id={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+        onEdit={setEditing}
+        onCancel={setCancelling}
+      />
       <EditDialog
         booking={editing}
         onOpenChange={(o) => !o && setEditing(null)}
@@ -255,33 +264,30 @@ function SidePanel({
         <>
           <div className='flex items-start justify-between gap-3'>
             <div className='min-w-0'>
-              <p className='type-section text-fg'>{b.room.code}</p>
-              <p className='type-body text-fg-secondary'>{b.purpose}</p>
+              <p className='truncate type-card-title text-fg'>{b.room.code}</p>
+              <p className='type-body-sm text-fg-secondary'>{b.purpose}</p>
             </div>
             <BookingStatusBadge status={b.status} />
           </div>
           <BookingFacts booking={b} />
           <div className='border-t pt-4'>
             <p className='mb-3 type-overline text-fg-secondary'>Status</p>
-            <StatusTimeline booking={b} events={events.data ?? []} />
+            <StatusTimeline booking={b} events={events.data ?? []} stackMeta />
           </div>
-          <div className='flex flex-col gap-2'>
-            {canEdit(b, now) && (
-              <Button variant='secondary' onClick={() => onEdit(b)}>
-                Ubah Pengajuan
-              </Button>
-            )}
-            {canCancel(b, now) && (
-              <Button variant='secondary' onClick={() => onCancel(b)}>
-                Batalkan Pengajuan
-              </Button>
-            )}
-            <Button variant='ghost' asChild>
-              <Link to='/bookings/$id' params={{ id: b.id }}>
-                Lihat detail
-              </Link>
-            </Button>
-          </div>
+          {(canEdit(b, now) || canCancel(b, now)) && (
+            <div className='flex flex-col gap-2 border-t pt-4'>
+              {canEdit(b, now) && (
+                <Button variant='secondary' onClick={() => onEdit(b)}>
+                  Ubah Pengajuan
+                </Button>
+              )}
+              {canCancel(b, now) && (
+                <Button variant='secondary' onClick={() => onCancel(b)}>
+                  Batalkan Pengajuan
+                </Button>
+              )}
+            </div>
+          )}
         </>
       )}
     </aside>

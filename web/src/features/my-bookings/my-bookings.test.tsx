@@ -225,21 +225,25 @@ describe('MyBookings (Pengajuan Saya)', () => {
       .toBeVisible()
   })
 
-  it('offers edit and cancel in the row menu of a changeable request, only the detail otherwise', async () => {
+  it('offers edit and cancel in the row menu of a changeable request, and no menu for the others', async () => {
     serve([waiting, refused])
     const screen = await renderPage()
     await userEvent.click(
       screen.getByRole('button', { name: /^Aksi LAB-RPL-02/ }).first()
     )
     await expect
-      .element(screen.getByRole('menuitem', { name: 'Lihat detail' }))
-      .toBeVisible()
-    await expect
       .element(screen.getByRole('menuitem', { name: 'Ubah' }))
       .toBeVisible()
     await expect
       .element(screen.getByRole('menuitem', { name: 'Batalkan' }))
       .toBeVisible()
+    // The detail is beside the list, and a refused request has nothing to change.
+    await expect
+      .element(screen.getByRole('menuitem', { name: 'Lihat detail' }))
+      .not.toBeInTheDocument()
+    await expect
+      .element(screen.getByRole('button', { name: /^Aksi LAB-RPL-02, .*/ }))
+      .toHaveLength(1)
   })
 
   it('opens the edit dialog from the row menu', async () => {
@@ -263,7 +267,7 @@ describe('MyBookings (Pengajuan Saya)', () => {
       .toHaveAttribute('href', '/schedule')
   })
 
-  it('opens the full page instead of a side panel on a narrow screen', async () => {
+  it('opens a popup instead of a side panel on a narrow screen', async () => {
     mocks.wide = false
     serve([waiting])
     const screen = await renderPage()
@@ -271,9 +275,23 @@ describe('MyBookings (Pengajuan Saya)', () => {
       .element(screen.getByRole('complementary', { name: 'Detail pengajuan' }))
       .not.toBeInTheDocument()
     await userEvent.click(screen.getByText('Praktikum Basis Data').first())
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/bookings/$id',
-      params: { id: 'w1' },
-    })
+    await expect
+      .element(screen.getByRole('heading', { name: 'Detail Pengajuan' }))
+      .toBeVisible()
+  })
+
+  it('opens the detail popup from the row menu on a narrow screen', async () => {
+    mocks.wide = false
+    serve([waiting])
+    const screen = await renderPage()
+    await userEvent.click(
+      screen.getByRole('button', { name: /^Aksi LAB-RPL-02/ }).first()
+    )
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Lihat detail' })
+    )
+    await expect
+      .element(screen.getByRole('dialog', { name: 'Detail Pengajuan' }))
+      .toBeVisible()
   })
 })

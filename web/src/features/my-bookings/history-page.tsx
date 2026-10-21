@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
 import { AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getErrorMessage } from '@/lib/api-error'
@@ -24,6 +25,7 @@ import { SegmentedControl } from '@/components/segmented-control'
 import { StatCard } from '@/components/stat-card'
 import { BookingStatusBadge } from '@/components/status-badge'
 import { useBookings } from '@/features/bookings/api'
+import { BookingDetailDialog } from './detail-dialog'
 import { whenShort } from './format'
 import { RowMenu } from './parts'
 
@@ -69,6 +71,7 @@ export function History() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const now = useNow()
+  const [detailId, setDetailId] = useState<string | null>(null)
   const today = todayWib(now)
   const months = recentMonths(today)
   const month =
@@ -142,7 +145,14 @@ export function History() {
       header: 'Aksi',
       actions: true,
       className: 'w-12 text-end',
-      cell: (b) => <RowMenu booking={b} now={now} withChanges={false} />,
+      cell: (b) => (
+        <RowMenu
+          booking={b}
+          now={now}
+          withChanges={false}
+          onDetail={(row) => setDetailId(row.id)}
+        />
+      ),
     },
   ]
 
@@ -230,6 +240,7 @@ export function History() {
               rows={rows}
               columns={columns}
               rowKey={(b) => b.id}
+              onRowClick={(b) => setDetailId(b.id)}
             />
             <nav
               aria-label='Halaman'
@@ -260,6 +271,10 @@ export function History() {
           </>
         )}
       </section>
+      <BookingDetailDialog
+        id={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+      />
     </Page>
   )
 }

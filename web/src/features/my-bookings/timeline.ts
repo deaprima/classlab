@@ -10,6 +10,7 @@ type TimelineStep = {
   /** Right-aligned note, usually a time. */
   meta?: string
   state: StepState
+  tone?: 'error'
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -106,6 +107,7 @@ export function buildTimeline(
             ? formatDateTime(booking.decided_at)
             : undefined,
           state: 'done',
+          tone: 'error',
         }
       )
       break
@@ -145,6 +147,7 @@ export function buildTimeline(
         title: 'Tidak hadir',
         description: 'Check-in tidak dilakukan dalam jendela waktu',
         state: 'done',
+        tone: 'error',
       })
       break
     case 'TANPA_CHECKOUT':
@@ -153,6 +156,7 @@ export function buildTimeline(
         title: 'Tanpa check-out',
         description: 'Check-out tidak dilakukan setelah selesai',
         state: 'done',
+        tone: 'error',
       })
       break
     case 'DIBATALKAN':

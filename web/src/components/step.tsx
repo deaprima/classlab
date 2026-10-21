@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type StepState = 'done' | 'current' | 'upcoming'
@@ -11,6 +11,10 @@ type StepProps = {
   meta?: React.ReactNode
   /** Draws the connector to the next step. */
   hasNext?: boolean
+  /** Puts the note under the title instead of beside it, for narrow containers. */
+  stackMeta?: boolean
+  /** A refusal or a miss: red marker and text. */
+  tone?: 'error'
 }
 
 const MARKER: Record<StepState, string> = {
@@ -20,7 +24,16 @@ const MARKER: Record<StepState, string> = {
 }
 
 /** Figma `Stepper Step` / `Timeline Step`: marker, connector, title and note. Render inside an <ol>. */
-export function Step({ state, title, description, meta, hasNext }: StepProps) {
+export function Step({
+  state,
+  title,
+  description,
+  meta,
+  hasNext,
+  stackMeta,
+  tone,
+}: StepProps) {
+  const error = tone === 'error'
   return (
     <li
       data-slot='step'
@@ -32,10 +45,12 @@ export function Step({ state, title, description, meta, hasNext }: StepProps) {
         <span
           className={cn(
             'flex size-6 shrink-0 items-center justify-center rounded-full',
-            MARKER[state]
+            error ? 'bg-fg-error text-surface' : MARKER[state]
           )}
         >
-          {state === 'done' ? (
+          {error ? (
+            <X aria-hidden className='size-3.5' />
+          ) : state === 'done' ? (
             <Check aria-hidden className='size-3.5' />
           ) : (
             <span
@@ -62,16 +77,23 @@ export function Step({ state, title, description, meta, hasNext }: StepProps) {
           <p
             className={cn(
               'type-card-title',
-              state === 'upcoming' ? 'text-fg-tertiary' : 'text-fg'
+              error
+                ? 'text-fg-error'
+                : state === 'upcoming'
+                  ? 'text-fg-tertiary'
+                  : 'text-fg'
             )}
           >
             {title}
           </p>
+          {stackMeta && meta && (
+            <p className='type-label-sm text-fg-secondary'>{meta}</p>
+          )}
           {description && (
             <p className='type-body-sm text-fg-secondary'>{description}</p>
           )}
         </div>
-        {meta && (
+        {!stackMeta && meta && (
           <p className='shrink-0 type-label text-fg-secondary'>{meta}</p>
         )}
       </div>

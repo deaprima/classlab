@@ -13,7 +13,7 @@ export type PillStatus =
   | 'Diproses'
   | 'Selesai'
 
-// No green, blue or red: state is carried by ink, outline and the single orange accent.
+// No green or blue: state is carried by ink, outline and the orange accent; red marks what was refused or missed.
 const PILL_STYLE: Record<PillStatus, { pill: string; dot: string }> = {
   Tersedia: { pill: 'border border-line bg-surface text-fg', dot: 'bg-fg' },
   Digunakan: { pill: 'bg-inverse text-fg-inverse', dot: 'bg-fg-inverse' },
@@ -23,7 +23,7 @@ const PILL_STYLE: Record<PillStatus, { pill: string; dot: string }> = {
   Menunggu: { pill: 'bg-accent-subtle text-fg-accent', dot: 'bg-indicator' },
   Diproses: { pill: 'bg-accent-subtle text-fg-accent', dot: 'bg-indicator' },
   Terbatas: { pill: 'bg-muted text-fg-secondary', dot: 'bg-fg-secondary' },
-  Ditolak: { pill: 'bg-muted text-fg', dot: 'bg-fg' },
+  Ditolak: { pill: 'bg-error-subtle text-fg-error', dot: 'bg-fg-error' },
   Diterima: {
     pill: 'border border-line-strong bg-surface text-fg',
     dot: 'bg-fg',
