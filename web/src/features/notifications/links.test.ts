@@ -35,7 +35,7 @@ describe('notificationTarget', () => {
   it('has no target without a reference or a page the role can open', () => {
     expect(
       notificationTarget(
-        { type: 'X', ref_type: undefined, ref_id: undefined },
+        { type: 'BOOKING_APPROVED', ref_type: undefined, ref_id: undefined },
         'OB'
       )
     ).toBeNull()

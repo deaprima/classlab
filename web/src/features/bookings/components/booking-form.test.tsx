@@ -162,7 +162,7 @@ describe('BookingForm', () => {
         screen.getByText('Ruang sudah terpakai pada rentang waktu tersebut.')
       )
       .toBeInTheDocument()
-    await expect.element(screen.getByText(/09:00–11:00/)).toBeInTheDocument()
+    await expect.element(screen.getByText(/09:00 – 11:00/)).toBeInTheDocument()
     await expect
       .element(screen.getByText(/Peminjaman disetujui/))
       .toBeInTheDocument()

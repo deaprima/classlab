@@ -39,13 +39,13 @@ export function useReport(id: string | undefined) {
  * <img src> cannot load it directly. It is fetched as a blob and shown as a data URL.
  */
 export function useReportPhoto(
-  report: Pick<DamageReport, 'id' | 'photo_path'> | undefined
+  report: Pick<DamageReport, 'attachment_id'> | undefined
 ) {
-  const id = report?.photo_path ? report.id : undefined
+  const id = report?.attachment_id ?? undefined
   const blob = useQuery({
     queryKey: queryKeys.reports.photo(id ?? ''),
     queryFn: async () =>
-      (await api.get<Blob>(`/reports/${id}/photo`, { responseType: 'blob' }))
+      (await api.get<Blob>(`/attachments/${id}`, { responseType: 'blob' }))
         .data,
     enabled: !!id,
     staleTime: Infinity,

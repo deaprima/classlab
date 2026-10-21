@@ -58,15 +58,15 @@ export function formatDateTime(value: DateInput): string {
   return `${formatDateShort(value)}, ${formatTime(value)}`
 }
 
-/** "08:00–10:00", or with the date when the range crosses midnight. */
+/** "08:00 – 10:00", or with the date when the range crosses midnight. */
 export function formatTimeRange(start: DateInput, end: DateInput): string {
   if (toWibDate(start) === toWibDate(end)) {
-    return `${formatTime(start)}–${formatTime(end)}`
+    return `${formatTime(start)} – ${formatTime(end)}`
   }
   return `${formatDateTime(start)} – ${formatDateTime(end)}`
 }
 
-/** "Sel, 20 Okt 2026, 08:00–10:00" */
+/** "Sel, 20 Okt 2026, 08:00 – 10:00" */
 export function formatSlot(start: DateInput, end: DateInput): string {
   if (toWibDate(start) === toWibDate(end)) {
     return `${formatDateShort(start)}, ${formatTimeRange(start, end)}`
@@ -136,4 +136,41 @@ export function formatRelative(
   if (abs < 7 * 86400)
     return relativeFormat.format(Math.round(seconds / 86400), 'day')
   return formatDateTime(value)
+}
+
+const dayFormat = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'UTC',
+  day: 'numeric',
+})
+const weekdayFormat = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'UTC',
+  weekday: 'short',
+})
+const monthFormat = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'UTC',
+  month: 'short',
+})
+
+/** Day number, short weekday and short month of a WIB calendar date (YYYY-MM-DD): "20", "Sel", "Okt". */
+export function dateParts(date: string): {
+  day: string
+  weekday: string
+  month: string
+} {
+  // A bare date is a calendar day, not an instant: format its UTC midnight in UTC so the browser's
+  // time zone cannot shift it.
+  const d = new Date(`${date}T00:00:00Z`)
+  return {
+    day: dayFormat.format(d),
+    weekday: weekdayFormat.format(d),
+    month: monthFormat.format(d),
+  }
+}
+
+/** "2 jam", "30 menit", "1 jam 30 menit" for a length in minutes. */
+export function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m} menit`
+  return m === 0 ? `${h} jam` : `${h} jam ${m} menit`
 }

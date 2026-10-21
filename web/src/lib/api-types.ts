@@ -88,3 +88,6 @@ export type UpdateUserRequest =
   paths['/users/{id}']['patch']['requestBody']['content']['application/json']
 export type ResetPasswordResponse =
   paths['/users/{id}/reset-password']['post']['responses']['200']['content']['application/json']
+
+export type RoomTypeListResponse =
+  paths['/room-types']['get']['responses']['200']['content']['application/json']

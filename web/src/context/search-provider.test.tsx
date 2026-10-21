@@ -80,7 +80,7 @@ describe('SearchProvider and CommandMenu', () => {
     await expect.element(getByText('Terang')).toBeInTheDocument()
     await expect.element(getByText('Gelap')).toBeInTheDocument()
     await expect.element(getByText('Sistem')).toBeInTheDocument()
-    await expect.element(getByText('Ketersediaan Ruang')).toBeInTheDocument()
+    await expect.element(getByText('Dashboard')).toBeInTheDocument()
   })
 
   it('does not show the dialog content when search is closed', async () => {
@@ -116,7 +116,7 @@ describe('SearchProvider and CommandMenu', () => {
 
     await openCommandPalette(screen)
 
-    await userEvent.click(screen.getByText('Laporan Kerusakan'))
+    await userEvent.click(screen.getByText('Lapor Kerusakan'))
 
     expect(mocks.navigate).toHaveBeenCalledWith({ to: '/reports' })
     await expect
@@ -130,13 +130,13 @@ describe('SearchProvider and CommandMenu', () => {
     await openCommandPalette(screen)
 
     await expect
-      .element(screen.getByRole('option', { name: 'Ajukan Peminjaman' }))
+      .element(screen.getByRole('option', { name: 'Ajukan Ruang' }))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByRole('option', { name: 'Persetujuan' }))
+      .element(screen.getByRole('option', { name: 'Approval' }))
       .not.toBeInTheDocument()
     await expect
-      .element(screen.getByRole('option', { name: 'Kelola Pengguna' }))
+      .element(screen.getByRole('option', { name: 'Pengguna' }))
       .not.toBeInTheDocument()
   })
 

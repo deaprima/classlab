@@ -1,12 +1,4 @@
 import { useSearch } from '@tanstack/react-router'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { AuthLayout } from '../auth-layout'
 import { UserAuthForm } from './components/user-auth-form'
 
@@ -15,26 +7,15 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <Card className='max-w-sm gap-4'>
-        <CardHeader>
-          <CardTitle className='text-lg tracking-tight'>
-            Masuk ke ClassLab
-          </CardTitle>
-          <CardDescription>
-            Gunakan NIM atau NIP yang telah terdaftar oleh administrator program
-            studi.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <UserAuthForm redirectTo={redirect} />
-        </CardContent>
-        <CardFooter>
-          <p className='px-4 text-center text-xs text-muted-foreground'>
-            Sistem Peminjaman Ruang Kelas dan Laboratorium Kampus (MVP Rumpun
-            TI).
+      <div className='flex flex-col gap-6 rounded-3xl border bg-card p-6 sm:p-8'>
+        <div className='flex flex-col gap-1'>
+          <h1 className='type-page-title text-fg'>Masuk ke ClassLab</h1>
+          <p className='type-body text-fg-secondary'>
+            Gunakan NIM atau NIP kamu. Akun dibuat oleh TU kampus.
           </p>
-        </CardFooter>
-      </Card>
+        </div>
+        <UserAuthForm redirectTo={redirect} />
+      </div>
     </AuthLayout>
   )
 }

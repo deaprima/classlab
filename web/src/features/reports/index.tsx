@@ -191,7 +191,7 @@ export function Reports() {
                 <TableCell className='max-w-80'>
                   <span className='flex items-center gap-2'>
                     <span className='truncate'>{r.description}</span>
-                    {r.photo_path && (
+                    {r.attachment_id && (
                       <Camera
                         className='size-4 shrink-0 text-muted-foreground'
                         aria-label='Ada foto'

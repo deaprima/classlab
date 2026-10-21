@@ -99,7 +99,7 @@ function ReportInfo({ report }: { report: ReportDetail }) {
           {report.description}
         </dd>
       </dl>
-      {report.photo_path && <ReportPhoto report={report} />}
+      {report.attachment_id && <ReportPhoto report={report} />}
       <EventTrail report={report} />
     </div>
   )

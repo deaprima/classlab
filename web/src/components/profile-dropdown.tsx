@@ -5,7 +5,6 @@ import { ROLE_LABELS } from '@/lib/rbac'
 import { getDisplayNameInitials } from '@/lib/utils'
 import useDialogState from '@/hooks/use-dialog-state'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,17 +24,25 @@ export function ProfileDropdown() {
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant='ghost'
-            className='relative h-8 w-8 rounded-full'
+          <button
+            type='button'
+            className='flex h-10 items-center gap-2 rounded-full border bg-surface ps-1 pe-1 outline-none hover:border-line-hover focus-visible:ring-2 focus-visible:ring-ring sm:pe-4'
             aria-label='Menu akun'
           >
-            <Avatar className='h-8 w-8'>
-              <AvatarFallback>
+            <Avatar className='size-8'>
+              <AvatarFallback className='bg-primary type-label-sm text-primary-foreground'>
                 {getDisplayNameInitials(user.name)}
               </AvatarFallback>
             </Avatar>
-          </Button>
+            <span className='hidden min-w-0 flex-col text-start sm:flex'>
+              <span className='max-w-32 truncate type-label text-fg'>
+                {user.name}
+              </span>
+              <span className='type-label-sm text-fg-secondary'>
+                {ROLE_LABELS[user.role]}
+              </span>
+            </span>
+          </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className='w-56' align='end' forceMount>
           <DropdownMenuLabel className='font-normal'>
@@ -54,7 +61,7 @@ export function ProfileDropdown() {
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant='destructive' onClick={() => setOpen(true)}>
+          <DropdownMenuItem onClick={() => setOpen(true)}>
             <LogOut />
             Keluar
           </DropdownMenuItem>

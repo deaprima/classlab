@@ -33,6 +33,8 @@ const ROOM: Room = {
   capacity: 30,
   facilities: ['Proyektor', 'AC'],
   is_active: true,
+  open_time: '07:00',
+  close_time: '21:00',
 }
 
 function wrap(ui: React.ReactNode) {
@@ -141,10 +143,10 @@ describe('admin dialogs', () => {
       .element(screen.getByText('Jadwal bentrok.'))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByText(/Sen, 26 Okt 2026, 08:00–10:00/))
+      .element(screen.getByText(/Sen, 26 Okt 2026, 08:00 – 10:00/))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByText(/Sen, 2 Nov 2026, 09:00–11:00/))
+      .element(screen.getByText(/Sen, 2 Nov 2026, 09:00 – 11:00/))
       .toBeInTheDocument()
     expect(bodies[0]).toMatchObject({
       room_id: ROOM.id,
