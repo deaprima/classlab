@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { LogOut, Palette } from 'lucide-react'
+import { BookOpen, LogOut, UserRound } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
-import { ROLE_LABELS } from '@/lib/rbac'
+import { ACCESS, ROLE_LABELS, hasRole } from '@/lib/rbac'
 import { getDisplayNameInitials } from '@/lib/utils'
 import useDialogState from '@/hooks/use-dialog-state'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -55,11 +55,19 @@ export function ProfileDropdown() {
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link to='/settings/appearance'>
-              <Palette />
-              Tampilan
+            <Link to='/account'>
+              <UserRound />
+              Akun Saya
             </Link>
           </DropdownMenuItem>
+          {hasRole(user, ACCESS.createBooking) && (
+            <DropdownMenuItem asChild>
+              <Link to='/guide'>
+                <BookOpen />
+                Panduan
+              </Link>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setOpen(true)}>
             <LogOut />

@@ -20,3 +20,18 @@ export const bookingChangeRules = {
   /** Cancelling an approved booking closer than this to the start costs a violation point. */
   lateCancelHours: 2,
 } as const
+
+// Violation points (brief BR-14), booking quota (BR-15) and pending expiry (BR-22). Same story as
+// above: the server reads POINTS_*, VIOLATION_WINDOW_DAYS, MAX_ACTIVE_BOOKINGS(_ORG) and
+// PENDING_TTL_HOURS from its env and stays the authority; the guide page only explains them.
+export const violationRules = {
+  pointsNoShow: 2,
+  pointsNoCheckout: 1,
+  pointsLateCancel: 1,
+  /** Points count for this many days, unless an admin annuls them. */
+  windowDays: 30,
+  maxActiveBookings: 2,
+  maxActiveBookingsOrganization: 5,
+  pendingExpiryHours: 24,
+  photoRetentionDays: 60,
+} as const
