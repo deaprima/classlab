@@ -37,11 +37,7 @@ export function Page({
         <NotificationBell />
         <ProfileDropdown />
       </Header>
-      <Main
-        id='content'
-        tabIndex={-1}
-        className={cn('outline-none', actions && 'max-md:pb-28')}
-      >
+      <Main id='content' tabIndex={-1} className='outline-none'>
         <div
           className={cn(
             'mb-5 flex flex-wrap items-end justify-between gap-4',
@@ -63,6 +59,7 @@ export function Page({
           </div>
           {actions && (
             <div
+              data-slot='page-actions'
               className={cn(
                 'flex flex-wrap gap-2',
                 // Mobile: a sticky action bar (Check-in mobile frame in Figma) that clears the iOS home bar.

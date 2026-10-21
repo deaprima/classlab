@@ -55,6 +55,8 @@ export function ReasonDialog({
   confirmText,
   required,
   isPending,
+  label = 'Alasan',
+  placeholder,
   onSubmit,
 }: {
   open: boolean
@@ -64,6 +66,9 @@ export function ReasonDialog({
   confirmText: string
   required: boolean
   isPending: boolean
+  /** Field label; "(opsional)" is added when the reason is not required. */
+  label?: string
+  placeholder?: string
   onSubmit: (reason: string) => void
 }) {
   const schema = useMemo(() => reasonSchema(required), [required])
@@ -96,9 +101,17 @@ export function ReasonDialog({
               name='reason'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Alasan{required ? '' : ' (opsional)'}</FormLabel>
+                  <FormLabel>
+                    {label}
+                    {required ? '' : ' (opsional)'}
+                  </FormLabel>
                   <FormControl>
-                    <Textarea rows={3} maxLength={REASON_MAX} {...field} />
+                    <Textarea
+                      rows={3}
+                      maxLength={REASON_MAX}
+                      placeholder={placeholder}
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

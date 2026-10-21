@@ -220,7 +220,7 @@ try {
       if (!ok) failures.push(`${viewport.name} ${path}`)
       if (SHOTS) {
         const file = `${viewport.name}${path.replace(/[^a-z0-9]+/gi, '_')}.png`
-        await page.screenshot({ path: `${SHOTS}/${file}` })
+        await page.screenshot({ path: `${SHOTS}/${file}`, fullPage: !!process.env.SMOKE_FULL })
       }
       await context.close()
     }
