@@ -98,7 +98,6 @@ export type EditBookingRequest =
   paths['/bookings/{id}']['patch']['requestBody']['content']['application/json']
 
 export type CheckoutCondition = Schemas['CheckoutCondition']
-export type PreviousCheckout = Schemas['PreviousCheckout']
 export type CheckInResult = Schemas['CheckInResult']
 export type CheckOutResult = Schemas['CheckOutResult']
 

@@ -9,7 +9,7 @@ export const CONDITION_LABELS: Record<CheckoutCondition, string> = {
 }
 
 /** Why a check-in did not go through, in the four cases the Figma frames show (DESIGN.md). */
-export type CheckInProblem =
+type CheckInProblem =
   | { kind: 'qr-invalid' }
   | { kind: 'outside-window'; opensAt: string; closesAt: string }
   /** Nothing approved for this person in this room right now (someone else's booking, or none). */
@@ -35,7 +35,7 @@ export function classifyCheckInError(error: unknown): CheckInProblem {
   return { kind: 'other', message: getErrorMessage(error) }
 }
 
-export type CheckoutDraft = {
+type CheckoutDraft = {
   condition: CheckoutCondition | null
   note: string
   photo: Blob | null

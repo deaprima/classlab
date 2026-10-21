@@ -1,13 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ACCESS, requireRole } from '@/lib/rbac'
-import { CheckOut } from '@/features/attendance/check-out-page'
+import { CheckOutPage } from '@/features/attendance/pages'
 
 export const Route = createFileRoute('/_authenticated/check-out/$id')({
   beforeLoad: () => requireRole(ACCESS.createBooking),
-  component: CheckOutRoute,
+  component: CheckOutPage,
 })
-
-function CheckOutRoute() {
-  const { id } = Route.useParams()
-  return <CheckOut bookingId={id} />
-}
