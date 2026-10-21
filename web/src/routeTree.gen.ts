@@ -15,6 +15,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
+import { Route as AuthenticatedCheckInRouteImport } from './routes/_authenticated/check-in'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
@@ -28,6 +29,7 @@ import { Route as AuthenticatedBookingsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedApprovalsIndexRouteImport } from './routes/_authenticated/approvals/index'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedRoomsIdRouteImport } from './routes/_authenticated/rooms/$id'
+import { Route as AuthenticatedCheckOutIdRouteImport } from './routes/_authenticated/check-out/$id'
 import { Route as AuthenticatedBookingsNewRouteImport } from './routes/_authenticated/bookings/new'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminSchedulesRouteImport } from './routes/_authenticated/admin/schedules'
@@ -60,6 +62,11 @@ const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
 const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
   id: '/history',
   path: '/history',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCheckInRoute = AuthenticatedCheckInRouteImport.update({
+  id: '/check-in',
+  path: '/check-in',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
@@ -132,6 +139,11 @@ const AuthenticatedRoomsIdRoute = AuthenticatedRoomsIdRouteImport.update({
   path: '/rooms/$id',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCheckOutIdRoute = AuthenticatedCheckOutIdRouteImport.update({
+  id: '/check-out/$id',
+  path: '/check-out/$id',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedBookingsNewRoute =
   AuthenticatedBookingsNewRouteImport.update({
     id: '/bookings/new',
@@ -166,12 +178,14 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/account': typeof AuthenticatedAccountRoute
+  '/check-in': typeof AuthenticatedCheckInRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/bookings/new': typeof AuthenticatedBookingsNewRoute
+  '/check-out/$id': typeof AuthenticatedCheckOutIdRoute
   '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/approvals/': typeof AuthenticatedApprovalsIndexRoute
@@ -189,6 +203,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/account': typeof AuthenticatedAccountRoute
+  '/check-in': typeof AuthenticatedCheckInRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/': typeof AuthenticatedIndexRoute
@@ -196,6 +211,7 @@ export interface FileRoutesByTo {
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/bookings/new': typeof AuthenticatedBookingsNewRoute
+  '/check-out/$id': typeof AuthenticatedCheckOutIdRoute
   '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/approvals': typeof AuthenticatedApprovalsIndexRoute
@@ -215,6 +231,7 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/account': typeof AuthenticatedAccountRoute
+  '/_authenticated/check-in': typeof AuthenticatedCheckInRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -222,6 +239,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/bookings/new': typeof AuthenticatedBookingsNewRoute
+  '/_authenticated/check-out/$id': typeof AuthenticatedCheckOutIdRoute
   '/_authenticated/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/_authenticated/approvals/': typeof AuthenticatedApprovalsIndexRoute
@@ -242,12 +260,14 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/account'
+    | '/check-in'
     | '/history'
     | '/schedule'
     | '/admin/rooms'
     | '/admin/schedules'
     | '/admin/users'
     | '/bookings/new'
+    | '/check-out/$id'
     | '/rooms/$id'
     | '/settings/appearance'
     | '/approvals/'
@@ -265,6 +285,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/account'
+    | '/check-in'
     | '/history'
     | '/schedule'
     | '/'
@@ -272,6 +293,7 @@ export interface FileRouteTypes {
     | '/admin/schedules'
     | '/admin/users'
     | '/bookings/new'
+    | '/check-out/$id'
     | '/rooms/$id'
     | '/settings/appearance'
     | '/approvals'
@@ -290,6 +312,7 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/account'
+    | '/_authenticated/check-in'
     | '/_authenticated/history'
     | '/_authenticated/schedule'
     | '/_authenticated/'
@@ -297,6 +320,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/schedules'
     | '/_authenticated/admin/users'
     | '/_authenticated/bookings/new'
+    | '/_authenticated/check-out/$id'
     | '/_authenticated/rooms/$id'
     | '/_authenticated/settings/appearance'
     | '/_authenticated/approvals/'
@@ -359,6 +383,13 @@ declare module '@tanstack/react-router' {
       path: '/history'
       fullPath: '/history'
       preLoaderRoute: typeof AuthenticatedHistoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/check-in': {
+      id: '/_authenticated/check-in'
+      path: '/check-in'
+      fullPath: '/check-in'
+      preLoaderRoute: typeof AuthenticatedCheckInRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/account': {
@@ -452,6 +483,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRoomsIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/check-out/$id': {
+      id: '/_authenticated/check-out/$id'
+      path: '/check-out/$id'
+      fullPath: '/check-out/$id'
+      preLoaderRoute: typeof AuthenticatedCheckOutIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/bookings/new': {
       id: '/_authenticated/bookings/new'
       path: '/bookings/new'
@@ -485,6 +523,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
+  AuthenticatedCheckInRoute: typeof AuthenticatedCheckInRoute
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -492,6 +531,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminSchedulesRoute: typeof AuthenticatedAdminSchedulesRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedBookingsNewRoute: typeof AuthenticatedBookingsNewRoute
+  AuthenticatedCheckOutIdRoute: typeof AuthenticatedCheckOutIdRoute
   AuthenticatedRoomsIdRoute: typeof AuthenticatedRoomsIdRoute
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
   AuthenticatedApprovalsIndexRoute: typeof AuthenticatedApprovalsIndexRoute
@@ -502,6 +542,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccountRoute: AuthenticatedAccountRoute,
+  AuthenticatedCheckInRoute: AuthenticatedCheckInRoute,
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
@@ -509,6 +550,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminSchedulesRoute: AuthenticatedAdminSchedulesRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedBookingsNewRoute: AuthenticatedBookingsNewRoute,
+  AuthenticatedCheckOutIdRoute: AuthenticatedCheckOutIdRoute,
   AuthenticatedRoomsIdRoute: AuthenticatedRoomsIdRoute,
   AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
   AuthenticatedApprovalsIndexRoute: AuthenticatedApprovalsIndexRoute,

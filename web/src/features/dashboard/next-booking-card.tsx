@@ -1,7 +1,7 @@
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { attendanceRules } from '@/config/attendance-rules'
 import { Check, LogOut } from 'lucide-react'
-import { toast } from 'sonner'
 import { type Booking } from '@/lib/api-types'
 import { formatDateShort, formatTimeRange } from '@/lib/datetime'
 import { Button } from '@/components/ui/button'
@@ -56,18 +56,19 @@ export function NextBookingCard({ booking, now }: NextBookingCardProps) {
           <Check />
           Check-in
         </Button>
-        <Button
-          variant='secondary'
-          disabled={!state.canCheckOut}
-          onClick={() =>
-            toast.info(
-              'Check-out dengan foto kamera belum tersedia di versi ini.'
-            )
-          }
-        >
-          <LogOut />
-          Check-out
-        </Button>
+        {state.canCheckOut ? (
+          <Button variant='secondary' asChild>
+            <Link to='/check-out/$id' params={{ id: booking.id }}>
+              <LogOut />
+              Check-out
+            </Link>
+          </Button>
+        ) : (
+          <Button variant='secondary' disabled>
+            <LogOut />
+            Check-out
+          </Button>
+        )}
         <p className='type-body-sm text-fg-secondary sm:ms-auto'>
           Scan QR di pintu ruang · dibuka {attendanceRules.checkInEarlyMinutes}{' '}
           menit sebelum
