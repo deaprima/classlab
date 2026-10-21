@@ -17,7 +17,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { SignOutDialog } from '@/components/sign-out-dialog'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { useUnreadCount } from '@/features/notifications/api'
 import { navGroupsForRole } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
@@ -52,7 +52,7 @@ export function AppSidebar() {
         <AccountGroup />
       </SidebarContent>
       <SidebarFooter className='px-4 pb-6'>
-        <ThemeSwitch />
+        <ThemeToggle />
       </SidebarFooter>
     </Sidebar>
   )
