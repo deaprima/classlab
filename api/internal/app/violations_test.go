@@ -65,11 +65,20 @@ func TestListViolations(t *testing.T) {
 		t.Errorf("page 2 = %d items (meta %v); want 1 of 3", len(got), res.json()["meta"])
 	}
 
-	// Not for requesters or OB, and an account that is not a requester has none.
-	for name, tok := range map[string]string{"MAHASISWA": e.login(mahasiswaA).accessToken, "ORGANISASI": e.orgToken(), "OB": e.obToken()} {
-		if res := e.do("GET", path, nil, bearer(tok)); res.Code != http.StatusForbidden {
-			t.Errorf("%s: %d; want 403", name, res.Code)
+	// A requester reads only their own record, and sees 404 for anyone else's.
+	own := e.do("GET", path, nil, bearer(e.login(mahasiswaA).accessToken))
+	mustStatus(t, own, http.StatusOK)
+	if own.json()["active_points"] != float64(2) || len(dataOf(own)) != 3 {
+		t.Errorf("own record: active_points = %v with %d items; want 2 with 3", own.json()["active_points"], len(dataOf(own)))
+	}
+	for name, tok := range map[string]string{"another student": e.login(mahasiswaB).accessToken, "an organisation": e.orgToken()} {
+		if res := e.do("GET", path, nil, bearer(tok)); res.Code != http.StatusNotFound {
+			t.Errorf("%s: %d; want 404", name, res.Code)
 		}
+	}
+	// OB has no record to read, and an account that is not a requester has none.
+	if res := e.do("GET", path, nil, bearer(e.obToken())); res.Code != http.StatusForbidden {
+		t.Errorf("OB: %d; want 403", res.Code)
 	}
 	for name, p := range map[string]string{
 		"a TU account": "/api/v1/users/" + e.userIDOf(tuID) + "/violations",

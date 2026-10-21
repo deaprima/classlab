@@ -2,7 +2,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Info, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api-client'
@@ -14,7 +14,7 @@ import {
 } from '@/lib/password-rules'
 import { safeRedirectPath } from '@/lib/session'
 import useDialogState from '@/hooks/use-dialog-state'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -81,15 +81,22 @@ export function ChangePassword({ redirectTo }: ChangePasswordProps) {
 
   return (
     <AuthLayout>
-      <div className='flex flex-col gap-6 rounded-3xl border bg-card p-6 sm:p-8'>
-        <div className='flex flex-col gap-1'>
-          <h1 className='type-page-title text-fg'>Ganti kata sandi</h1>
-          <p className='type-body text-fg-secondary'>
-            {forced
-              ? 'Akunmu masih memakai kata sandi sementara. Ganti dulu sebelum memakai ClassLab.'
-              : 'Sesi di perangkat lain akan keluar setelah kata sandi diganti.'}
-          </p>
-        </div>
+      <h1 className='type-page-title text-fg'>Ganti password</h1>
+      {forced ? (
+        <Alert variant='info'>
+          <Info />
+          <AlertTitle>Wajib ganti password</AlertTitle>
+          <AlertDescription>
+            Akunmu masih memakai kata sandi sementara. Ganti dulu sebelum
+            memakai ClassLab.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <p className='type-body text-fg-secondary'>
+          Sesi di perangkat lain akan keluar setelah kata sandi diganti.
+        </p>
+      )}
+      <div className='flex flex-col gap-4'>
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit((v) => {
@@ -110,9 +117,14 @@ export function ChangePassword({ redirectTo }: ChangePasswordProps) {
               name='current_password'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Kata sandi saat ini</FormLabel>
+                  <FormLabel>Password lama</FormLabel>
                   <FormControl>
                     <PasswordInput
+                      placeholder={
+                        forced
+                          ? 'Masukkan password sementara'
+                          : 'Masukkan password lama'
+                      }
                       autoComplete='current-password'
                       autoFocus
                       {...field}
@@ -127,12 +139,17 @@ export function ChangePassword({ redirectTo }: ChangePasswordProps) {
               name='new_password'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Kata sandi baru</FormLabel>
+                  <FormLabel>Password baru</FormLabel>
                   <FormControl>
-                    <PasswordInput autoComplete='new-password' {...field} />
+                    <PasswordInput
+                      placeholder='Masukkan password baru'
+                      autoComplete='new-password'
+                      {...field}
+                    />
                   </FormControl>
                   <FormDescription>
-                    Minimal {MIN_PASSWORD_LENGTH} karakter.
+                    Minimal {MIN_PASSWORD_LENGTH} karakter dan berbeda dari yang
+                    lama
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -143,17 +160,21 @@ export function ChangePassword({ redirectTo }: ChangePasswordProps) {
               name='confirm_password'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Ulangi kata sandi baru</FormLabel>
+                  <FormLabel>Ulangi password baru</FormLabel>
                   <FormControl>
-                    <PasswordInput autoComplete='new-password' {...field} />
+                    <PasswordInput
+                      placeholder='Ulangi password baru'
+                      autoComplete='new-password'
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button className='mt-2' disabled={change.isPending}>
+            <Button className='h-10' disabled={change.isPending}>
               {change.isPending && <Loader2 className='animate-spin' />}
-              Simpan
+              Simpan Password
             </Button>
           </form>
         </Form>

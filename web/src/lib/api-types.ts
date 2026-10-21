@@ -101,3 +101,7 @@ export type CheckoutCondition = Schemas['CheckoutCondition']
 export type PreviousCheckout = Schemas['PreviousCheckout']
 export type CheckInResult = Schemas['CheckInResult']
 export type CheckOutResult = Schemas['CheckOutResult']
+
+export type Violation = Schemas['Violation']
+export type ViolationListResponse =
+  paths['/users/{id}/violations']['get']['responses']['200']['content']['application/json']

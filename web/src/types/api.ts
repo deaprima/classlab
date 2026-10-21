@@ -1779,8 +1779,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Riwayat pelanggaran pemohon (TU, KALAB, ADMIN)
-         * @description Pelanggaran satu pemohon (MAHASISWA atau ORGANISASI), terbaru lebih dulu, beserta total poin aktif (tidak di-annul dan di dalam `VIOLATION_WINDOW_DAYS`) dan `booking_blocked_until` bila masih berlaku. Akun yang bukan pemohon dijawab 404.
+         * Riwayat pelanggaran pemohon (TU, KALAB, ADMIN; MAHASISWA dan ORGANISASI untuk dirinya sendiri)
+         * @description Pelanggaran satu pemohon (MAHASISWA atau ORGANISASI), terbaru lebih dulu, beserta total poin aktif (tidak di-annul dan di dalam `VIOLATION_WINDOW_DAYS`) dan `booking_blocked_until` bila masih berlaku. Akun yang bukan pemohon dijawab 404. MAHASISWA dan ORGANISASI hanya boleh membaca catatan milik sendiri; id akun lain dijawab 404. OB dijawab 403.
          */
         get: {
             parameters: {
@@ -2833,6 +2833,8 @@ export interface components {
             must_change_password: boolean;
             /** @description Poin pelanggaran aktif. Hanya ada pada `GET /auth/me` untuk MAHASISWA dan ORGANISASI. */
             active_points?: number;
+            /** @description Nama unit organisasi (program studi) akun. Hanya ada pada `GET /auth/me`. */
+            org_unit_name?: string;
             /** Format: date-time */
             created_at: string;
         };

@@ -250,9 +250,11 @@ func TestRBACMatrix(t *testing.T) {
 			want: only(http.StatusOK, "OB", "TU", "KALAB", "ADMIN"),
 		},
 		{
+			// A requester reads only their own record: the MAHASISWA of this matrix is the student whose record it
+			// is, an organisation sees 404 for someone else's, and OB has no access.
 			name: "GET /users/{id}/violations", method: "GET",
 			path: func(e *env) string { return "/api/v1/users/" + e.userIDOf(mahasiswaA) + "/violations" },
-			want: only(http.StatusOK, "TU", "KALAB", "ADMIN"),
+			want: only(http.StatusOK, "MAHASISWA", "TU", "KALAB", "ADMIN").with(http.StatusNotFound, "ORGANISASI"),
 		},
 		{
 			name: "POST /violations/{id}/annul", method: "POST",

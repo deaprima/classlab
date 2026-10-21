@@ -1,27 +1,31 @@
 import { getRouteApi } from '@tanstack/react-router'
-import { AlertCircle, CheckCheck } from 'lucide-react'
+import { AlertCircle, Bell, CheckCheck } from 'lucide-react'
 import { getErrorMessage } from '@/lib/api-error'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { EmptyState } from '@/components/empty-state'
 import { Page } from '@/components/layout/page'
-import { Pager } from '@/components/pager'
+import { ListFooter } from '@/components/list-footer'
+import { SegmentedControl } from '@/components/segmented-control'
 import { useMarkAllRead, useNotifications, useUnreadCount } from './api'
 import { NotificationItem } from './components/notification-item'
 
 const route = getRouteApi('/_authenticated/notifications/')
 const PER_PAGE = 20
 
+type Tab = 'all' | 'unread'
+
+/** Notifikasi (Figma): the full list, all or only unread, newest first. */
 export function Notifications() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
-  const onlyUnread = search.filter === 'unread'
+  const tab: Tab = search.filter === 'unread' ? 'unread' : 'all'
+  const page = search.page ?? 1
   const list = useNotifications({
-    page: search.page ?? 1,
+    page,
     per_page: PER_PAGE,
-    ...(onlyUnread && { unread: true }),
+    ...(tab === 'unread' && { unread: true }),
   })
   const unread = useUnreadCount()
   const markAll = useMarkAllRead()
@@ -38,7 +42,7 @@ export function Notifications() {
       actions={
         !!unread.data && (
           <Button
-            variant='outline'
+            variant='secondary'
             disabled={markAll.isPending}
             onClick={() => markAll.mutate()}
           >
@@ -48,56 +52,62 @@ export function Notifications() {
         )
       }
     >
-      <Tabs
-        value={onlyUnread ? 'unread' : 'all'}
-        onValueChange={(v) =>
-          navigate({
-            search: { filter: v === 'unread' ? 'unread' : undefined },
-          })
-        }
-        className='mb-4'
+      <section
+        aria-label='Daftar notifikasi'
+        className='flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'
       >
-        <TabsList>
-          <TabsTrigger value='all'>Semua</TabsTrigger>
-          <TabsTrigger value='unread'>Belum dibaca</TabsTrigger>
-        </TabsList>
-      </Tabs>
+        <SegmentedControl
+          aria-label='Filter notifikasi'
+          value={tab}
+          onValueChange={(t) =>
+            navigate({
+              search: { filter: t === 'unread' ? 'unread' : undefined },
+            })
+          }
+          options={[
+            { value: 'all', label: 'Semua' },
+            { value: 'unread', label: 'Belum dibaca', count: unread.data },
+          ]}
+        />
 
-      {list.isError && (
-        <Alert variant='destructive' className='mb-4'>
-          <AlertCircle />
-          <AlertDescription>{getErrorMessage(list.error)}</AlertDescription>
-        </Alert>
-      )}
+        {list.isError && (
+          <Alert variant='error'>
+            <AlertCircle />
+            <AlertDescription>{getErrorMessage(list.error)}</AlertDescription>
+          </Alert>
+        )}
 
-      <Card className='max-w-3xl py-2'>
-        <CardContent className='px-2'>
-          {list.isPending && <Skeleton className='h-40' />}
-          {list.isSuccess && items.length === 0 && (
-            <p className='py-10 text-center text-muted-foreground'>
-              {onlyUnread
-                ? 'Tidak ada notifikasi yang belum dibaca.'
-                : 'Belum ada notifikasi.'}
-            </p>
-          )}
-          <ul className='divide-y'>
+        {list.isPending && <Skeleton className='h-40' />}
+        {list.isSuccess && items.length === 0 && (
+          <EmptyState
+            icon={Bell}
+            title={
+              tab === 'unread'
+                ? 'Tidak ada yang belum dibaca'
+                : 'Belum ada notifikasi'
+            }
+            description='Kabar soal pengajuan, check-in, dan laporanmu muncul di sini.'
+          />
+        )}
+        {items.length > 0 && (
+          <ul className='flex flex-col gap-1'>
             {items.map((n) => (
-              <li key={n.id} className='py-1'>
+              <li key={n.id}>
                 <NotificationItem notification={n} />
               </li>
             ))}
           </ul>
-        </CardContent>
-      </Card>
+        )}
 
-      <div className='max-w-3xl'>
-        <Pager
-          meta={list.data?.meta}
-          onPageChange={(page) =>
-            navigate({ search: (prev) => ({ ...prev, page }) })
+        <ListFooter
+          page={page}
+          perPage={PER_PAGE}
+          total={list.data?.meta?.total ?? 0}
+          onPageChange={(p) =>
+            navigate({ search: (prev) => ({ ...prev, page: p }) })
           }
         />
-      </div>
+      </section>
     </Page>
   )
 }

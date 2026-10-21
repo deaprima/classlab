@@ -1,21 +1,53 @@
 import { useSearch } from '@tanstack/react-router'
-import { AuthLayout } from '../auth-layout'
+import { cn } from '@/lib/utils'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { SplitAuthLayout } from '../auth-layout'
 import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
   const { redirect } = useSearch({ from: '/(auth)/sign-in' })
 
   return (
-    <AuthLayout>
-      <div className='flex flex-col gap-6 rounded-3xl border bg-card p-6 sm:p-8'>
-        <div className='flex flex-col gap-1'>
-          <h1 className='type-page-title text-fg'>Masuk ke ClassLab</h1>
-          <p className='type-body text-fg-secondary'>
-            Gunakan NIM atau NIP kamu. Akun dibuat oleh TU kampus.
-          </p>
-        </div>
-        <UserAuthForm redirectTo={redirect} />
+    <SplitAuthLayout aside={<NoAccount className='hidden lg:block' />}>
+      <div className='flex flex-col items-center gap-1 text-center'>
+        <h1 className='type-page-title text-fg'>Selamat datang kembali</h1>
+        <p className='type-body text-fg-secondary'>
+          Masuk dengan akun kampus kamu
+        </p>
       </div>
-    </AuthLayout>
+      <UserAuthForm redirectTo={redirect} />
+      {/* Narrow screens: under the button instead of crowding the header. */}
+      <NoAccount align='center' className='self-center lg:hidden' />
+    </SplitAuthLayout>
+  )
+}
+
+/** "Belum punya akun?": opens the explanation that TU creates accounts, there is no self sign-up. */
+function NoAccount({
+  className,
+  align = 'end',
+}: {
+  className?: string
+  align?: 'center' | 'end'
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        className={cn(
+          'type-body-sm text-fg underline underline-offset-2',
+          className
+        )}
+      >
+        Belum punya akun?
+      </PopoverTrigger>
+      <PopoverContent align={align} className='text-sm'>
+        Hubungi TU kampus: akun dibuat oleh TU dan tidak ada pendaftaran
+        mandiri. Datangi TU dengan membawa NIM atau NIP kamu.
+      </PopoverContent>
+    </Popover>
   )
 }

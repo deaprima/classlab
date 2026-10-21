@@ -119,12 +119,18 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (User, error) {
 	return userRow(row).toUser(), nil
 }
 
-// Profile is Get plus the active violation points of a user who can book (BR-14).
+// Profile is Get plus the name of the account's org unit and, for a user who can book, the active
+// violation points (BR-14).
 func (s *Service) Profile(ctx context.Context, id uuid.UUID) (User, error) {
 	u, err := s.Get(ctx, id)
 	if err != nil {
 		return User{}, err
 	}
+	unit, err := s.q.GetOrgUnitNameByID(ctx, u.OrgUnitID)
+	if err != nil {
+		return User{}, fmt.Errorf("getting org unit: %w", err)
+	}
+	u.OrgUnitName = &unit
 	if httpx.Role(u.Role) == httpx.RoleMahasiswa || httpx.Role(u.Role) == httpx.RoleOrganisasi {
 		points, err := s.ActivePoints(ctx, id)
 		if err != nil {

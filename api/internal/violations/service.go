@@ -80,10 +80,17 @@ func fromRow(v dbgen.Violation, now time.Time, window time.Duration) Violation {
 	return out
 }
 
-// List returns the violations of one requester. TU, KALAB and ADMIN may read them (brief 6.2); an account
-// that is not a requester has none, so it answers 404 like a missing user.
+// List returns the violations of one requester. TU, KALAB and ADMIN may read anyone's (brief 6.2); a
+// requester may read only their own and sees 404 for anyone else's, like a missing user. An account that
+// is not a requester has none, so it answers 404 too.
 func (s *Service) List(ctx context.Context, actor httpx.Principal, userID uuid.UUID, page, perPage int) (History, error) {
-	if !actor.HasRole(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin) {
+	switch {
+	case actor.HasRole(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin):
+	case actor.HasRole(httpx.RoleMahasiswa, httpx.RoleOrganisasi):
+		if actor.UserID != userID {
+			return History{}, httpx.ErrNotFound
+		}
+	default:
 		return History{}, httpx.ErrForbidden
 	}
 	user, err := s.q.GetUserByID(ctx, userID)

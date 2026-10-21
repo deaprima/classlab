@@ -38,13 +38,13 @@ async function fill(
   next: string,
   confirm: string
 ) {
-  await userEvent.fill(screen.getByLabelText('Kata sandi saat ini'), current)
+  await userEvent.fill(screen.getByLabelText('Password lama'), current)
   await userEvent.fill(
-    screen.getByLabelText('Kata sandi baru', { exact: true }),
+    screen.getByLabelText('Password baru', { exact: true }),
     next
   )
-  await userEvent.fill(screen.getByLabelText('Ulangi kata sandi baru'), confirm)
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await userEvent.fill(screen.getByLabelText('Ulangi password baru'), confirm)
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan Password' }))
 }
 
 describe('ChangePassword', () => {

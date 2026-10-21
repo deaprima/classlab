@@ -50,6 +50,7 @@ export const queryKeys = {
   },
   users: {
     all: ['users'] as const,
+    violations: (id: string) => ['users', 'violations', id] as const,
     list: (query: UserListQuery) => ['users', 'list', query] as const,
   },
 }

@@ -31,8 +31,6 @@ export function AppSidebar() {
       title: 'Menu',
       items: navGroupsForRole(role)
         .flatMap((group) => group.items)
-        // Appearance moved to the AKUN section.
-        .filter((item) => item.url !== '/settings/appearance')
         .map((item) =>
           item.url === '/notifications' && unread > 0
             ? { ...item, badge: unread > 99 ? '99+' : String(unread) }

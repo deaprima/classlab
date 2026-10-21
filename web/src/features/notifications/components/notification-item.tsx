@@ -8,7 +8,7 @@ import { notificationTarget } from '../links'
 
 /**
  * One notification. Activating it marks it read and opens what it is about; a notification with
- * nowhere to go is just marked read.
+ * nowhere to go is just marked read. Unread ones carry the orange dot and a heavier title.
  */
 export function NotificationItem({
   notification: n,
@@ -36,31 +36,39 @@ export function NotificationItem({
       type='button'
       onClick={open}
       className={cn(
-        'flex w-full gap-3 rounded-md px-3 py-2 text-start text-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-        unread && 'bg-primary/5'
+        'flex min-h-11 w-full gap-3 rounded-xl px-3 py-3 text-start transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+        unread && 'bg-accent-subtle/60 hover:bg-accent-subtle'
       )}
     >
       <span
         className={cn(
           'mt-1.5 size-2 shrink-0 rounded-full',
-          unread ? 'bg-primary' : 'bg-transparent'
+          unread ? 'bg-indicator' : 'bg-transparent'
         )}
         aria-hidden
       />
-      <span className='grid flex-1 gap-0.5'>
-        <span className={cn('leading-snug', unread && 'font-semibold')}>
+      <span className='grid min-w-0 flex-1 gap-0.5'>
+        <span
+          className={cn(
+            'type-body leading-snug text-fg',
+            unread && 'font-semibold'
+          )}
+        >
           {n.title}
           {unread && <span className='sr-only'> (belum dibaca)</span>}
         </span>
         <span
-          className={cn('text-muted-foreground', compact && 'line-clamp-2')}
+          className={cn(
+            'type-body-sm text-fg-secondary',
+            compact && 'line-clamp-2'
+          )}
         >
           {n.body}
         </span>
         <time
           dateTime={n.created_at}
           title={formatDateTime(n.created_at)}
-          className='text-xs text-muted-foreground'
+          className='type-label-sm text-fg-tertiary'
         >
           {formatRelative(n.created_at)}
         </time>

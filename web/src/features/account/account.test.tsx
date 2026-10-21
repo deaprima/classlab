@@ -26,9 +26,18 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 })
 
 vi.mock('@/components/layout/page', () => ({
-  Page: ({ title, children }: { title: string; children: React.ReactNode }) => (
+  Page: ({
+    title,
+    actions,
+    children,
+  }: {
+    title: string
+    actions?: React.ReactNode
+    children: React.ReactNode
+  }) => (
     <div>
       <h1>{title}</h1>
+      {actions}
       {children}
     </div>
   ),
@@ -36,11 +45,43 @@ vi.mock('@/components/layout/page', () => ({
 
 const originalAdapter = api.defaults.adapter
 
-function serve(me: Record<string, unknown>) {
-  api.defaults.adapter = mockAdapter(() => ({
-    status: 200,
-    data: { ...sampleUser, ...me },
-  }))
+const VIOLATIONS = [
+  {
+    id: 'v1',
+    booking_id: 'b1',
+    kind: 'BATAL_TERLAMBAT',
+    points: 1,
+    active: true,
+    created_at: '2026-10-12T08:00:00+07:00',
+    room_code: 'R-302',
+    booking_start_at: '2026-10-12T10:00:00+07:00',
+  },
+  {
+    id: 'v2',
+    booking_id: 'b2',
+    kind: 'TANPA_CHECKOUT',
+    points: 1,
+    active: false,
+    created_at: '2026-08-03T08:00:00+07:00',
+    room_code: 'LAB-JK-01',
+    booking_start_at: '2026-08-03T10:00:00+07:00',
+  },
+]
+
+function serve(me: Record<string, unknown>, violations = VIOLATIONS) {
+  api.defaults.adapter = mockAdapter((config) =>
+    String(config.url).endsWith('/violations')
+      ? {
+          status: 200,
+          data: {
+            data: violations,
+            meta: { page: 1, per_page: 5, total: violations.length },
+            active_points: 1,
+            booking_blocked_until: null,
+          },
+        }
+      : { status: 200, data: { ...sampleUser, ...me } }
+  )
 }
 
 function renderAccount(user: Record<string, unknown> = {}) {
@@ -75,6 +116,47 @@ describe('Account', () => {
     await expect
       .element(screen.getByRole('link', { name: 'Ganti Password' }))
       .toHaveAttribute('href', '/change-password')
+  })
+
+  it('links to the guide from the top of the page for requesters only', async () => {
+    serve({ active_points: 0 })
+    const screen = await renderAccount()
+    await expect
+      .element(screen.getByRole('link', { name: 'Panduan Penggunaan' }))
+      .toHaveAttribute('href', '/guide')
+  })
+
+  it('hides the guide link from staff', async () => {
+    serve({ role: 'TU' })
+    const screen = await renderAccount({ role: 'TU' })
+    await expect.element(screen.getByText('NIP')).toBeVisible()
+    await expect
+      .element(screen.getByRole('link', { name: 'Panduan Penggunaan' }))
+      .not.toBeInTheDocument()
+  })
+
+  it('shows the program of study from the profile', async () => {
+    serve({ active_points: 0, org_unit_name: 'Informatika' })
+    const screen = await renderAccount()
+    await expect.element(screen.getByText('Program studi')).toBeVisible()
+    await expect.element(screen.getByText('Informatika')).toBeVisible()
+  })
+
+  it('lists the latest violations, dimming the ones that no longer count', async () => {
+    serve({ active_points: 1 })
+    const screen = await renderAccount()
+    await expect.element(screen.getByText('Pembatalan terlambat')).toBeVisible()
+    await expect.element(screen.getByText(/R-302/)).toBeVisible()
+    await expect.element(screen.getByText(/tidak dihitung/)).toBeVisible()
+  })
+
+  it('shows no history when there are no violations', async () => {
+    serve({ active_points: 0 }, [])
+    const screen = await renderAccount()
+    await expect.element(screen.getByText('dari 6 poin')).toBeVisible()
+    await expect
+      .element(screen.getByText('Riwayat', { exact: true }))
+      .not.toBeInTheDocument()
   })
 
   it('shows the violation points against the blocking threshold', async () => {
