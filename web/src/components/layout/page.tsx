@@ -24,6 +24,9 @@ export function Page({
   actions,
   children,
 }: PageProps) {
+  // The Top Bar already shows the title on desktop. With nothing else in the header it would be said
+  // twice, so the heading stays for screen readers and for mobile (whose bar has no title).
+  const repeatsBar = !description && !actions && !barTitle
   return (
     <>
       <Header fixed>
@@ -39,9 +42,21 @@ export function Page({
         tabIndex={-1}
         className={cn('outline-none', actions && 'max-md:pb-28')}
       >
-        <div className='mb-5 flex flex-wrap items-end justify-between gap-4'>
+        <div
+          className={cn(
+            'mb-5 flex flex-wrap items-end justify-between gap-4',
+            repeatsBar && 'md:mb-0'
+          )}
+        >
           <div className='min-w-0 space-y-1'>
-            <h1 className='type-page-title text-fg'>{title}</h1>
+            <h1
+              className={cn(
+                'type-page-title text-fg',
+                repeatsBar && 'md:sr-only'
+              )}
+            >
+              {title}
+            </h1>
             {description && (
               <p className='type-body text-fg-secondary'>{description}</p>
             )}

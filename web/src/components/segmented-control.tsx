@@ -29,7 +29,7 @@ export function SegmentedControl<T extends string>({
       aria-label={ariaLabel}
       data-slot='segmented-control'
       className={cn(
-        'inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border bg-surface p-1',
+        'inline-flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full border bg-surface p-1',
         className
       )}
     >

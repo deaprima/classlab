@@ -13,6 +13,9 @@ export const queryKeys = {
   auth: {
     me: ['auth', 'me'] as const,
   },
+  attachments: {
+    letters: ['attachments', 'letters'] as const,
+  },
   roomTypes: {
     all: ['room-types'] as const,
   },

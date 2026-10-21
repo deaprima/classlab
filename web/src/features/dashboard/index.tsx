@@ -154,7 +154,10 @@ export function Dashboard() {
           <BentoCard title='Aksi Cepat'>
             <div className='flex flex-col gap-3'>
               <Button variant='accent' asChild>
-                <Link to='/bookings/new'>
+                <Link
+                  to='/bookings/new'
+                  search={isOrganization ? { type: 'AUDITORIUM' } : {}}
+                >
                   <CalendarPlus />
                   {isOrganization ? 'Ajukan Auditorium' : 'Booking Ruang'}
                 </Link>
