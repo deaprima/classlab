@@ -87,7 +87,7 @@ export function RoomTimeline() {
           </AlertDescription>
         </Alert>
         <Button variant='outline' className='mt-4' asChild>
-          <Link to='/'>
+          <Link to='/schedule'>
             <ArrowLeft />
             Kembali ke ketersediaan
           </Link>

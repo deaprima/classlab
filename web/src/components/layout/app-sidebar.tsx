@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
-import { LogOut, Palette } from 'lucide-react'
+import { LogOut, SlidersHorizontal } from 'lucide-react'
 import { Logo } from '@/assets/logo'
 import { useAuthStore } from '@/stores/auth-store'
 import useDialogState from '@/hooks/use-dialog-state'
@@ -17,7 +17,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { SignOutDialog } from '@/components/sign-out-dialog'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { useUnreadCount } from '@/features/notifications/api'
 import { navGroupsForRole } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
@@ -52,7 +52,7 @@ export function AppSidebar() {
         <AccountGroup />
       </SidebarContent>
       <SidebarFooter className='px-4 pb-6'>
-        <ThemeSwitch />
+        <ThemeToggle />
       </SidebarFooter>
     </Sidebar>
   )
@@ -84,12 +84,12 @@ function AccountGroup() {
         <SidebarMenuItem>
           <SidebarMenuButton asChild>
             <Link
-              to='/settings/appearance'
+              to='/account'
               activeProps={{ 'data-active': true }}
               onClick={() => setOpenMobile(false)}
             >
-              <Palette />
-              <span>Tampilan</span>
+              <SlidersHorizontal />
+              <span>Akun Saya</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

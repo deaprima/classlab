@@ -1,5 +1,5 @@
 import { Logo } from '@/assets/logo'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 type AuthLayoutProps = {
   children: React.ReactNode
@@ -10,7 +10,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <div className='flex min-h-svh flex-col px-4'>
       <div className='flex justify-end py-4'>
-        <ThemeSwitch />
+        <ThemeToggle />
       </div>
       <div className='mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-6 pb-16'>
         <div className='flex items-center justify-center gap-2'>

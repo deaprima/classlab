@@ -39,7 +39,7 @@ import { ROOM_TYPE_LABELS, ROOM_TYPES } from '@/features/rooms/labels'
 import { useAvailability } from './api'
 import { defaultRange, isValidRange } from './range'
 
-const route = getRouteApi('/_authenticated/')
+const route = getRouteApi('/_authenticated/schedule')
 
 const ALL = 'ALL'
 

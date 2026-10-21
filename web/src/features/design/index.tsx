@@ -32,7 +32,7 @@ import { SlotBlock } from '@/components/slot-block'
 import { StatCard } from '@/components/stat-card'
 import { StatusPill, type PillStatus } from '@/components/status-pill'
 import { Step } from '@/components/step'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 const PILLS: PillStatus[] = [
   'Tersedia',
@@ -152,7 +152,7 @@ export function DesignCatalog() {
             Fondasi Phase 6.0. Hanya tampil di mode dev.
           </p>
         </div>
-        <ThemeSwitch />
+        <ThemeToggle />
       </header>
 
       <main className='mx-auto flex max-w-6xl flex-col gap-10 px-4 py-8 md:px-6'>

@@ -8,6 +8,8 @@ import { Main } from './main'
 
 type PageProps = {
   title: string
+  /** Title in the Top Bar when it differs from the heading (Dashboard vs "Hai, Nisrina"). */
+  barTitle?: string
   description?: ReactNode
   /** Buttons shown next to the title; on mobile they become a bar fixed to the bottom. */
   actions?: ReactNode
@@ -15,12 +17,18 @@ type PageProps = {
 }
 
 /** DESIGN.md 3.1: Top Bar, then the page header (title and subtitle), then the content. */
-export function Page({ title, description, actions, children }: PageProps) {
+export function Page({
+  title,
+  barTitle,
+  description,
+  actions,
+  children,
+}: PageProps) {
   return (
     <>
       <Header fixed>
         <p className='hidden min-w-0 truncate type-section text-fg md:block'>
-          {title}
+          {barTitle ?? title}
         </p>
         <Search className='ms-auto' />
         <NotificationBell />

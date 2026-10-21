@@ -1,5 +1,4 @@
 import { Outlet } from '@tanstack/react-router'
-import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
 import { SearchProvider } from '@/context/search-provider'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -12,11 +11,11 @@ type AuthenticatedLayoutProps = {
 }
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
-  const defaultOpen = getCookie('sidebar_state') !== 'false'
   useNotificationStream()
   return (
     <SearchProvider>
-      <SidebarProvider defaultOpen={defaultOpen}>
+      {/* The desktop sidebar is fixed (DESIGN.md 3.1): controlled open, so neither Ctrl+B nor a cookie left by the old layout can hide it. Mobile uses the drawer. */}
+      <SidebarProvider open onOpenChange={() => {}}>
         <SkipToMain />
         <AppSidebar />
         <SidebarInset
