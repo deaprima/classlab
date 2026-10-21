@@ -10,6 +10,9 @@ import {
 // Structured query keys: invalidating a prefix (e.g. queryKeys.bookings.all) refreshes every list
 // and detail under it.
 export const queryKeys = {
+  auth: {
+    me: ['auth', 'me'] as const,
+  },
   roomTypes: {
     all: ['room-types'] as const,
   },

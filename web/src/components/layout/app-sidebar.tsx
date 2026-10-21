@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
-import { LogOut, Palette } from 'lucide-react'
+import { LogOut, SlidersHorizontal } from 'lucide-react'
 import { Logo } from '@/assets/logo'
 import { useAuthStore } from '@/stores/auth-store'
 import useDialogState from '@/hooks/use-dialog-state'
@@ -84,12 +84,12 @@ function AccountGroup() {
         <SidebarMenuItem>
           <SidebarMenuButton asChild>
             <Link
-              to='/settings/appearance'
+              to='/account'
               activeProps={{ 'data-active': true }}
               onClick={() => setOpenMobile(false)}
             >
-              <Palette />
-              <span>Tampilan</span>
+              <SlidersHorizontal />
+              <span>Akun Saya</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

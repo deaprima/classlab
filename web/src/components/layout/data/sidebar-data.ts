@@ -23,7 +23,7 @@ type MenuItem = Omit<NavItem, 'items' | 'roles'> & { url?: string }
 
 const REQUESTER_MENU: MenuItem[] = [
   { title: 'Dashboard', url: '/', icon: LayoutGrid },
-  { title: 'Jadwal Ruang', icon: CalendarDays },
+  { title: 'Jadwal Ruang', url: '/schedule', icon: CalendarDays },
   { title: 'Ajukan Ruang', url: '/bookings/new', icon: CalendarPlus },
   { title: 'Pengajuan Saya', url: '/bookings', icon: FileClock },
   { title: 'Riwayat', icon: History },

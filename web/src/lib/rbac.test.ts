@@ -118,6 +118,7 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
   it('only links to pages that exist, and never shows a link without a page', () => {
     expect(shown('MAHASISWA')).toEqual([
       'Dashboard',
+      'Jadwal Ruang',
       'Ajukan Ruang',
       'Pengajuan Saya',
       'Lapor Kerusakan',
