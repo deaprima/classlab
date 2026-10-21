@@ -91,3 +91,6 @@ export type ResetPasswordResponse =
 
 export type RoomTypeListResponse =
   paths['/room-types']['get']['responses']['200']['content']['application/json']
+export type RoomTypePolicy = Schemas['RoomTypePolicy']
+export type Attachment = Schemas['Attachment']
+export type BookingGroupResult = Schemas['BookingGroupResult']

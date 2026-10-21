@@ -80,7 +80,7 @@ export function Bookings() {
       actions={
         isStudent && (
           <Button asChild>
-            <Link to='/bookings/new'>
+            <Link to='/schedule'>
               <CalendarPlus />
               Ajukan Peminjaman
             </Link>

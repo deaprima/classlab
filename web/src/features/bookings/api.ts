@@ -12,6 +12,7 @@ import { getApiError, getErrorMessage } from '@/lib/api-error'
 import {
   type Booking,
   type BookingEvent,
+  type BookingGroupResult,
   type BookingListQuery,
   type BookingListResponse,
   type CreateBookingRequest,
@@ -56,20 +57,20 @@ function invalidateAfterStatusChange(queryClient: QueryClient) {
 type CreateBookingVars = { body: CreateBookingRequest; idempotencyKey: string }
 
 export function useCreateBooking(options: {
-  onSuccess?: (booking: Booking) => void
+  onSuccess?: (result: Booking | BookingGroupResult) => void
   onError?: (error: unknown) => void
 }) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({ body, idempotencyKey }: CreateBookingVars) =>
       (
-        await api.post<Booking>('/bookings', body, {
+        await api.post<Booking | BookingGroupResult>('/bookings', body, {
           headers: { 'Idempotency-Key': idempotencyKey },
         })
       ).data,
-    onSuccess: (booking) => {
+    onSuccess: (result) => {
       invalidateAfterStatusChange(queryClient)
-      options.onSuccess?.(booking)
+      options.onSuccess?.(result)
     },
     onError: options.onError,
   })

@@ -108,7 +108,7 @@ export function Dashboard() {
                 description='Booking yang sudah disetujui akan muncul di sini, lengkap dengan tombol check-in.'
                 action={
                   <Button asChild>
-                    <Link to='/bookings/new'>Ajukan Ruang</Link>
+                    <Link to='/schedule'>Ajukan Ruang</Link>
                   </Button>
                 }
               />
@@ -154,15 +154,12 @@ export function Dashboard() {
           <BentoCard title='Aksi Cepat'>
             <div className='flex flex-col gap-3'>
               <Button variant='accent' asChild>
-                <Link to='/bookings/new'>
+                <Link
+                  to='/schedule'
+                  search={isOrganization ? { group: 'LAINNYA' } : {}}
+                >
                   <CalendarPlus />
                   {isOrganization ? 'Ajukan Auditorium' : 'Booking Ruang'}
-                </Link>
-              </Button>
-              <Button variant='secondary' asChild>
-                <Link to='/schedule'>
-                  <CalendarDays />
-                  Lihat Jadwal Ruang
                 </Link>
               </Button>
               <Button variant='secondary' asChild>
