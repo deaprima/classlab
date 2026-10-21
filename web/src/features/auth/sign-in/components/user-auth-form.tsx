@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { AlertCircle, Loader2, LogIn } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api-client'
 import { applyFieldErrors, getApiError, getErrorMessage } from '@/lib/api-error'
@@ -102,7 +102,7 @@ export function UserAuthForm({
               <FormLabel>NIM / NIP</FormLabel>
               <FormControl>
                 <Input
-                  placeholder='Contoh: 2021101001'
+                  placeholder='Masukkan NIM / NIP'
                   autoComplete='username'
                   autoFocus
                   {...field}
@@ -117,10 +117,10 @@ export function UserAuthForm({
           name='password'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Kata Sandi</FormLabel>
+              <FormLabel>Password</FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder='Masukkan kata sandi'
+                  placeholder='Masukkan password'
                   autoComplete='current-password'
                   {...field}
                 />
@@ -129,8 +129,8 @@ export function UserAuthForm({
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={login.isPending}>
-          {login.isPending ? <Loader2 className='animate-spin' /> : <LogIn />}
+        <Button variant='accent' className='h-10' disabled={login.isPending}>
+          {login.isPending && <Loader2 className='animate-spin' />}
           Masuk
         </Button>
       </form>

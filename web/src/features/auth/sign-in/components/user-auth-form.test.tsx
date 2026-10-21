@@ -37,7 +37,7 @@ async function fillAndSubmit(
   password: string
 ) {
   await userEvent.fill(screen.getByLabelText('NIM / NIP'), identifier)
-  await userEvent.fill(screen.getByLabelText('Kata Sandi'), password)
+  await userEvent.fill(screen.getByLabelText('Password'), password)
   await userEvent.click(screen.getByRole('button', { name: 'Masuk' }))
 }
 
