@@ -10,6 +10,7 @@ import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api-client'
+import { type Room } from '@/lib/api-types'
 import { addDays, todayWib } from '@/lib/datetime'
 import { RequestForm } from './request-form'
 
@@ -165,25 +166,25 @@ function signIn(role: 'MAHASISWA' | 'ORGANISASI' = 'MAHASISWA') {
   useAuthStore.getState().auth.setSession('token', { ...sampleUser, role })
 }
 
+const SLOT = { date: tomorrow, start_time: '08:00', end_time: '10:00' }
+
 async function renderForm(
   props: Partial<React.ComponentProps<typeof RequestForm>> = {}
 ) {
   const onCreated = vi.fn()
+  const onCancel = vi.fn()
   const screen = await render(
     <QueryClientProvider client={new QueryClient()}>
       <RequestForm
-        initial={{
-          room_id: KELAS_ROOM.id,
-          date: tomorrow,
-          start: '08:00',
-          end: '10:00',
-        }}
+        room={KELAS_ROOM as Room}
+        initialOccurrences={[SLOT]}
+        onCancel={onCancel}
         {...props}
         onCreated={onCreated}
       />
     </QueryClientProvider>
   )
-  return { screen, onCreated }
+  return { screen, onCreated, onCancel }
 }
 
 const submitButton = (
@@ -212,14 +213,7 @@ describe('RequestForm', () => {
 
     it('names the approver for a lab', async () => {
       serve()
-      const { screen } = await renderForm({
-        initial: {
-          room_id: LAB_ROOM.id,
-          date: tomorrow,
-          start: '08:00',
-          end: '10:00',
-        },
-      })
+      const { screen } = await renderForm({ room: LAB_ROOM as Room })
       await expect
         .element(
           screen.getByText('Menunggu validasi Kepala Lab', { exact: true })
@@ -288,6 +282,17 @@ describe('RequestForm', () => {
       await expect
         .element(screen.getByText('Kuota booking aktif sudah penuh (2).'))
         .toBeVisible()
+    })
+  })
+
+  describe('cancelling', () => {
+    it('closes without calling the API', async () => {
+      const post = vi.fn(() => ({ status: 201 }))
+      serve({ booking: post })
+      const { screen, onCancel } = await renderForm()
+      await userEvent.click(screen.getByRole('button', { name: 'Batal' }))
+      expect(onCancel).toHaveBeenCalledOnce()
+      expect(post).not.toHaveBeenCalled()
     })
   })
 
@@ -479,13 +484,10 @@ describe('RequestForm', () => {
     })
 
     const audProps = {
-      lockedType: 'AUDITORIUM' as const,
-      initial: {
-        room_id: AUD_ROOM.id,
-        date: tomorrow,
-        start: '13:00',
-        end: '16:00',
-      },
+      room: AUD_ROOM as Room,
+      initialOccurrences: [
+        { date: tomorrow, start_time: '13:00', end_time: '16:00' },
+      ],
     }
 
     it('promises manual validation and asks for the letter and headcount', async () => {
@@ -502,9 +504,6 @@ describe('RequestForm', () => {
       await expect
         .element(screen.getByText('Jumlah peserta (wajib)'))
         .toBeVisible()
-      await expect
-        .element(screen.getByRole('radiogroup', { name: 'Jenis ruang' }))
-        .not.toBeInTheDocument()
     })
 
     it('does not send without the letter and the headcount', async () => {

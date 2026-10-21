@@ -20,7 +20,7 @@ type RequestSummaryProps = {
   conflicts: ConflictItem[]
   /** Message of a failed submit that has no list of clashes (quota, rules). */
   problem?: string
-  /** Buttons; on mobile they become a bar fixed to the bottom, like the Figma mobile frames. */
+  /** Buttons, rendered at the foot of the popup. */
   actions: React.ReactNode
   footnote?: string
 }
@@ -75,7 +75,7 @@ export function RequestSummary({
   return (
     <section
       aria-label='Ringkasan'
-      className='flex flex-col gap-4 rounded-2xl border bg-card p-5'
+      className='flex flex-col gap-4 rounded-2xl border bg-subtle p-5'
     >
       <h2 className='type-section text-fg'>Ringkasan</h2>
       <dl className='flex flex-col gap-3'>
@@ -147,7 +147,7 @@ export function RequestSummary({
         </p>
       )}
 
-      <div className='flex flex-col gap-3 max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:z-40 max-md:flex-row-reverse max-md:border-t max-md:bg-surface max-md:p-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:*:flex-1'>
+      <div className='flex flex-col-reverse gap-3 sm:flex-row sm:justify-end'>
         {actions}
       </div>
       {footnote && <p className='type-body-sm text-fg-tertiary'>{footnote}</p>}

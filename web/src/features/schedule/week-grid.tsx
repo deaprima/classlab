@@ -1,4 +1,3 @@
-import { Link } from '@tanstack/react-router'
 import { type TimelineItem } from '@/lib/api-types'
 import {
   dateParts,
@@ -12,15 +11,18 @@ import {
   placeItems,
   rowCount,
 } from '@/features/rooms/timeline-layout'
+import { type Ranges } from './selection'
+import { inRange } from './slots'
 
 type WeekGridProps = {
   days: string[]
   items: TimelineItem[]
   hours: { open: string; close: string }
   today: string
-  roomId: string
-  /** Only requesters can turn an empty slot into a request. */
-  canBook: boolean
+  /** The picked ranges, one per date. */
+  ranges: Ranges
+  /** Clicking a free future slot; omitted for roles that cannot request. */
+  onPick?: (day: string, time: string) => void
   now: Date
 }
 
@@ -33,8 +35,8 @@ export function WeekGrid({
   items,
   hours,
   today,
-  roomId,
-  canBook,
+  ranges,
+  onPick,
   now,
 }: WeekGridProps) {
   const spec: GridSpec = {
@@ -45,7 +47,6 @@ export function WeekGrid({
   }
   const rows = rowCount(spec)
   const open = minutesOfDay(hours.open)
-  const close = minutesOfDay(hours.close)
   const placed = placeItems(items, spec)
   const slotStart = (row: number) => timeFromMinutes(open + row * SLOT_MINUTES)
 
@@ -98,28 +99,30 @@ export function WeekGrid({
             const start = slotStart(row)
             const past = Date.parse(`${day}T${start}:00+07:00`) < now.getTime()
             const style = { gridColumn: d + 2, gridRow: row + 2 }
+            const picked = inRange(start, ranges[day] ?? null)
             const cell = cn(
               'rounded-md border',
-              past ? 'border-transparent bg-muted/60' : 'bg-surface'
+              picked
+                ? 'border-line-accent bg-accent-subtle'
+                : past
+                  ? 'border-transparent bg-muted/60'
+                  : 'bg-surface'
             )
-            if (!canBook || past) {
+            if (!onPick || past) {
               return (
                 <div key={`${day}-${row}`} className={cell} style={style} />
               )
             }
-            const end = timeFromMinutes(
-              Math.min(minutesOfDay(start) + 60, close)
-            )
             return (
-              <Link
+              <button
                 key={`${day}-${row}`}
-                to='/bookings/new'
-                search={{ room_id: roomId, date: day, start, end }}
-                aria-label={`Ajukan ${day} ${start}–${end}`}
-                title={`Ajukan ${start} – ${end}`}
+                type='button'
+                aria-label={`Pilih ${day} ${start}`}
+                aria-pressed={picked}
+                onClick={() => onPick(day, start)}
                 className={cn(
                   cell,
-                  'hover:border-line-accent hover:bg-accent-subtle'
+                  !picked && 'hover:border-line-accent hover:bg-accent-subtle'
                 )}
                 style={style}
               />

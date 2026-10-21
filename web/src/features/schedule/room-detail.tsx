@@ -3,7 +3,7 @@ import { Link, getRouteApi } from '@tanstack/react-router'
 import { slotTimes } from '@/config/booking-rules'
 import { AlertCircle, ArrowLeft, ImageIcon } from 'lucide-react'
 import { getErrorMessage, isApiErrorCode } from '@/lib/api-error'
-import { type Room, type RoomTypePolicy } from '@/lib/api-types'
+import { type RoomTypePolicy } from '@/lib/api-types'
 import {
   addDays,
   formatDate,
@@ -27,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Page } from '@/components/layout/page'
 import { StatusPill } from '@/components/status-pill'
 import { effectiveHours } from '@/features/bookings/request/policy'
+import { RequestDialog } from '@/features/bookings/request/request-dialog'
 import { useRoomTypes } from '@/features/room-types/api'
 import { roomTypeConfig } from '@/features/room-types/config'
 import { useRoom, useRoomSchedule } from '@/features/rooms/api'
@@ -62,6 +63,7 @@ export function RoomDetail() {
   const [range, setRange] = useState<{ start: string; end: string } | null>(
     null
   )
+  const [requestOpen, setRequestOpen] = useState(false)
 
   if (room.isError) {
     return (
@@ -201,7 +203,6 @@ export function RoomDetail() {
 
         {canBook && r.is_active && (
           <RequestPanel
-            room={r}
             policy={policy}
             date={date}
             days={days}
@@ -209,9 +210,26 @@ export function RoomDetail() {
             range={range}
             onDate={setDate}
             onRange={setRange}
+            onRequest={() => setRequestOpen(true)}
           />
         )}
       </div>
+
+      {canBook && r.is_active && (
+        <RequestDialog
+          open={requestOpen}
+          onOpenChange={setRequestOpen}
+          room={r}
+          occurrences={[
+            {
+              date,
+              start_time: range?.start ?? '',
+              end_time: range?.end ?? '',
+            },
+          ]}
+          onCreated={() => setRange(null)}
+        />
+      )}
     </Page>
   )
 }
@@ -226,7 +244,6 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 function RequestPanel({
-  room,
   policy,
   date,
   days,
@@ -234,8 +251,8 @@ function RequestPanel({
   range,
   onDate,
   onRange,
+  onRequest,
 }: {
-  room: Room
   policy: RoomTypePolicy | undefined
   date: string
   days: string[]
@@ -243,6 +260,7 @@ function RequestPanel({
   range: { start: string; end: string } | null
   onDate: (date: string) => void
   onRange: (range: { start: string; end: string } | null) => void
+  onRequest: () => void
 }) {
   const times = slotTimes(hours.open, hours.close)
   const start = range?.start ?? ''
@@ -320,17 +338,8 @@ function RequestPanel({
           Pengajuan dibuka maksimal {policy.max_advance_days} hari ke depan.
         </p>
       )}
-      <Button variant='accent' asChild>
-        <Link
-          to='/bookings/new'
-          search={{
-            room_id: room.id,
-            date,
-            ...(start && end ? { start, end } : {}),
-          }}
-        >
-          Ajukan Ruang
-        </Link>
+      <Button variant='accent' onClick={onRequest}>
+        Ajukan Ruang
       </Button>
     </aside>
   )

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type TimelineItem } from '@/lib/api-types'
-import { buildDaySlots, inRange, pickSlot } from './slots'
+import { buildDaySlots, inRange, pickSlot, selectSlot } from './slots'
 
 const hours = { open: '07:00', close: '12:00' }
 const date = '2026-10-21'
@@ -126,5 +126,36 @@ describe('inRange', () => {
     expect(inRange('08:30', range)).toBe(true)
     expect(inRange('09:00', range)).toBe(false)
     expect(inRange('08:00', null)).toBe(false)
+  })
+})
+
+describe('selectSlot', () => {
+  const slots = buildDaySlots({
+    date,
+    hours,
+    items: [item('09:00', '10:00')],
+    now: at('06:00'),
+  })
+
+  it('picks, stretches and toggles a single slot off', () => {
+    const one = selectSlot(slots, null, '07:30')
+    expect(one).toEqual({ start: '07:30', end: '08:00' })
+    expect(selectSlot(slots, one, '07:30')).toBeNull()
+    expect(selectSlot(slots, one, '08:00')).toEqual({
+      start: '07:30',
+      end: '08:30',
+    })
+  })
+
+  it('keeps a stretched range when its start is clicked again', () => {
+    const range = { start: '07:30', end: '08:30' }
+    expect(selectSlot(slots, range, '07:30')).toEqual({
+      start: '07:30',
+      end: '08:00',
+    })
+  })
+
+  it('ignores a used slot', () => {
+    expect(selectSlot(slots, null, '09:00')).toBeNull()
   })
 })

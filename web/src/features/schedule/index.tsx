@@ -1,12 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, getRouteApi } from '@tanstack/react-router'
 import { slotTimes } from '@/config/booking-rules'
-import {
-  AlertCircle,
-  CalendarPlus,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
+import { AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { getErrorMessage } from '@/lib/api-error'
 import {
@@ -52,14 +47,19 @@ import {
   TYPE_GROUP_LABELS,
   type TypeGroup,
 } from '@/features/bookings/request/policy'
+import { RequestDialog } from '@/features/bookings/request/request-dialog'
 import { useRoomTypes } from '@/features/room-types/api'
 import { roomTypeConfig } from '@/features/room-types/config'
 import { useRoomSchedule } from '@/features/rooms/api'
 import { DayChips, SlotChips } from './day-slots'
-import { buildDaySlots } from './slots'
+import { rangesToOccurrences, withRange, type Ranges } from './selection'
+import { SelectionBar } from './selection-bar'
+import { buildDaySlots, selectSlot } from './slots'
 import { WeekGrid } from './week-grid'
 
 const route = getRouteApi('/_authenticated/schedule')
+
+const NONE: Ranges = {}
 
 /** Jadwal Ruang (Figma): find a free room on the left, see its week on the right. */
 export function Schedule() {
@@ -112,6 +112,18 @@ export function Schedule() {
     })
 
   const times = slotTimes()
+
+  // The slots picked belong to one room: choosing another room starts over.
+  const [picked, setPicked] = useState<{ roomId: string; ranges: Ranges }>({
+    roomId: '',
+    ranges: {},
+  })
+  const [requestOpen, setRequestOpen] = useState(false)
+  const ranges: Ranges =
+    selected && picked.roomId === selected.room.id ? picked.ranges : NONE
+  const setRanges = (next: Ranges) =>
+    selected && setPicked({ roomId: selected.room.id, ranges: next })
+  const canRequest = canBook && !!selected?.room.is_active
 
   return (
     <Page title='Jadwal Ruang'>
@@ -216,12 +228,12 @@ export function Schedule() {
               entry={selected}
               policy={policies.find((p) => p.type === selected.room.type)}
               date={date}
-              start={start}
-              end={end}
               today={today}
               now={now}
               mobile={isMobile}
-              canBook={canBook}
+              canBook={canRequest}
+              ranges={ranges}
+              onRanges={setRanges}
               onDate={(d) => update({ date: d })}
             />
           ) : (
@@ -232,6 +244,26 @@ export function Schedule() {
           )}
         </section>
       </div>
+
+      {canRequest && selected && (
+        <>
+          <div className='h-20' aria-hidden />
+          <SelectionBar
+            room={selected.room}
+            ranges={ranges}
+            onRemove={(d) => setRanges(withRange(ranges, d, null))}
+            onClear={() => setRanges({})}
+            onRequest={() => setRequestOpen(true)}
+          />
+          <RequestDialog
+            open={requestOpen}
+            onOpenChange={setRequestOpen}
+            room={selected.room}
+            occurrences={rangesToOccurrences(ranges)}
+            onCreated={() => setRanges({})}
+          />
+        </>
+      )}
     </Page>
   )
 }
@@ -316,23 +348,23 @@ function RoomWeek({
   entry,
   policy,
   date,
-  start,
-  end,
   today,
   now,
   mobile,
   canBook,
+  ranges,
+  onRanges,
   onDate,
 }: {
   entry: AvailabilityRoom
   policy: RoomTypePolicy | undefined
   date: string
-  start: string
-  end: string
   today: string
   now: Date
   mobile: boolean
   canBook: boolean
+  ranges: Ranges
+  onRanges: (ranges: Ranges) => void
   onDate: (date: string) => void
 }) {
   const { room, operating_hours: hours } = entry
@@ -348,6 +380,12 @@ function RoomWeek({
   )
   const items = schedule.data ?? []
   const effective = { open: hours.open_time, close: hours.close_time }
+  const pick = (day: string, time: string) => {
+    const slots = buildDaySlots({ date: day, hours: effective, items, now })
+    onRanges(
+      withRange(ranges, day, selectSlot(slots, ranges[day] ?? null, time))
+    )
+  }
 
   return (
     <>
@@ -417,6 +455,8 @@ function RoomWeek({
           hours={effective}
           items={items}
           now={now}
+          range={ranges[date] ?? null}
+          onPick={canBook ? (time) => pick(date, time) : undefined}
           onDate={onDate}
         />
       ) : (
@@ -425,25 +465,14 @@ function RoomWeek({
           items={items}
           hours={effective}
           today={today}
-          roomId={room.id}
-          canBook={canBook && room.is_active}
+          ranges={ranges}
+          onPick={canBook ? pick : undefined}
           now={now}
         />
       )}
 
       <div className='flex flex-wrap items-center justify-between gap-3'>
         <Legend />
-        {canBook && room.is_active && (
-          <Button variant='accent' asChild>
-            <Link
-              to='/bookings/new'
-              search={{ room_id: room.id, date, start, end }}
-            >
-              <CalendarPlus />
-              Ajukan Ruang
-            </Link>
-          </Button>
-        )}
       </div>
     </>
   )
@@ -456,6 +485,8 @@ function MobileDay({
   hours,
   items,
   now,
+  range,
+  onPick,
   onDate,
 }: {
   days: string[]
@@ -464,6 +495,8 @@ function MobileDay({
   hours: { open: string; close: string }
   items: TimelineItem[]
   now: Date
+  range: { start: string; end: string } | null
+  onPick?: (time: string) => void
   onDate: (date: string) => void
 }) {
   const slots = buildDaySlots({ date, hours, items, now })
@@ -475,7 +508,7 @@ function MobileDay({
         onChange={onDate}
         disabledBefore={today}
       />
-      <SlotChips slots={slots} range={null} />
+      <SlotChips slots={slots} range={range} onPick={onPick} />
     </div>
   )
 }

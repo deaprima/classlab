@@ -130,7 +130,7 @@ describe('SearchProvider and CommandMenu', () => {
     await openCommandPalette(screen)
 
     await expect
-      .element(screen.getByRole('option', { name: 'Ajukan Ruang' }))
+      .element(screen.getByRole('option', { name: 'Jadwal Ruang' }))
       .toBeInTheDocument()
     await expect
       .element(screen.getByRole('option', { name: 'Approval' }))

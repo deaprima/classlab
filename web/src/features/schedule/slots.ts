@@ -88,3 +88,23 @@ export function inRange(
   const m = minutesOfDay(time)
   return m >= minutesOfDay(range.start) && m < minutesOfDay(range.end)
 }
+
+/**
+ * Click on a slot of a day that may already have a picked range: the same single slot toggles off,
+ * anything else follows `pickSlot`. Returns the new range of that day, or null for none.
+ */
+export function selectSlot(
+  slots: readonly DaySlot[],
+  current: { start: string; end: string } | null,
+  clicked: string,
+  slotMinutes = 30
+): { start: string; end: string } | null {
+  if (
+    current &&
+    current.start === clicked &&
+    minutesOfDay(current.end) - minutesOfDay(current.start) === slotMinutes
+  ) {
+    return null
+  }
+  return pickSlot(slots, current, clicked, slotMinutes)
+}

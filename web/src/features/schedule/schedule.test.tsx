@@ -129,6 +129,20 @@ function serve() {
     conflicts: [],
   })
   api.defaults.adapter = mockAdapter((config) => {
+    if (config.url === '/auth/me') {
+      return { status: 200, data: { ...sampleUser, active_points: 0 } }
+    }
+    if (config.url === '/bookings' && config.method === 'post') {
+      return {
+        status: 201,
+        data: {
+          id: 'b1',
+          status: 'DISETUJUI',
+          room: R302,
+          ...JSON.parse(String(config.data)),
+        },
+      }
+    }
     if (config.url === '/room-types')
       return { status: 200, data: { data: POLICIES } }
     if (config.url === '/availability') {
@@ -235,27 +249,120 @@ describe('Schedule (Jadwal Ruang)', () => {
       .toBeVisible()
   })
 
-  it('turns an empty future cell into a link to the request form', async () => {
+  it('keeps the request bar on screen, disabled until a slot is picked', async () => {
     const screen = await renderPage()
-    const link = screen.getByRole('link', {
-      name: 'Ajukan 2026-10-21 12:00–13:00',
-    })
+    const bar = screen.getByRole('region', { name: 'Pengajuan ruang' })
+    await expect.element(bar).toBeVisible()
     await expect
-      .element(link)
-      .toHaveAttribute(
-        'href',
-        '/bookings/new?room_id=room-302&date=2026-10-21&start=12%3A00&end=13%3A00'
+      .element(
+        screen.getByText('Pilih jam kosong di jadwal R-302 untuk mengajukan.')
       )
+      .toBeVisible()
+    await expect
+      .element(screen.getByRole('button', { name: 'Ajukan Ruang' }))
+      .toBeDisabled()
   })
 
-  it('links the accent button with the chosen range', async () => {
+  it('picks a start and an end on the grid and shows them in the bar', async () => {
     const screen = await renderPage()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pilih 2026-10-21 12:00' })
+    )
     await expect
-      .element(screen.getByRole('link', { name: 'Ajukan Ruang' }))
-      .toHaveAttribute(
-        'href',
-        '/bookings/new?room_id=room-302&date=2026-10-21&start=08%3A00&end=10%3A00'
+      .element(screen.getByText(/Rab 21 · 12:00 – 12:30/))
+      .toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pilih 2026-10-21 13:30' })
+    )
+    await expect
+      .element(screen.getByText(/Rab 21 · 12:00 – 14:00/))
+      .toBeVisible()
+    await expect
+      .element(screen.getByRole('button', { name: 'Ajukan Ruang' }))
+      .toBeEnabled()
+  })
+
+  it('picks slots on several days and removes one', async () => {
+    const screen = await renderPage()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pilih 2026-10-21 12:00' })
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pilih 2026-10-22 09:00' })
+    )
+    await expect.element(screen.getByText(/Rab 21 · 12:00/)).toBeVisible()
+    await expect.element(screen.getByText(/Kam 22 · 09:00/)).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Hapus pilihan Rab 21' })
+    )
+    await expect
+      .element(screen.getByText(/Rab 21 · 12:00/))
+      .not.toBeInTheDocument()
+    await expect.element(screen.getByText(/Kam 22 · 09:00/)).toBeVisible()
+  })
+
+  it('clicking the picked slot again clears it', async () => {
+    const screen = await renderPage()
+    const cell = screen.getByRole('button', { name: 'Pilih 2026-10-21 12:00' })
+    await userEvent.click(cell)
+    await userEvent.click(cell)
+    await expect
+      .element(
+        screen.getByText('Pilih jam kosong di jadwal R-302 untuk mengajukan.')
       )
+      .toBeVisible()
+  })
+
+  it('opens the request form as a popup with the picked slots', async () => {
+    const screen = await renderPage()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pilih 2026-10-21 12:00' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Ajukan Ruang' }))
+    const dialog = screen.getByRole('dialog')
+    await expect.element(dialog).toBeVisible()
+    await expect.element(dialog.getByLabelText('Nama kegiatan')).toBeVisible()
+    await expect.element(dialog.getByText('12:00 – 12:30')).toBeVisible()
+  })
+
+  it('sends the request from the popup and clears the picked slots', async () => {
+    const screen = await renderPage()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pilih 2026-10-21 12:00' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Ajukan Ruang' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.fill(
+      dialog.getByLabelText('Nama kegiatan'),
+      'Belajar bareng'
+    )
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Kirim Pengajuan' })
+    )
+    await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument()
+    await expect
+      .element(
+        screen.getByText('Pilih jam kosong di jadwal R-302 untuk mengajukan.')
+      )
+      .toBeVisible()
+  })
+
+  it('starts over when another room is chosen', async () => {
+    const screen = await renderPage()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pilih 2026-10-21 12:00' })
+    )
+    mocks.search = { ...mocks.search, room: 'room-402' }
+    await screen.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <Schedule />
+      </QueryClientProvider>
+    )
+    await expect
+      .element(
+        screen.getByText('Pilih jam kosong di jadwal R-402 untuk mengajukan.')
+      )
+      .toBeVisible()
   })
 
   it('lists the day as slot chips on mobile, with the lecture slots unavailable', async () => {
@@ -269,8 +376,11 @@ describe('Schedule (Jadwal Ruang)', () => {
         screen.getByRole('button', { name: '08:00, terpakai: Statistika' })
       )
       .toBeDisabled()
+    await userEvent.click(
+      screen.getByRole('button', { name: '12:00, tersedia' })
+    )
     await expect
-      .element(screen.getByRole('button', { name: '12:00, tersedia' }))
+      .element(screen.getByText(/Rab 21 · 12:00 – 12:30/))
       .toBeVisible()
     await expect
       .element(screen.getByRole('grid', { name: 'Jadwal mingguan ruang' }))
@@ -287,7 +397,10 @@ describe('Schedule (Jadwal Ruang)', () => {
       .element(screen.getByRole('heading', { name: 'R-302' }))
       .toBeVisible()
     await expect
-      .element(screen.getByRole('link', { name: 'Ajukan Ruang' }))
+      .element(screen.getByRole('region', { name: 'Pengajuan ruang' }))
+      .not.toBeInTheDocument()
+    await expect
+      .element(screen.getByRole('button', { name: 'Pilih 2026-10-21 12:00' }))
       .not.toBeInTheDocument()
   })
 })

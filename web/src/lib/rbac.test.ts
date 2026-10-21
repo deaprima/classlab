@@ -69,7 +69,6 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
       [
         'Dashboard',
         'Jadwal Ruang',
-        'Ajukan Ruang',
         'Pengajuan Saya',
         'Riwayat',
         'Lapor Kerusakan',
@@ -80,7 +79,6 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
       [
         'Dashboard',
         'Jadwal Ruang',
-        'Ajukan Ruang',
         'Pengajuan Saya',
         'Riwayat',
         'Lapor Kerusakan',
@@ -119,7 +117,6 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
     expect(shown('MAHASISWA')).toEqual([
       'Dashboard',
       'Jadwal Ruang',
-      'Ajukan Ruang',
       'Pengajuan Saya',
       'Lapor Kerusakan',
     ])
@@ -134,7 +131,7 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
     expect(shown('MAHASISWA')).not.toContain('Approval')
     expect(shown('ORGANISASI')).not.toContain('Ruang & Jadwal')
     expect(shown('TU')).not.toContain('Pengguna')
-    expect(shown('KALAB')).not.toContain('Ajukan Ruang')
+    expect(shown('KALAB')).not.toContain('Pengajuan Saya')
   })
 
   it('gives Admin user management and OB no booking list', () => {

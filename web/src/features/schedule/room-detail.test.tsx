@@ -86,6 +86,28 @@ const originalAdapter = api.defaults.adapter
 
 function serve(room: Record<string, unknown> | 'missing' = LAB) {
   api.defaults.adapter = mockAdapter((config) => {
+    if (config.url === '/auth/me') {
+      return { status: 200, data: { ...sampleUser, active_points: 0 } }
+    }
+    if (config.url === '/availability') {
+      return {
+        status: 200,
+        data: {
+          data: [
+            {
+              room,
+              operating_hours: {
+                open_time: '07:00',
+                close_time: '12:00',
+                custom: true,
+              },
+              status: 'TERSEDIA',
+              conflicts: [],
+            },
+          ],
+        },
+      }
+    }
     if (config.url === '/room-types')
       return { status: 200, data: { data: [POLICY] } }
     if (config.url === '/rooms/room-lab') {
@@ -166,7 +188,7 @@ describe('RoomDetail', () => {
       .not.toBeInTheDocument()
   })
 
-  it('picks a range from the slot chips and carries it to the request link', async () => {
+  it('picks a range from the slot chips and opens the popup with it', async () => {
     serve()
     const screen = await renderPage()
     await userEvent.click(
@@ -176,14 +198,15 @@ describe('RoomDetail', () => {
       screen.getByRole('button', { name: '10:30, tersedia' })
     )
     await expect
-      .element(screen.getByRole('link', { name: 'Ajukan Ruang' }))
-      .toHaveAttribute(
-        'href',
-        '/bookings/new?room_id=room-lab&date=2026-10-21&start=09%3A00&end=11%3A00'
-      )
-    await expect
       .element(screen.getByText('Pengajuan dibuka maksimal 7 hari ke depan.'))
       .toBeVisible()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ajukan Ruang' }))
+
+    const dialog = screen.getByRole('dialog')
+    await expect.element(dialog).toBeVisible()
+    await expect.element(dialog.getByText('09:00 – 11:00')).toBeVisible()
+    await expect.element(dialog.getByLabelText('Nama kegiatan')).toBeVisible()
   })
 
   it('moves to another day', async () => {
