@@ -14,7 +14,7 @@ const STEPS = [
   },
   {
     title: 'Tunggu persetujuan',
-    body: `Kelas yang kosong dan riwayatmu baik disetujui otomatis. Lab, auditorium, ujian, sidang, dan acara organisasi dicek TU atau Kepala Lab. Pengajuan yang belum diputuskan kedaluwarsa dalam ${violationRules.pendingExpiryHours} jam.`,
+    body: `Kelas yang kosong dan riwayatmu baik disetujui otomatis. Lab, auditorium, ujian, sidang, dan acara organisasi dicek TU atau Pengurus Lab. Pengajuan yang belum diputuskan kedaluwarsa dalam ${violationRules.pendingExpiryHours} jam.`,
   },
   {
     title: 'Check-in dengan QR di pintu',

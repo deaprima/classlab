@@ -215,7 +215,7 @@ describe('RequestForm', () => {
       const { screen } = await renderForm({ room: LAB_ROOM as Room })
       await expect
         .element(
-          screen.getByText('Menunggu validasi Kepala Lab', { exact: true })
+          screen.getByText('Menunggu validasi Pengurus Lab', { exact: true })
         )
         .toBeVisible()
     })

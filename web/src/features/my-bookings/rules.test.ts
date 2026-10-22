@@ -103,9 +103,9 @@ describe('statusNote', () => {
       statusNote(
         booking({ approval_mode: 'MANUAL' }),
         at('10:00'),
-        'Kepala Lab'
+        'Pengurus Lab'
       ).title
-    ).toBe('Disetujui Kepala Lab')
+    ).toBe('Disetujui Pengurus Lab')
   })
 
   it('gives the rejection reason in the error tone', () => {
