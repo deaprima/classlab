@@ -66,7 +66,7 @@ const STEPS: {
   {
     time: '10:00',
     title: 'Check-in dengan QR',
-    text: `Pindai QR di pintu dalam jendela ${attendanceRules.checkInEarlyMinutes} menit sebelum sampai ${attendanceRules.checkInLateMinutes} menit sesudah mulai.`,
+    text: `Pindai QR di ruang dalam jendela ${attendanceRules.checkInEarlyMinutes} menit sebelum sampai ${attendanceRules.checkInLateMinutes} menit sesudah mulai.`,
     status: 'Digunakan',
     label: 'Berlangsung',
   },
@@ -95,7 +95,7 @@ export function HowItWorks() {
       <ol>
         {STEPS.map((s, i) => (
           <Reveal as='li' key={s.time} delay={i * 80}>
-            <div className='grid items-baseline gap-x-8 gap-y-2 border-t py-7 md:grid-cols-[160px_minmax(0,1fr)_auto]'>
+            <div className='grid items-center gap-x-8 gap-y-2 border-t py-7 md:grid-cols-[160px_minmax(0,1fr)_auto]'>
               <span className='text-[clamp(32px,4vw,48px)] leading-[1.08] font-semibold tracking-[-0.02em] text-fg tabular-nums'>
                 {s.time}
               </span>
@@ -146,7 +146,7 @@ export function Features() {
     >
       <Reveal>
         <Heading id='fitur-title' overline='Fitur'>
-          Dibuat untuk pintu yang sama setiap hari.
+          Dibuat untuk ruang yang sama setiap hari.
         </Heading>
       </Reveal>
       <div className='grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]'>
@@ -169,7 +169,7 @@ export function Features() {
         <Reveal delay={100}>
           <BentoCard dark>
             <QrCode aria-hidden className='size-8' />
-            <h3 className='type-card-title'>QR di setiap pintu</h3>
+            <h3 className='type-card-title'>QR di setiap ruang</h3>
             <p className='type-body text-fg-inverse/70'>
               Tiap ruang punya QR sendiri. Pindai dengan kamera ponsel untuk
               check-in; QR bocor? TU cukup mengganti tokennya.
@@ -268,7 +268,7 @@ export function Roles() {
     >
       <Reveal>
         <Heading id='peran-title' overline='Peran'>
-          Enam peran, satu papan.
+          Enam peran, satu platform.
         </Heading>
       </Reveal>
       <ul className='grid gap-5 md:grid-cols-2 lg:grid-cols-3'>
@@ -362,7 +362,7 @@ export function Cta() {
             id='cta-title'
             className='max-w-3xl text-[clamp(40px,6vw,72px)] leading-[1.05] font-semibold tracking-[-0.03em] text-fg'
           >
-            Pintu itu menunggu jadwalmu.
+            Ruang itu menunggu jadwalmu.
           </h2>
           <p className='max-w-md type-body-lg text-fg-secondary'>
             Masuk dengan NIM atau NIP yang dibuat TU kampus, lalu pilih slot

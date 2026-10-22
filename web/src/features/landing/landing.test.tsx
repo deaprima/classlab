@@ -76,16 +76,16 @@ describe('Landing', () => {
       .element(screen.getByRole('heading', { name: 'Satu hari di R-302.' }))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByRole('heading', { name: /Dibuat untuk pintu/ }))
+      .element(screen.getByRole('heading', { name: /Dibuat untuk ruang/ }))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByRole('heading', { name: 'Enam peran, satu papan.' }))
+      .element(screen.getByRole('heading', { name: 'Enam peran, satu platform.' }))
       .toBeInTheDocument()
     await expect
       .element(screen.getByRole('heading', { name: /Lima angka/ }))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByRole('heading', { name: /Pintu itu menunggu/ }))
+      .element(screen.getByRole('heading', { name: /Ruang itu menunggu/ }))
       .toBeInTheDocument()
     await expect
       .element(screen.getByRole('contentinfo'))
