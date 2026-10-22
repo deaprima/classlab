@@ -1,9 +1,15 @@
 import { useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
-import { AlertCircle, KeyRound, Pencil, UserPlus } from 'lucide-react'
+import {
+  AlertCircle,
+  KeyRound,
+  Pencil,
+  ShieldAlert,
+  UserPlus,
+} from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { getErrorMessage } from '@/lib/api-error'
-import { type UserRole } from '@/lib/api-types'
+import { type User, type UserRole } from '@/lib/api-types'
 import { ROLE_LABELS } from '@/lib/rbac'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -28,17 +34,28 @@ import {
 import { Page } from '@/components/layout/page'
 import { Pager } from '@/components/pager'
 import { SearchInput } from '@/components/search-input'
+import { StatusPill } from '@/components/status-pill'
 import { useUsers } from './api'
 import { UserDialog, type UserDialogState } from './user-dialogs'
+import { ViolationsDialog } from './violations-dialog'
 
 const route = getRouteApi('/_authenticated/admin/users')
 const ALL = 'ALL'
+
+/** Whether new bookings are blocked right now (points reached the threshold). */
+function isBlocked(user: Pick<User, 'booking_blocked_until'>): boolean {
+  return (
+    !!user.booking_blocked_until &&
+    new Date(user.booking_blocked_until) > new Date()
+  )
+}
 
 export function AdminUsers() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const me = useAuthStore((s) => s.auth.user?.id)
   const [dialog, setDialog] = useState<UserDialogState>(null)
+  const [violationsOf, setViolationsOf] = useState<User | null>(null)
   const users = useUsers({
     page: search.page ?? 1,
     per_page: 20,
@@ -163,7 +180,9 @@ export function AdminUsers() {
                 <TableCell>{u.email ?? '-'}</TableCell>
                 <TableCell>{ROLE_LABELS[u.role]}</TableCell>
                 <TableCell>
-                  {u.is_active ? (
+                  {isBlocked(u) ? (
+                    <StatusPill status='Ditolak' label='Diblokir' />
+                  ) : u.is_active ? (
                     <Badge variant='secondary'>Aktif</Badge>
                   ) : (
                     <Badge variant='outline'>Nonaktif</Badge>
@@ -179,6 +198,16 @@ export function AdminUsers() {
                     >
                       <Pencil />
                     </Button>
+                    {(u.role === 'MAHASISWA' || u.role === 'ORGANISASI') && (
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        aria-label={`Pelanggaran ${u.name}`}
+                        onClick={() => setViolationsOf(u)}
+                      >
+                        <ShieldAlert />
+                      </Button>
+                    )}
                     <Button
                       variant='ghost'
                       size='icon'
@@ -203,6 +232,10 @@ export function AdminUsers() {
       />
 
       <UserDialog state={dialog} onClose={() => setDialog(null)} />
+      <ViolationsDialog
+        user={violationsOf}
+        onClose={() => setViolationsOf(null)}
+      />
     </Page>
   )
 }

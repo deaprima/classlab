@@ -14,6 +14,7 @@ import { BentoCard } from '@/components/bento-card'
 import { Page } from '@/components/layout/page'
 import { useMe } from '@/features/auth/api'
 import { useMyViolations } from './api'
+import { VIOLATION_LABELS } from './violation-labels'
 
 const HISTORY_LIMIT = 5
 
@@ -24,12 +25,6 @@ const IDENTIFIER_LABELS: Record<User['role'], string> = {
   KALAB: 'NIP',
   OB: 'NIP',
   ADMIN: 'NIP',
-}
-
-const VIOLATION_LABELS: Record<Violation['kind'], string> = {
-  TIDAK_HADIR: 'Tidak hadir',
-  TANPA_CHECKOUT: 'Tidak check-out',
-  BATAL_TERLAMBAT: 'Pembatalan terlambat',
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {

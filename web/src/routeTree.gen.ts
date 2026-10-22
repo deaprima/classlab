@@ -37,6 +37,8 @@ import { Route as AuthenticatedBookingsNewRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminSchedulesRouteImport } from './routes/_authenticated/admin/schedules'
 import { Route as AuthenticatedAdminRoomsRouteImport } from './routes/_authenticated/admin/rooms'
+import { Route as AuthenticatedAdminRoomTypesRouteImport } from './routes/_authenticated/admin/room-types'
+import { Route as AuthenticatedAdminAuditRouteImport } from './routes/_authenticated/admin/audit'
 import { Route as AuthenticatedManageStudentsIndexRouteImport } from './routes/_authenticated/manage/students/index'
 import { Route as AuthenticatedManageStudentsImportRouteImport } from './routes/_authenticated/manage/students/import'
 
@@ -186,6 +188,17 @@ const AuthenticatedAdminRoomsRoute = AuthenticatedAdminRoomsRouteImport.update({
   path: '/admin/rooms',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminRoomTypesRoute =
+  AuthenticatedAdminRoomTypesRouteImport.update({
+    id: '/admin/room-types',
+    path: '/admin/room-types',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminAuditRoute = AuthenticatedAdminAuditRouteImport.update({
+  id: '/admin/audit',
+  path: '/admin/audit',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedManageStudentsIndexRoute =
   AuthenticatedManageStudentsIndexRouteImport.update({
     id: '/manage/students/',
@@ -216,6 +229,8 @@ export interface FileRoutesByFullPath {
   '/schedule': typeof AuthenticatedScheduleRoute
   '/today': typeof AuthenticatedTodayRoute
   '/verify': typeof AuthenticatedVerifyRoute
+  '/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/admin/room-types': typeof AuthenticatedAdminRoomTypesRoute
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -247,6 +262,8 @@ export interface FileRoutesByTo {
   '/today': typeof AuthenticatedTodayRoute
   '/verify': typeof AuthenticatedVerifyRoute
   '/': typeof AuthenticatedIndexRoute
+  '/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/admin/room-types': typeof AuthenticatedAdminRoomTypesRoute
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -280,6 +297,8 @@ export interface FileRoutesById {
   '/_authenticated/today': typeof AuthenticatedTodayRoute
   '/_authenticated/verify': typeof AuthenticatedVerifyRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/_authenticated/admin/room-types': typeof AuthenticatedAdminRoomTypesRoute
   '/_authenticated/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/_authenticated/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -313,6 +332,8 @@ export interface FileRouteTypes {
     | '/schedule'
     | '/today'
     | '/verify'
+    | '/admin/audit'
+    | '/admin/room-types'
     | '/admin/rooms'
     | '/admin/schedules'
     | '/admin/users'
@@ -344,6 +365,8 @@ export interface FileRouteTypes {
     | '/today'
     | '/verify'
     | '/'
+    | '/admin/audit'
+    | '/admin/room-types'
     | '/admin/rooms'
     | '/admin/schedules'
     | '/admin/users'
@@ -376,6 +399,8 @@ export interface FileRouteTypes {
     | '/_authenticated/today'
     | '/_authenticated/verify'
     | '/_authenticated/'
+    | '/_authenticated/admin/audit'
+    | '/_authenticated/admin/room-types'
     | '/_authenticated/admin/rooms'
     | '/_authenticated/admin/schedules'
     | '/_authenticated/admin/users'
@@ -601,6 +626,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRoomsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/room-types': {
+      id: '/_authenticated/admin/room-types'
+      path: '/admin/room-types'
+      fullPath: '/admin/room-types'
+      preLoaderRoute: typeof AuthenticatedAdminRoomTypesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/audit': {
+      id: '/_authenticated/admin/audit'
+      path: '/admin/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AuthenticatedAdminAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/manage/students/': {
       id: '/_authenticated/manage/students/'
       path: '/manage/students'
@@ -627,6 +666,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTodayRoute: typeof AuthenticatedTodayRoute
   AuthenticatedVerifyRoute: typeof AuthenticatedVerifyRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
+  AuthenticatedAdminRoomTypesRoute: typeof AuthenticatedAdminRoomTypesRoute
   AuthenticatedAdminRoomsRoute: typeof AuthenticatedAdminRoomsRoute
   AuthenticatedAdminSchedulesRoute: typeof AuthenticatedAdminSchedulesRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
@@ -651,6 +692,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTodayRoute: AuthenticatedTodayRoute,
   AuthenticatedVerifyRoute: AuthenticatedVerifyRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
+  AuthenticatedAdminRoomTypesRoute: AuthenticatedAdminRoomTypesRoute,
   AuthenticatedAdminRoomsRoute: AuthenticatedAdminRoomsRoute,
   AuthenticatedAdminSchedulesRoute: AuthenticatedAdminSchedulesRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,

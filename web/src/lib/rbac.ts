@@ -30,6 +30,9 @@ export const ACCESS = {
   // Student accounts: TU and Admin may create and edit them; the API limits TU to role MAHASISWA.
   manageStudents: ['TU', 'ADMIN'],
   manageUsers: ['ADMIN'],
+  // Audit log and the policy of each room type: Admin only (the API answers 403 to others).
+  viewAudit: ['ADMIN'],
+  managePolicies: ['ADMIN'],
   updateReportStatus: ['TU', 'KALAB', 'ADMIN'],
 } as const satisfies Record<string, readonly UserRole[]>
 

@@ -4,6 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api } from '@/lib/api-client'
 import {
   type CreateUserRequest,
@@ -12,6 +13,8 @@ import {
   type User,
   type UserListQuery,
   type UserListResponse,
+  type Violation,
+  type ViolationListResponse,
 } from '@/lib/api-types'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -73,5 +76,35 @@ export function useResetPassword(
       queryClient.invalidateQueries({ queryKey: queryKeys.users.all })
     },
     ...(options.onError && { onError: options.onError }),
+  })
+}
+
+/** A requester's violations, newest first, with the active points and any running booking block. */
+export function useUserViolations(userId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.users.violations(userId ?? ''),
+    queryFn: async () =>
+      (
+        await api.get<ViolationListResponse>(`/users/${userId}/violations`, {
+          params: { per_page: 50 },
+        })
+      ).data,
+    enabled: !!userId,
+  })
+}
+
+/** Cancels one violation: its points stop counting. A block already running is lifted separately. */
+export function useAnnulViolation(userId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
+      (await api.post<Violation>(`/violations/${id}/annul`, { reason })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.users.violations(userId),
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all })
+      toast.success('Pelanggaran di-annul.')
+    },
   })
 }
