@@ -1,17 +1,8 @@
-import { z } from 'zod'
-import { createFileRoute } from '@tanstack/react-router'
-import { ACCESS, requireRole } from '@/lib/rbac'
-import { dateParam, uuidParam } from '@/lib/search-params'
-import { AdminSchedules } from '@/features/admin/schedules'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-const searchSchema = z.object({
-  room_id: uuidParam,
-  /** Any day of the week to show. */
-  date: dateParam,
-})
-
+// The schedule list now lives in the "Jadwal" tab of Ruang & Jadwal; old links land there.
 export const Route = createFileRoute('/_authenticated/admin/schedules')({
-  validateSearch: searchSchema,
-  beforeLoad: () => requireRole(ACCESS.manageSchedules),
-  component: AdminSchedules,
+  beforeLoad: () => {
+    throw redirect({ to: '/admin/rooms', search: { tab: 'jadwal' } })
+  },
 })

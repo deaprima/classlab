@@ -27,6 +27,7 @@ export const queryKeys = {
     all: ['rooms'] as const,
     list: (query: RoomListQuery) => ['rooms', 'list', query] as const,
     detail: (id: string) => ['rooms', 'detail', id] as const,
+    qr: (id: string) => ['rooms', 'qr', id] as const,
     schedule: (id: string, from: string, to: string) =>
       ['rooms', 'schedule', id, { from, to }] as const,
   },

@@ -43,7 +43,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Page } from '@/components/layout/page'
 import { useRoomSchedule, useRooms } from '@/features/rooms/api'
 import { useDeleteSchedule } from './api'
 import {
@@ -51,13 +50,13 @@ import {
   ScheduleFormDialog,
 } from './schedule-form-dialog'
 
-const route = getRouteApi('/_authenticated/admin/schedules')
+const route = getRouteApi('/_authenticated/admin/rooms')
 
 /**
  * The API has no schedule list endpoint; a room's week is read from its timeline
  * (`/rooms/{id}/schedule`), whose SCHEDULE items carry the schedule id (decisions.md, Phase 5).
  */
-export function AdminSchedules() {
+export function SchedulesTab() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const rooms = useRooms({ per_page: 100 })
@@ -76,11 +75,13 @@ export function AdminSchedules() {
     navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
 
   return (
-    <Page
-      title='Kelola Jadwal'
-      description='Jadwal kuliah dan kegiatan tetap per ruang. Peminjaman yang disetujui tampil sebagai lapisan dan tidak mengubah jadwal (BR-05).'
-      actions={
-        roomId && (
+    <div className='flex flex-col gap-4'>
+      <p className='type-body-sm text-fg-secondary'>
+        Jadwal kuliah dan kegiatan tetap per ruang. Peminjaman yang disetujui
+        tampil terpisah dan tidak mengubah jadwal ini.
+      </p>
+      {roomId && (
+        <div>
           <Button
             onClick={() =>
               setDialog({
@@ -93,10 +94,9 @@ export function AdminSchedules() {
             <Plus />
             Tambah Jadwal
           </Button>
-        )
-      }
-    >
-      <Card className='mb-6'>
+        </div>
+      )}
+      <Card>
         <CardContent className='flex flex-wrap items-end gap-4'>
           <div className='grid min-w-64 gap-2'>
             <Label htmlFor='sc-room'>Ruang</Label>
@@ -161,7 +161,7 @@ export function AdminSchedules() {
       </Card>
 
       {rooms.isError && (
-        <Alert variant='destructive'>
+        <Alert variant='error'>
           <AlertCircle />
           <AlertDescription>{getErrorMessage(rooms.error)}</AlertDescription>
         </Alert>
@@ -203,7 +203,7 @@ export function AdminSchedules() {
         isLoading={remove.isPending}
         handleConfirm={() => deleting && remove.mutate(deleting.id)}
       />
-    </Page>
+    </div>
   )
 }
 
@@ -238,7 +238,7 @@ function WeekTable({
         )}
       </div>
       {timeline.isError && (
-        <Alert variant='destructive' className='mb-4'>
+        <Alert variant='error' className='mb-4'>
           <AlertCircle />
           <AlertDescription>{getErrorMessage(timeline.error)}</AlertDescription>
         </Alert>
