@@ -84,7 +84,7 @@ export function Hero() {
           >
             Ajukan ruang kelas, lab, auditorium, ruang ujian, atau ruang sidang.
             Slot yang kosong langsung terlihat, bentrok dicegah sistem, dan
-            check-in cukup memindai QR di pintu.
+            check-in cukup memindai QR di ruang.
           </p>
           <div
             className='mt-8 flex flex-wrap items-center gap-3 motion-safe:animate-landing-rise'

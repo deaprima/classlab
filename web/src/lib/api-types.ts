@@ -14,7 +14,6 @@ export type RoomType = Schemas['RoomType']
 export type TimelineItem = Schemas['TimelineItem']
 export type AvailabilityRoom = Schemas['AvailabilityRoom']
 export type AvailabilityStatus = AvailabilityRoom['status']
-export type AvailabilityConflict = AvailabilityRoom['conflicts'][number]
 
 export type Booking = Schemas['Booking']
 export type BookingStatus = Schemas['BookingStatus']
@@ -69,7 +68,6 @@ export type ReportDetail =
   paths['/reports/{id}']['get']['responses']['200']['content']['application/json']
 
 export type Schedule = Schemas['Schedule']
-export type ScheduleSource = Schemas['ScheduleSource']
 export type CreateRoomRequest =
   paths['/rooms']['post']['requestBody']['content']['application/json']
 export type UpdateRoomRequest =

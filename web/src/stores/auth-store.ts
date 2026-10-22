@@ -1,8 +1,7 @@
 import { create } from 'zustand'
-import { type User, type UserRole } from '@/lib/api-types'
+import { type User } from '@/lib/api-types'
 
-export type AuthUser = User
-export type { UserRole }
+type AuthUser = User
 
 interface AuthState {
   auth: {

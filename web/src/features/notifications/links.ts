@@ -1,7 +1,7 @@
 import { type AppNotification, type UserRole } from '@/lib/api-types'
 import { ACCESS } from '@/lib/rbac'
 
-export type NotificationTarget =
+type NotificationTarget =
   | { to: '/approvals'; search: { booking: string } }
   | { to: '/bookings'; search: { booking: string } }
   | { to: '/reports'; search: { report: string } }
