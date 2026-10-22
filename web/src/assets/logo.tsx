@@ -1,24 +1,34 @@
-import { type SVGProps } from 'react'
 import { cn } from '@/lib/utils'
+import logoForDarkTheme from './classlab-logo-dark-500.svg'
+import logoForLightTheme from './classlab-logo-light-500.svg'
 
-export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
+/**
+ * The ClassLab mark. It is a rounded tile that has to stand out from its surroundings: a dark tile
+ * on the light theme, a white one on the dark theme. `inverse` is for surfaces that are themselves
+ * the inverse of the page (the landing footer, the sign-in brand panel), where it is the other way
+ * round. The size comes from `className`; the file is square.
+ */
+export function Logo({
+  className,
+  inverse = false,
+}: {
+  className?: string
+  inverse?: boolean
+}) {
+  const onLight = inverse ? logoForDarkTheme : logoForLightTheme
+  const onDark = inverse ? logoForLightTheme : logoForDarkTheme
   return (
-    <svg
-      id='classlab-logo'
-      viewBox='0 0 24 24'
-      xmlns='http://www.w3.org/2000/svg'
-      height='24'
-      width='24'
-      fill='none'
-      stroke='currentColor'
-      strokeWidth='2'
-      strokeLinecap='round'
-      strokeLinejoin='round'
-      className={cn('size-6', className)}
-      {...props}
-    >
-      <title>ClassLab.io</title>
-      <path d='M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3' />
-    </svg>
+    <>
+      <img
+        src={onLight}
+        alt=''
+        className={cn('size-6 dark:hidden', className)}
+      />
+      <img
+        src={onDark}
+        alt=''
+        className={cn('hidden size-6 dark:block', className)}
+      />
+    </>
   )
 }

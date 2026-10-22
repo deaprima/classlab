@@ -75,9 +75,7 @@ function AppBrand() {
       onClick={() => setOpenMobile(false)}
       className='flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring'
     >
-      <span className='flex size-9 items-center justify-center rounded-full bg-sidebar-primary text-sidebar-primary-foreground'>
-        <Logo className='size-5' />
-      </span>
+      <Logo className='size-9' />
       <span className='type-section text-sidebar-foreground'>ClassLab.io</span>
     </Link>
   )

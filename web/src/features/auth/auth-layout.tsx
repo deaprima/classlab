@@ -1,12 +1,11 @@
-import logoMarkLight from '@/assets/logo-mark-light.svg'
-import logoMark from '@/assets/logo-mark.svg'
+import { Logo } from '@/assets/logo'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 /** Figma `Logo / Full`: the orange-dot mark and the product name. */
 function BrandLogo() {
   return (
     <div className='flex items-center gap-2'>
-      <img src={logoMark} alt='' className='size-8' />
+      <Logo className='size-8' />
       <span className='type-section text-fg'>ClassLab.io</span>
     </div>
   )
@@ -72,11 +71,8 @@ export function SplitAuthLayout({
 function BrandPanel() {
   return (
     <div className='hidden w-125 shrink-0 flex-col items-center justify-end gap-4 rounded-3xl bg-inverse px-8 py-10 lg:flex'>
-      <span className='flex size-18 items-center justify-center rounded-[20px] border border-fg-inverse/15 bg-fg-inverse/10'>
-        {/* The panel is the inverse of the page: a white mark on the dark panel, a dark one on the white panel. */}
-        <img src={logoMarkLight} alt='' className='size-9 dark:hidden' />
-        <img src={logoMark} alt='' className='hidden size-9 dark:block' />
-      </span>
+      {/* The panel is the inverse of the page, so the tile is too. */}
+      <Logo inverse className='size-18' />
       <p className='flex flex-col items-center text-center text-[32px] leading-10 font-semibold tracking-[-0.64px] whitespace-nowrap'>
         <span className='text-fg-inverse'>Satu platform untuk</span>
         <span className='text-fg-inverse/60'>booking semua ruang kampus</span>
