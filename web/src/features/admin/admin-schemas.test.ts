@@ -43,6 +43,18 @@ describe('room form', () => {
       roomFormSchema.safeParse({ ...base, facilities: many }).success
     ).toBe(false)
   })
+
+  it('takes opening hours as a pair on 30-minute steps (BR-29)', () => {
+    const hours = (open_time: string, close_time: string) =>
+      roomFormSchema.safeParse({ ...base, open_time, close_time }).success
+    expect(hours('', '')).toBe(true)
+    expect(hours('07:00', '22:00')).toBe(true)
+    expect(hours('07:00', '')).toBe(false)
+    expect(hours('', '22:00')).toBe(false)
+    expect(hours('07:15', '22:00')).toBe(false)
+    expect(hours('22:00', '07:00')).toBe(false)
+    expect(hours('08:00', '08:00')).toBe(false)
+  })
 })
 
 describe('schedule form (BR-09)', () => {

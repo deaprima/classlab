@@ -1,16 +1,15 @@
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { type ReactNode, useState } from 'react'
+import { type UseFormReturn, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formProblemFrom } from '@/lib/api-error'
-import { type Room } from '@/lib/api-types'
+import { type Room, type RoomType } from '@/lib/api-types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -37,6 +36,7 @@ import { type FormProblem, FormProblemAlert } from '@/components/form-problem'
 import { ROOM_TYPE_LABELS, ROOM_TYPES } from '@/features/rooms/labels'
 import { useCreateRoom, useUpdateRoom } from './api'
 import {
+  HOUR_OPTIONS,
   type RoomFormValues,
   parseFacilities,
   roomFormSchema,
@@ -49,33 +49,66 @@ const FIELDS = {
   capacity: 'capacity',
   facilities: 'facilities',
   is_active: 'is_active',
+  open_time: 'open_time',
+  close_time: 'close_time',
 } as const
+
+const DEFAULT_HOURS = 'DEFAULT'
 
 /** Create (room undefined) or edit a room. Content mounts only while open, so it starts fresh. */
 export function RoomFormDialog({
   open,
   room,
   onOpenChange,
+  defaultHours,
 }: {
   open: boolean
   room?: Room
   onOpenChange: (open: boolean) => void
+  /** Hours of the room type, shown as the hint under "ikut tipe". */
+  defaultHours?: (type: RoomType) => string | undefined
 }) {
+  const done = () => onOpenChange(false)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open && (
-        <RoomFormContent room={room} onDone={() => onOpenChange(false)} />
+        <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>
+              {room ? `Ubah ${room.code}` : 'Tambah ruang'}
+            </DialogTitle>
+            <DialogDescription>
+              {room
+                ? 'Kode ruang tidak dapat diubah.'
+                : 'Ruang baru langsung muncul di Jadwal Ruang. QR dibuat otomatis.'}
+            </DialogDescription>
+          </DialogHeader>
+          <RoomForm
+            room={room}
+            onDone={done}
+            onCancel={done}
+            defaultHours={defaultHours}
+          />
+        </DialogContent>
       )}
     </Dialog>
   )
 }
 
-function RoomFormContent({
+/** The room form with its own Batal and Simpan buttons; used in the dialog and in the side panel. */
+export function RoomForm({
   room,
   onDone,
+  onCancel,
+  defaultHours,
+  extra,
 }: {
   room?: Room
   onDone: () => void
+  onCancel: () => void
+  defaultHours?: (type: RoomType) => string | undefined
+  /** Shown above the buttons (the QR card of the side panel). */
+  extra?: ReactNode
 }) {
   const orgUnitId = useAuthStore((s) => s.auth.user?.org_unit_id)
   const [problem, setProblem] = useState<FormProblem | null>(null)
@@ -88,6 +121,8 @@ function RoomFormContent({
       capacity: room ? String(room.capacity) : '',
       facilities: room?.facilities.join('\n') ?? '',
       is_active: room?.is_active ?? true,
+      open_time: room?.open_time ?? '',
+      close_time: room?.close_time ?? '',
     },
   })
   const onError = (e: unknown) =>
@@ -104,27 +139,35 @@ function RoomFormContent({
       capacity: Number(v.capacity),
       facilities: parseFacilities(v.facilities),
     }
+    const hours =
+      v.open_time && v.close_time
+        ? { open_time: v.open_time, close_time: v.close_time }
+        : null
     if (room) {
       update.mutate({
         id: room.id,
-        body: { ...common, is_active: v.is_active },
+        body: {
+          ...common,
+          is_active: v.is_active,
+          ...(hours ?? (room.open_time ? { clear_operating_hours: true } : {})),
+        },
       })
     } else if (orgUnitId) {
       // MVP has one unit; new rooms belong to the admin's own (decisions.md, Phase 5).
-      create.mutate({ ...common, org_unit_id: orgUnitId, code: v.code.trim() })
+      create.mutate({
+        ...common,
+        ...hours,
+        org_unit_id: orgUnitId,
+        code: v.code.trim(),
+      })
     }
   })
 
+  const type = useWatch({ control: form.control, name: 'type' })
+  const fallback = defaultHours?.(type)
+
   return (
-    <DialogContent className='sm:max-w-lg'>
-      <DialogHeader>
-        <DialogTitle>{room ? `Ubah ${room.code}` : 'Tambah ruang'}</DialogTitle>
-        <DialogDescription>
-          {room
-            ? 'Kode ruang tidak dapat diubah.'
-            : 'Kode disimpan dalam huruf besar dan harus unik.'}
-        </DialogDescription>
-      </DialogHeader>
+    <>
       <Form {...form}>
         <form
           id='room-form'
@@ -210,6 +253,14 @@ function RoomFormContent({
               )}
             />
           </div>
+          <div className='grid gap-4 sm:grid-cols-2'>
+            <HoursField form={form} name='open_time' label='Buka (khusus)' />
+            <HoursField form={form} name='close_time' label='Tutup (khusus)' />
+          </div>
+          <p className='-mt-2 type-body-sm text-fg-secondary'>
+            Kosong = ikut jam default tipe ruang
+            {fallback ? ` (${fallback})` : ''}.
+          </p>
           <FormField
             control={form.control}
             name='facilities'
@@ -235,8 +286,8 @@ function RoomFormContent({
               control={form.control}
               name='is_active'
               render={({ field }) => (
-                <FormItem className='flex items-center justify-between rounded-md border p-3'>
-                  <div className='space-y-0.5'>
+                <FormItem className='flex items-center justify-between gap-4 rounded-md border p-3'>
+                  <div className='min-w-0 flex-1 space-y-0.5'>
                     <FormLabel>Aktif</FormLabel>
                     <FormDescription>
                       Ruang nonaktif tidak bisa dibooking dan tidak tampil di
@@ -245,6 +296,7 @@ function RoomFormContent({
                   </div>
                   <FormControl>
                     <Switch
+                      className='shrink-0'
                       checked={field.value}
                       onCheckedChange={field.onChange}
                     />
@@ -255,15 +307,57 @@ function RoomFormContent({
           )}
         </form>
       </Form>
-      <DialogFooter>
-        <Button variant='outline' disabled={pending} onClick={onDone}>
+      {extra}
+      <div className='flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'>
+        <Button variant='outline' disabled={pending} onClick={onCancel}>
           Batal
         </Button>
         <Button type='submit' form='room-form' disabled={pending}>
           {pending && <Loader2 className='animate-spin' />}
           Simpan
         </Button>
-      </DialogFooter>
-    </DialogContent>
+      </div>
+    </>
+  )
+}
+
+function HoursField({
+  form,
+  name,
+  label,
+}: {
+  form: UseFormReturn<RoomFormValues>
+  name: 'open_time' | 'close_time'
+  label: string
+}) {
+  return (
+    <FormField
+      control={form.control}
+      name={name}
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>{label}</FormLabel>
+          <Select
+            value={field.value || DEFAULT_HOURS}
+            onValueChange={(v) => field.onChange(v === DEFAULT_HOURS ? '' : v)}
+          >
+            <FormControl>
+              <SelectTrigger className='w-full'>
+                <SelectValue />
+              </SelectTrigger>
+            </FormControl>
+            <SelectContent>
+              <SelectItem value={DEFAULT_HOURS}>Ikut tipe</SelectItem>
+              {HOUR_OPTIONS.map((h) => (
+                <SelectItem key={h} value={h}>
+                  {h}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   )
 }

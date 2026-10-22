@@ -4,7 +4,6 @@ import { AlertCircle, ClipboardCheck } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { getErrorMessage } from '@/lib/api-error'
 import { formatTimeRange } from '@/lib/datetime'
-import { cn } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useNow } from '@/hooks/use-now'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -17,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
+import { FilterChip } from '@/components/filter-chip'
 import { Page } from '@/components/layout/page'
 import { ListFooter } from '@/components/list-footer'
 import {
@@ -194,20 +194,20 @@ export function Approvals() {
           </div>
 
           <div className='flex flex-wrap items-center gap-2'>
-            <TypeChip
+            <FilterChip
               active={!type}
               onClick={() => refine({ type: undefined })}
             >
               Semua tipe
-            </TypeChip>
+            </FilterChip>
             {types.map((t) => (
-              <TypeChip
+              <FilterChip
                 key={t}
                 active={type === t}
                 onClick={() => refine({ type: t })}
               >
                 {ROOM_TYPE_LABELS[t]}
-              </TypeChip>
+              </FilterChip>
             ))}
             {tab === 'MENUNGGU' && (
               <span className='type-body-sm text-fg-secondary sm:ms-auto'>
@@ -309,32 +309,5 @@ export function Approvals() {
         </DialogContent>
       </Dialog>
     </Page>
-  )
-}
-
-/** Figma `Chip` (filter): a pill that is black while selected. */
-function TypeChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type='button'
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        'inline-flex h-8 items-center rounded-full border px-3 type-label whitespace-nowrap transition-colors',
-        active
-          ? 'border-transparent bg-primary text-primary-foreground'
-          : 'bg-surface text-fg hover:border-line-hover'
-      )}
-    >
-      {children}
-    </button>
   )
 }

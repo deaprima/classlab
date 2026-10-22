@@ -141,7 +141,7 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
   })
 
   return (
-    <DialogContent className='sm:max-w-lg'>
+    <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-lg'>
       <DialogHeader>
         <DialogTitle>Tambah pengguna</DialogTitle>
         <DialogDescription>
@@ -256,7 +256,7 @@ function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
   })
 
   return (
-    <DialogContent className='sm:max-w-lg'>
+    <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-lg'>
       <DialogHeader>
         <DialogTitle>Ubah {user.name}</DialogTitle>
         <DialogDescription>
@@ -347,7 +347,7 @@ function ResetPasswordContent({
 
   if (reset.data) {
     return (
-      <DialogContent className='sm:max-w-md'>
+      <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-md'>
         <DialogHeader>
           <DialogTitle>Kata sandi sementara</DialogTitle>
           <DialogDescription>
@@ -365,7 +365,7 @@ function ResetPasswordContent({
   }
 
   return (
-    <DialogContent className='sm:max-w-md'>
+    <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-md'>
       <DialogHeader>
         <DialogTitle>Reset kata sandi</DialogTitle>
         <DialogDescription>

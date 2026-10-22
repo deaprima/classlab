@@ -84,6 +84,53 @@ describe('admin dialogs', () => {
     })
   })
 
+  it('sends custom opening hours when creating a room', async () => {
+    const bodies: Record<string, unknown>[] = []
+    api.defaults.adapter = mockAdapter((config) => {
+      bodies.push(JSON.parse(String(config.data)))
+      return { status: 201, data: ROOM }
+    })
+    const onOpenChange = vi.fn()
+    const screen = await wrap(
+      <RoomFormDialog open onOpenChange={onOpenChange} />
+    )
+
+    await userEvent.fill(screen.getByLabelText('Kode'), 'LAB-5')
+    await userEvent.fill(screen.getByLabelText('Nama'), 'Lab Malam')
+    await userEvent.fill(screen.getByLabelText('Kapasitas'), '20')
+    // Early hours, so the options sit inside the small test viewport.
+    await userEvent.click(screen.getByLabelText('Buka (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: '01:00' }))
+    await userEvent.click(screen.getByLabelText('Tutup (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: '02:00' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(bodies[0]).toMatchObject({ open_time: '01:00', close_time: '02:00' })
+  })
+
+  it('returns a room to its type hours with clear_operating_hours', async () => {
+    const bodies: Record<string, unknown>[] = []
+    api.defaults.adapter = mockAdapter((config) => {
+      bodies.push(JSON.parse(String(config.data)))
+      return { status: 200, data: ROOM }
+    })
+    const onOpenChange = vi.fn()
+    const screen = await wrap(
+      <RoomFormDialog open room={ROOM} onOpenChange={onOpenChange} />
+    )
+
+    await userEvent.click(screen.getByLabelText('Buka (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: 'Ikut tipe' }))
+    await userEvent.click(screen.getByLabelText('Tutup (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: 'Ikut tipe' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(bodies[0]).toMatchObject({ clear_operating_hours: true })
+    expect(bodies[0]).not.toHaveProperty('open_time')
+  })
+
   it('shows a duplicate room code on the code field', async () => {
     api.defaults.adapter = mockAdapter(() => ({
       status: 422,

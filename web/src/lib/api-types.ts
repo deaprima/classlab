@@ -9,6 +9,7 @@ export type ErrorBody = Schemas['ErrorBody']
 export type PaginationMeta = Schemas['PaginationMeta']
 
 export type Room = Schemas['Room']
+export type RoomQR = Schemas['RoomQR']
 export type RoomType = Schemas['RoomType']
 export type TimelineItem = Schemas['TimelineItem']
 export type AvailabilityRoom = Schemas['AvailabilityRoom']
