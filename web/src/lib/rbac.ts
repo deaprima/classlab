@@ -25,6 +25,8 @@ export const ACCESS = {
   // Photos of how rooms were left; the server scopes TU and KALAB to the types they approve.
   verifyCheckouts: ['TU', 'KALAB', 'OB', 'ADMIN'],
   viewRoomBoard: ['TU', 'KALAB', 'OB', 'ADMIN'],
+  // CSV imports of schedules and student accounts (brief 7.2).
+  manageImports: ['TU', 'ADMIN'],
   manageUsers: ['ADMIN'],
   updateReportStatus: ['TU', 'KALAB', 'ADMIN'],
 } as const satisfies Record<string, readonly UserRole[]>

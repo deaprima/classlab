@@ -5,6 +5,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  FileUp,
   Pencil,
   Plus,
   Trash2,
@@ -21,6 +22,7 @@ import {
   toApiDateTime,
   todayWib,
 } from '@/lib/datetime'
+import { ACCESS, useHasRole } from '@/lib/rbac'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -43,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { Page } from '@/components/layout/page'
 import { useRoomSchedule, useRooms } from '@/features/rooms/api'
 import { useDeleteSchedule } from './api'
 import {
@@ -50,13 +53,14 @@ import {
   ScheduleFormDialog,
 } from './schedule-form-dialog'
 
-const route = getRouteApi('/_authenticated/admin/rooms')
+const route = getRouteApi('/_authenticated/admin/schedules')
 
 /**
  * The API has no schedule list endpoint; a room's week is read from its timeline
  * (`/rooms/{id}/schedule`), whose SCHEDULE items carry the schedule id (decisions.md, Phase 5).
  */
-export function SchedulesTab() {
+export function AdminSchedules() {
+  const canImport = useHasRole(ACCESS.manageImports)
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const rooms = useRooms({ per_page: 100 })
@@ -75,135 +79,148 @@ export function SchedulesTab() {
     navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
 
   return (
-    <div className='flex flex-col gap-4'>
-      <p className='type-body-sm text-fg-secondary'>
-        Jadwal kuliah dan kegiatan tetap per ruang. Peminjaman yang disetujui
-        tampil terpisah dan tidak mengubah jadwal ini.
-      </p>
-      {roomId && (
-        <div>
-          <Button
-            onClick={() =>
-              setDialog({
-                mode: 'create',
-                roomId,
-                date: monday < todayWib() ? todayWib() : monday,
-              })
-            }
-          >
-            <Plus />
-            Tambah Jadwal
-          </Button>
-        </div>
-      )}
-      <Card>
-        <CardContent className='flex flex-wrap items-end gap-4'>
-          <div className='grid min-w-64 gap-2'>
-            <Label htmlFor='sc-room'>Ruang</Label>
-            <Select
-              value={roomId ?? ''}
-              onValueChange={(v) => go({ room_id: v })}
-              disabled={rooms.isPending}
-            >
-              <SelectTrigger id='sc-room' className='w-full'>
-                <SelectValue placeholder='Memuat ruang…' />
-              </SelectTrigger>
-              <SelectContent>
-                {roomList.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.code} · {r.name}
-                    {!r.is_active && ' (nonaktif)'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className='flex items-end gap-1'>
-            <Button
-              variant='outline'
-              size='icon'
-              aria-label='Minggu sebelumnya'
-              onClick={() => go({ date: addDays(monday, -7) })}
-            >
-              <ChevronLeft />
-            </Button>
-            <div className='grid gap-2'>
-              <Label htmlFor='sc-date'>Minggu dari tanggal</Label>
-              <Input
-                id='sc-date'
-                type='date'
-                value={monday}
-                onChange={(e) => e.target.value && go({ date: e.target.value })}
-              />
-            </div>
-            <Button
-              variant='outline'
-              size='icon'
-              aria-label='Minggu berikutnya'
-              onClick={() => go({ date: addDays(monday, 7) })}
-            >
-              <ChevronRight />
-            </Button>
-          </div>
-          {roomId && (
-            <Button variant='ghost' asChild>
-              <Link
-                to='/rooms/$id'
-                params={{ id: roomId }}
-                search={{ date: monday }}
-              >
-                <CalendarDays />
-                Lihat timeline
+    <Page
+      title='Jadwal'
+      description='Jadwal kuliah dan kegiatan tetap per ruang. Peminjaman yang disetujui tampil terpisah dan tidak mengubah jadwal ini.'
+      actions={
+        <>
+          {canImport && (
+            <Button variant='secondary' asChild>
+              <Link to='/manage/imports'>
+                <FileUp />
+                Impor Jadwal CSV
               </Link>
             </Button>
           )}
-        </CardContent>
-      </Card>
+          {roomId && (
+            <Button
+              onClick={() =>
+                setDialog({
+                  mode: 'create',
+                  roomId,
+                  date: monday < todayWib() ? todayWib() : monday,
+                })
+              }
+            >
+              <Plus />
+              Tambah Jadwal
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className='flex flex-col gap-4'>
+        <Card>
+          <CardContent className='flex flex-wrap items-end gap-4'>
+            <div className='grid min-w-64 gap-2'>
+              <Label htmlFor='sc-room'>Ruang</Label>
+              <Select
+                value={roomId ?? ''}
+                onValueChange={(v) => go({ room_id: v })}
+                disabled={rooms.isPending}
+              >
+                <SelectTrigger id='sc-room' className='w-full'>
+                  <SelectValue placeholder='Memuat ruang…' />
+                </SelectTrigger>
+                <SelectContent>
+                  {roomList.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.code} · {r.name}
+                      {!r.is_active && ' (nonaktif)'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className='flex items-end gap-1'>
+              <Button
+                variant='outline'
+                size='icon'
+                aria-label='Minggu sebelumnya'
+                onClick={() => go({ date: addDays(monday, -7) })}
+              >
+                <ChevronLeft />
+              </Button>
+              <div className='grid gap-2'>
+                <Label htmlFor='sc-date'>Minggu dari tanggal</Label>
+                <Input
+                  id='sc-date'
+                  type='date'
+                  value={monday}
+                  onChange={(e) =>
+                    e.target.value && go({ date: e.target.value })
+                  }
+                />
+              </div>
+              <Button
+                variant='outline'
+                size='icon'
+                aria-label='Minggu berikutnya'
+                onClick={() => go({ date: addDays(monday, 7) })}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+            {roomId && (
+              <Button variant='ghost' asChild>
+                <Link
+                  to='/rooms/$id'
+                  params={{ id: roomId }}
+                  search={{ date: monday }}
+                >
+                  <CalendarDays />
+                  Lihat timeline
+                </Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
 
-      {rooms.isError && (
-        <Alert variant='error'>
-          <AlertCircle />
-          <AlertDescription>{getErrorMessage(rooms.error)}</AlertDescription>
-        </Alert>
-      )}
+        {rooms.isError && (
+          <Alert variant='error'>
+            <AlertCircle />
+            <AlertDescription>{getErrorMessage(rooms.error)}</AlertDescription>
+          </Alert>
+        )}
 
-      {roomId && (
-        <WeekTable
-          roomId={roomId}
-          from={from}
-          to={to}
-          title={`${room?.code ?? ''} · ${formatDate(from)} – ${formatDate(toApiDateTime(addDays(monday, 6), '12:00'))}`}
-          onEdit={(item) => setDialog({ mode: 'edit', roomId, item })}
-          onDelete={setDeleting}
+        {roomId && (
+          <WeekTable
+            roomId={roomId}
+            from={from}
+            to={to}
+            title={`${room?.code ?? ''} · ${formatDate(from)} – ${formatDate(toApiDateTime(addDays(monday, 6), '12:00'))}`}
+            onEdit={(item) => setDialog({ mode: 'edit', roomId, item })}
+            onDelete={setDeleting}
+          />
+        )}
+
+        <ScheduleFormDialog
+          state={dialog}
+          rooms={roomList}
+          onClose={() => setDialog(null)}
         />
-      )}
-
-      <ScheduleFormDialog
-        state={dialog}
-        rooms={roomList}
-        onClose={() => setDialog(null)}
-      />
-      <ConfirmDialog
-        open={deleting !== null}
-        onOpenChange={(o) => !o && !remove.isPending && setDeleting(null)}
-        title='Hapus jadwal?'
-        desc={
-          deleting ? (
-            <p>
-              “{deleting.title}”,{' '}
-              {formatSlot(deleting.start_at, deleting.end_at)}. Hanya sesi ini
-              yang dihapus; slotnya menjadi bisa dipinjam.
-            </p>
-          ) : (
-            ''
-          )
-        }
-        confirmText='Hapus'
-        destructive
-        isLoading={remove.isPending}
-        handleConfirm={() => deleting && remove.mutate(deleting.id)}
-      />
-    </div>
+        <ConfirmDialog
+          open={deleting !== null}
+          onOpenChange={(o) => !o && !remove.isPending && setDeleting(null)}
+          title='Hapus jadwal?'
+          desc={
+            deleting ? (
+              <p>
+                “{deleting.title}”,{' '}
+                {formatSlot(deleting.start_at, deleting.end_at)}. Hanya sesi ini
+                yang dihapus; slotnya menjadi bisa dipinjam.
+              </p>
+            ) : (
+              ''
+            )
+          }
+          confirmText='Hapus'
+          destructive
+          isLoading={remove.isPending}
+          handleConfirm={() => deleting && remove.mutate(deleting.id)}
+        />
+      </div>
+    </Page>
   )
 }
 

@@ -16,7 +16,7 @@ import {
 import { type UserRole } from '@/lib/api-types'
 import { type NavItem } from '../types'
 
-// The sidebar menu of each role, in order (docs/DESIGN.md section 5; at most 6 items). An item
+// The sidebar menu of each role, in order (docs/DESIGN.md section 5; at most 7 items). An item
 // whose page does not exist yet has no `url`: it is part of the design but stays out of the UI
 // until its route lands (Phase 6.2/6.3), so no link ever leads nowhere.
 type MenuItem = Omit<NavItem, 'items' | 'roles'> & { url?: string }
@@ -35,7 +35,8 @@ const MENUS: Record<UserRole, MenuItem[]> = {
   TU: [
     { title: 'Beranda', url: '/', icon: LayoutGrid },
     { title: 'Approval', url: '/approvals', icon: ClipboardCheck },
-    { title: 'Ruang & Jadwal', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Ruang', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
     { title: 'Verifikasi', url: '/verify', icon: ShieldCheck },
     { title: 'Laporan', url: '/reports', icon: TriangleAlert },
     { title: 'Mahasiswa', icon: Users },
@@ -43,7 +44,8 @@ const MENUS: Record<UserRole, MenuItem[]> = {
   KALAB: [
     { title: 'Beranda', url: '/', icon: LayoutGrid },
     { title: 'Approval Lab', url: '/approvals', icon: ClipboardCheck },
-    { title: 'Ruang & Jadwal', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Ruang', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
     { title: 'Papan Ruang', url: '/today', icon: CalendarClock },
     { title: 'Laporan', url: '/reports', icon: TriangleAlert },
   ],
@@ -57,7 +59,8 @@ const MENUS: Record<UserRole, MenuItem[]> = {
   ADMIN: [
     { title: 'Beranda', url: '/', icon: LayoutGrid },
     { title: 'Approval', url: '/approvals', icon: ClipboardCheck },
-    { title: 'Ruang & Jadwal', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Ruang', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
     { title: 'Pengguna', url: '/admin/users', icon: Users },
     { title: 'Kebijakan Ruang', icon: SlidersHorizontal },
     { title: 'Audit Log', icon: ScrollText },

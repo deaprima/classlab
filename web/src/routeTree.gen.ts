@@ -31,6 +31,7 @@ import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedBookingsIndexRouteImport } from './routes/_authenticated/bookings/index'
 import { Route as AuthenticatedApprovalsIndexRouteImport } from './routes/_authenticated/approvals/index'
 import { Route as AuthenticatedRoomsIdRouteImport } from './routes/_authenticated/rooms/$id'
+import { Route as AuthenticatedManageImportsRouteImport } from './routes/_authenticated/manage/imports'
 import { Route as AuthenticatedCheckOutIdRouteImport } from './routes/_authenticated/check-out/$id'
 import { Route as AuthenticatedBookingsNewRouteImport } from './routes/_authenticated/bookings/new'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
@@ -150,6 +151,12 @@ const AuthenticatedRoomsIdRoute = AuthenticatedRoomsIdRouteImport.update({
   path: '/rooms/$id',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedManageImportsRoute =
+  AuthenticatedManageImportsRouteImport.update({
+    id: '/manage/imports',
+    path: '/manage/imports',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCheckOutIdRoute = AuthenticatedCheckOutIdRouteImport.update({
   id: '/check-out/$id',
   path: '/check-out/$id',
@@ -200,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/bookings/new': typeof AuthenticatedBookingsNewRoute
   '/check-out/$id': typeof AuthenticatedCheckOutIdRoute
+  '/manage/imports': typeof AuthenticatedManageImportsRoute
   '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/approvals/': typeof AuthenticatedApprovalsIndexRoute
   '/bookings/': typeof AuthenticatedBookingsIndexRoute
@@ -228,6 +236,7 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/bookings/new': typeof AuthenticatedBookingsNewRoute
   '/check-out/$id': typeof AuthenticatedCheckOutIdRoute
+  '/manage/imports': typeof AuthenticatedManageImportsRoute
   '/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/approvals': typeof AuthenticatedApprovalsIndexRoute
   '/bookings': typeof AuthenticatedBookingsIndexRoute
@@ -258,6 +267,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/bookings/new': typeof AuthenticatedBookingsNewRoute
   '/_authenticated/check-out/$id': typeof AuthenticatedCheckOutIdRoute
+  '/_authenticated/manage/imports': typeof AuthenticatedManageImportsRoute
   '/_authenticated/rooms/$id': typeof AuthenticatedRoomsIdRoute
   '/_authenticated/approvals/': typeof AuthenticatedApprovalsIndexRoute
   '/_authenticated/bookings/': typeof AuthenticatedBookingsIndexRoute
@@ -288,6 +298,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/bookings/new'
     | '/check-out/$id'
+    | '/manage/imports'
     | '/rooms/$id'
     | '/approvals/'
     | '/bookings/'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/bookings/new'
     | '/check-out/$id'
+    | '/manage/imports'
     | '/rooms/$id'
     | '/approvals'
     | '/bookings'
@@ -345,6 +357,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/users'
     | '/_authenticated/bookings/new'
     | '/_authenticated/check-out/$id'
+    | '/_authenticated/manage/imports'
     | '/_authenticated/rooms/$id'
     | '/_authenticated/approvals/'
     | '/_authenticated/bookings/'
@@ -520,6 +533,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRoomsIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/manage/imports': {
+      id: '/_authenticated/manage/imports'
+      path: '/manage/imports'
+      fullPath: '/manage/imports'
+      preLoaderRoute: typeof AuthenticatedManageImportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/check-out/$id': {
       id: '/_authenticated/check-out/$id'
       path: '/check-out/$id'
@@ -572,6 +592,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedBookingsNewRoute: typeof AuthenticatedBookingsNewRoute
   AuthenticatedCheckOutIdRoute: typeof AuthenticatedCheckOutIdRoute
+  AuthenticatedManageImportsRoute: typeof AuthenticatedManageImportsRoute
   AuthenticatedRoomsIdRoute: typeof AuthenticatedRoomsIdRoute
   AuthenticatedApprovalsIndexRoute: typeof AuthenticatedApprovalsIndexRoute
   AuthenticatedBookingsIndexRoute: typeof AuthenticatedBookingsIndexRoute
@@ -593,6 +614,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedBookingsNewRoute: AuthenticatedBookingsNewRoute,
   AuthenticatedCheckOutIdRoute: AuthenticatedCheckOutIdRoute,
+  AuthenticatedManageImportsRoute: AuthenticatedManageImportsRoute,
   AuthenticatedRoomsIdRoute: AuthenticatedRoomsIdRoute,
   AuthenticatedApprovalsIndexRoute: AuthenticatedApprovalsIndexRoute,
   AuthenticatedBookingsIndexRoute: AuthenticatedBookingsIndexRoute,

@@ -154,15 +154,4 @@ describe('RoomManager', () => {
     }
     expect(search({})).toEqual({ room: 'r2' })
   })
-
-  it('switches to the schedule tab', async () => {
-    const screen = await renderPage()
-
-    await userEvent.click(screen.getByRole('radio', { name: /Jadwal/ }))
-
-    const { search } = mocks.navigate.mock.calls[0][0] as {
-      search: (prev: object) => object
-    }
-    expect(search({})).toEqual({ tab: 'jadwal' })
-  })
 })

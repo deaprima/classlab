@@ -106,3 +106,14 @@ export type Checkout = Schemas['Checkout']
 export type Violation = Schemas['Violation']
 export type ViolationListResponse =
   paths['/users/{id}/violations']['get']['responses']['200']['content']['application/json']
+
+export type ImportKind = Schemas['ImportKind']
+export type ImportRecord = Schemas['Import']
+export type ImportRowError = Schemas['ImportRowError']
+export type ImportUsersPreview = Schemas['ImportUsersPreview']
+export type ImportUsersResult = Schemas['ImportUsersResult']
+export type SchedulePreview = Schemas['SchedulePreview']
+export type ScheduleApplyResult = Schemas['ScheduleApplyResult']
+export type RollbackResult = Schemas['RollbackResult']
+export type ImportListResponse =
+  paths['/imports']['get']['responses']['200']['content']['application/json']
