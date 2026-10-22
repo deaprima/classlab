@@ -8,7 +8,9 @@ Sistem web peminjaman ruang kampus (ruang kelas, laboratorium, dan ruang khusus)
 classlab/
 ├── api/                      # backend Go (net/http + chi, pgx, sqlc)
 │   ├── cmd/server/           # main.go: hanya wiring
-│   ├── cmd/seed/             # data dev
+│   ├── cmd/seed/             # data dev (ditolak di produksi)
+│   ├── cmd/createadmin/      # admin pertama di database baru (produksi)
+│   ├── Dockerfile            # image API (multi-stage)
 │   ├── internal/
 │   │   ├── app/              # perakitan router, dependency, dan tes integrasi
 │   │   ├── config/           # env -> struct, divalidasi saat start
@@ -22,6 +24,7 @@ classlab/
 │   └── openapi.yaml          # kontrak API (OpenAPI 3.1)
 ├── web/                      # frontend (Vite, React, TypeScript, TanStack, Tailwind v4)
 ├── docker-compose.yml        # Postgres untuk dev
+├── deploy/                   # produksi: compose + Caddy (HTTPS), backup dan restore; lihat deploy/README.md
 ├── Makefile                  # perintah standar
 └── .env.example              # contoh konfigurasi (salin ke .env)
 ```

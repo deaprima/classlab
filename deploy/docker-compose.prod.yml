@@ -1,0 +1,88 @@
+# Production stack: Postgres, one-shot migrations, the API, and Caddy (HTTPS) in front of both.
+# Run from this folder with a filled-in .env next to it (see .env.example and README.md):
+#   docker compose -f docker-compose.prod.yml up -d --build
+# A project name of its own: the dev compose file in the repo root is also called "classlab", and sharing
+# the name would make this stack take over the dev database container and its volume.
+name: classlab-prod
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: classlab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: classlab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No published port: only the other services on this stack's network can reach it.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U classlab -d classlab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Applies the migrations and exits; the API starts only after it has succeeded.
+  migrate:
+    image: migrate/migrate:v4.18.3
+    restart: "no"
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://classlab:${POSTGRES_PASSWORD}@postgres:5432/classlab?sslmode=disable"
+      - "up"
+    volumes:
+      - ../api/db/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *restart
+    build:
+      context: ../api
+    environment:
+      APP_ENV: production
+      PORT: "8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://classlab:${POSTGRES_PASSWORD}@postgres:5432/classlab?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (at least 32 characters)}
+      # The server refuses to start in production without a Secure cookie.
+      COOKIE_SECURE: "true"
+      # The QR of a room is built from the first origin, so it must be the public address.
+      CORS_ALLOWED_ORIGINS: https://${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    <<: *restart
+    build:
+      context: ../web
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The certificate and its key: losing this volume means asking for a new one.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads:
+  caddy_data:
+  caddy_config:
