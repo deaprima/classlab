@@ -142,7 +142,7 @@ function InvalidQr() {
     <EmptyState
       icon={QrCode}
       title='QR tidak valid'
-      description='QR ini tidak dikenali atau sudah diganti pengelola. Pindai QR yang terpasang di pintu ruang. Bila tetap gagal, hubungi TU atau Kepala Lab.'
+      description='QR ini tidak dikenali atau sudah diganti pengelola. Pindai QR yang terpasang di pintu ruang. Bila tetap gagal, hubungi TU atau Pengurus Lab.'
       action={<HomeButton />}
     />
   )

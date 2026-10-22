@@ -72,7 +72,7 @@ export function AdminUsers() {
   return (
     <Page
       title='Kelola Pengguna'
-      description='Akun mahasiswa, organisasi, TU, Kepala Lab, OB, dan Admin.'
+      description='Akun mahasiswa, organisasi, TU, Pengurus Lab, OB, dan Admin.'
       actions={
         <Button onClick={() => setDialog({ mode: 'create' })}>
           <UserPlus />

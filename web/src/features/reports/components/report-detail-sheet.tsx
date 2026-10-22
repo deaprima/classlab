@@ -133,7 +133,7 @@ function EventTrail({ report }: { report: ReportDetail }) {
   const actor = (e: ReportEvent) => {
     if (e.actor_id === me) return 'Anda'
     if (e.actor_id === report.reporter_id) return report.reporter.name
-    return 'TU/Kepala Lab'
+    return 'TU/Pengurus Lab'
   }
   return (
     <section>

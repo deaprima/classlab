@@ -89,13 +89,15 @@ describe('BookingDetailDialog', () => {
       .toBeVisible()
     await expect.element(screen.getByText('LAB-RPL-02').first()).toBeVisible()
     await expect
-      .element(screen.getByText('Menunggu validasi Kepala Lab'))
+      .element(screen.getByText('Menunggu validasi Pengurus Lab'))
       .toBeVisible()
     await expect
       .element(screen.getByText(/Kedaluwarsa otomatis dalam 22 jam/))
       .toBeVisible()
     await expect.element(screen.getByText('Pengajuan dikirim')).toBeVisible()
-    await expect.element(screen.getByText('Ditinjau Kepala Lab')).toBeVisible()
+    await expect
+      .element(screen.getByText('Ditinjau Pengurus Lab'))
+      .toBeVisible()
   })
 
   it('hands edit and cancel to the page and closes itself', async () => {

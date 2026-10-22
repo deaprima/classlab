@@ -154,7 +154,7 @@ function CheckOutForm({
             />
             <FieldError message={errors.note} />
             <p className='type-body-sm text-fg-secondary'>
-              Laporan kerusakan dibuat otomatis untuk TU atau Kepala Lab.
+              Laporan kerusakan dibuat otomatis untuk TU atau Pengurus Lab.
             </p>
           </div>
         )}

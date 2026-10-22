@@ -6,7 +6,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   MAHASISWA: 'Mahasiswa',
   ORGANISASI: 'Organisasi',
   TU: 'TU',
-  KALAB: 'Kepala Lab',
+  KALAB: 'Pengurus Lab',
   OB: 'OB',
   ADMIN: 'Admin',
 }

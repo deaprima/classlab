@@ -134,7 +134,7 @@ function EventTrail({ booking }: { booking: Booking }) {
   const actorName = (e: BookingEvent) => {
     if (e.actor_id === me) return 'Anda'
     if (e.actor_id === booking.requester_id) return booking.requester.name
-    return 'TU/Kepala Lab'
+    return 'TU/Pengurus Lab'
   }
 
   return (

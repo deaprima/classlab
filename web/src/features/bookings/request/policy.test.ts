@@ -103,7 +103,7 @@ describe('rules from the policy', () => {
 
   it('names the approvers', () => {
     expect(approverLabel(AUD)).toBe('TU / Admin')
-    expect(approverLabel(LAB)).toBe('Kepala Lab')
+    expect(approverLabel(LAB)).toBe('Pengurus Lab')
   })
 })
 
@@ -126,10 +126,10 @@ describe('previewOutcome', () => {
       ...base,
       policy: LAB,
       role: 'MAHASISWA',
-      approverLabel: 'Kepala Lab',
+      approverLabel: 'Pengurus Lab',
     })
     expect(o.kind).toBe('manual')
-    expect(o.title).toBe('Menunggu validasi Kepala Lab')
+    expect(o.title).toBe('Menunggu validasi Pengurus Lab')
   })
 
   it('never auto-approves an organisation', () => {

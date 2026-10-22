@@ -69,7 +69,7 @@ type OutcomeInput = {
   blocked: boolean
   /** Result of the live availability check; null while unknown. */
   slotFree: boolean | null
-  /** Who decides, for the wording: "TU", "Kepala Lab", "TU / Admin". */
+  /** Who decides, for the wording: "TU", "Pengurus Lab", "TU / Admin". */
   approverLabel: string
 }
 
@@ -81,7 +81,7 @@ export type Outcome = {
 
 const APPROVER_NAMES: Partial<Record<UserRole, string>> = {
   TU: 'TU',
-  KALAB: 'Kepala Lab',
+  KALAB: 'Pengurus Lab',
   ADMIN: 'Admin',
 }
 
