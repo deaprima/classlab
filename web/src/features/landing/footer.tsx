@@ -13,7 +13,7 @@ export function LandingFooter() {
           <div className='grid gap-12 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]'>
             <div className='flex flex-col items-start gap-4'>
               <p className='flex items-center gap-2 type-section'>
-                <Logo className='size-5' />
+                <Logo inverse className='size-7' />
                 ClassLab.io
               </p>
               <p className='max-w-xs type-body text-fg-inverse/70'>

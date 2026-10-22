@@ -79,7 +79,9 @@ describe('Landing', () => {
       .element(screen.getByRole('heading', { name: /Dibuat untuk ruang/ }))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByRole('heading', { name: 'Enam peran, satu platform.' }))
+      .element(
+        screen.getByRole('heading', { name: 'Enam peran, satu platform.' })
+      )
       .toBeInTheDocument()
     await expect
       .element(screen.getByRole('heading', { name: /Lima angka/ }))
