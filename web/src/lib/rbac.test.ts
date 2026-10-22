@@ -138,6 +138,9 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
     expect(shown('ORGANISASI')).not.toContain('Ruang')
     expect(shown('TU')).not.toContain('Pengguna')
     expect(shown('TU')).toContain('Mahasiswa')
+    expect(shown('ADMIN')).toEqual(
+      expect.arrayContaining(['Kebijakan Ruang', 'Audit Log'])
+    )
     expect(shown('KALAB')).not.toContain('Pengajuan Saya')
   })
 

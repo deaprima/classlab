@@ -62,8 +62,12 @@ const MENUS: Record<UserRole, MenuItem[]> = {
     { title: 'Ruang', url: '/admin/rooms', icon: DoorOpen },
     { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
     { title: 'Pengguna', url: '/admin/users', icon: Users },
-    { title: 'Kebijakan Ruang', icon: SlidersHorizontal },
-    { title: 'Audit Log', icon: ScrollText },
+    {
+      title: 'Kebijakan Ruang',
+      url: '/admin/room-types',
+      icon: SlidersHorizontal,
+    },
+    { title: 'Audit Log', url: '/admin/audit', icon: ScrollText },
   ],
 }
 

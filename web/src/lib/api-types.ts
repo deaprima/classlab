@@ -117,3 +117,12 @@ export type ScheduleApplyResult = Schemas['ScheduleApplyResult']
 export type RollbackResult = Schemas['RollbackResult']
 export type ImportListResponse =
   paths['/imports']['get']['responses']['200']['content']['application/json']
+
+export type AuditLog = Schemas['AuditLog']
+export type AuditLogListQuery = NonNullable<
+  paths['/audit-logs']['get']['parameters']['query']
+>
+export type AuditLogListResponse =
+  paths['/audit-logs']['get']['responses']['200']['content']['application/json']
+export type RoomTypeUpdate =
+  paths['/room-types/{type}']['patch']['requestBody']['content']['application/json']
