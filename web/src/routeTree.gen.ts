@@ -37,6 +37,8 @@ import { Route as AuthenticatedBookingsNewRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminSchedulesRouteImport } from './routes/_authenticated/admin/schedules'
 import { Route as AuthenticatedAdminRoomsRouteImport } from './routes/_authenticated/admin/rooms'
+import { Route as AuthenticatedManageStudentsIndexRouteImport } from './routes/_authenticated/manage/students/index'
+import { Route as AuthenticatedManageStudentsImportRouteImport } from './routes/_authenticated/manage/students/import'
 
 const DesignRoute = DesignRouteImport.update({
   id: '/design',
@@ -184,6 +186,18 @@ const AuthenticatedAdminRoomsRoute = AuthenticatedAdminRoomsRouteImport.update({
   path: '/admin/rooms',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedManageStudentsIndexRoute =
+  AuthenticatedManageStudentsIndexRouteImport.update({
+    id: '/manage/students/',
+    path: '/manage/students/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedManageStudentsImportRoute =
+  AuthenticatedManageStudentsImportRouteImport.update({
+    id: '/manage/students/import',
+    path: '/manage/students/import',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -213,6 +227,8 @@ export interface FileRoutesByFullPath {
   '/bookings/': typeof AuthenticatedBookingsIndexRoute
   '/notifications/': typeof AuthenticatedNotificationsIndexRoute
   '/reports/': typeof AuthenticatedReportsIndexRoute
+  '/manage/students/import': typeof AuthenticatedManageStudentsImportRoute
+  '/manage/students/': typeof AuthenticatedManageStudentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
@@ -242,6 +258,8 @@ export interface FileRoutesByTo {
   '/bookings': typeof AuthenticatedBookingsIndexRoute
   '/notifications': typeof AuthenticatedNotificationsIndexRoute
   '/reports': typeof AuthenticatedReportsIndexRoute
+  '/manage/students/import': typeof AuthenticatedManageStudentsImportRoute
+  '/manage/students': typeof AuthenticatedManageStudentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -273,6 +291,8 @@ export interface FileRoutesById {
   '/_authenticated/bookings/': typeof AuthenticatedBookingsIndexRoute
   '/_authenticated/notifications/': typeof AuthenticatedNotificationsIndexRoute
   '/_authenticated/reports/': typeof AuthenticatedReportsIndexRoute
+  '/_authenticated/manage/students/import': typeof AuthenticatedManageStudentsImportRoute
+  '/_authenticated/manage/students/': typeof AuthenticatedManageStudentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -304,6 +324,8 @@ export interface FileRouteTypes {
     | '/bookings/'
     | '/notifications/'
     | '/reports/'
+    | '/manage/students/import'
+    | '/manage/students/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/change-password'
@@ -333,6 +355,8 @@ export interface FileRouteTypes {
     | '/bookings'
     | '/notifications'
     | '/reports'
+    | '/manage/students/import'
+    | '/manage/students'
   id:
     | '__root__'
     | '/_authenticated'
@@ -363,6 +387,8 @@ export interface FileRouteTypes {
     | '/_authenticated/bookings/'
     | '/_authenticated/notifications/'
     | '/_authenticated/reports/'
+    | '/_authenticated/manage/students/import'
+    | '/_authenticated/manage/students/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -575,6 +601,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRoomsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/manage/students/': {
+      id: '/_authenticated/manage/students/'
+      path: '/manage/students'
+      fullPath: '/manage/students/'
+      preLoaderRoute: typeof AuthenticatedManageStudentsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/manage/students/import': {
+      id: '/_authenticated/manage/students/import'
+      path: '/manage/students/import'
+      fullPath: '/manage/students/import'
+      preLoaderRoute: typeof AuthenticatedManageStudentsImportRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -598,6 +638,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBookingsIndexRoute: typeof AuthenticatedBookingsIndexRoute
   AuthenticatedNotificationsIndexRoute: typeof AuthenticatedNotificationsIndexRoute
   AuthenticatedReportsIndexRoute: typeof AuthenticatedReportsIndexRoute
+  AuthenticatedManageStudentsImportRoute: typeof AuthenticatedManageStudentsImportRoute
+  AuthenticatedManageStudentsIndexRoute: typeof AuthenticatedManageStudentsIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -620,6 +662,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBookingsIndexRoute: AuthenticatedBookingsIndexRoute,
   AuthenticatedNotificationsIndexRoute: AuthenticatedNotificationsIndexRoute,
   AuthenticatedReportsIndexRoute: AuthenticatedReportsIndexRoute,
+  AuthenticatedManageStudentsImportRoute:
+    AuthenticatedManageStudentsImportRoute,
+  AuthenticatedManageStudentsIndexRoute: AuthenticatedManageStudentsIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

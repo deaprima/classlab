@@ -9,21 +9,13 @@ import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api-client'
-import { Imports } from '.'
-
-const mocks = vi.hoisted(() => ({
-  search: {} as Record<string, unknown>,
-  navigate: vi.fn(),
-}))
+import { ImportPage } from '.'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
-    getRouteApi: () => ({
-      useSearch: () => mocks.search,
-      useNavigate: () => mocks.navigate,
-    }),
+    Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
   }
 })
 vi.mock('@/components/layout/page', () => ({
@@ -116,10 +108,10 @@ function serve(handlers: { preview?: () => object; apply?: () => object }) {
 const csv = () =>
   new File(['identifier,name\n1,A'], 'akun.csv', { type: 'text/csv' })
 
-function renderPage() {
+function renderPage(kind: 'SCHEDULES' | 'USERS' = 'SCHEDULES') {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <Imports />
+      <ImportPage kind={kind} />
     </QueryClientProvider>
   )
 }
@@ -127,12 +119,29 @@ function renderPage() {
 describe('Impor CSV', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.search = {}
     useAuthStore.getState().auth.setSession('t', { ...sampleUser, role: 'TU' })
   })
   afterEach(() => {
     api.defaults.adapter = originalAdapter
     useAuthStore.getState().auth.reset()
+  })
+
+  it('keeps the schedule import and the account import on separate pages', async () => {
+    serve({})
+    const schedules = await renderPage('SCHEDULES')
+    await expect
+      .element(
+        schedules.getByRole('heading', { name: 'Impor Jadwal Akademik' })
+      )
+      .toBeVisible()
+    expect(schedules.getByLabelText('Tahun').elements()).toEqual([])
+    await schedules.unmount()
+
+    const users = await renderPage('USERS')
+    await expect
+      .element(users.getByRole('heading', { name: 'Impor Akun Mahasiswa' }))
+      .toBeVisible()
+    await expect.element(users.getByLabelText('Tahun')).toBeVisible()
   })
 
   it('previews a schedule file, lists the bookings it cancels, then applies it', async () => {
@@ -230,7 +239,6 @@ describe('Impor CSV', () => {
   })
 
   it('sends the semester with an account import and shows the one-time passwords', async () => {
-    mocks.search = { tab: 'USERS' }
     const calls = serve({
       preview: () => ({ status: 200, data: USERS_PREVIEW }),
       apply: () => ({
@@ -245,7 +253,7 @@ describe('Impor CSV', () => {
         },
       }),
     })
-    const screen = await renderPage()
+    const screen = await renderPage('USERS')
 
     await userEvent.upload(screen.getByLabelText(/Tarik berkas CSV/), csv())
     await expect

@@ -19,11 +19,6 @@ import { summaryNumber } from './rules'
 
 const PER_PAGE = 10
 
-const KIND_LABELS: Record<ImportRecord['kind'], string> = {
-  SCHEDULES: 'Jadwal Akademik',
-  USERS: 'Akun Mahasiswa',
-}
-
 /** What an import did, from its summary (the keys depend on the kind). */
 function resultText(record: ImportRecord): string {
   const s = record.summary
@@ -42,10 +37,16 @@ function resultText(record: ImportRecord): string {
 }
 
 /** "Riwayat Impor": every import, newest first; a schedule import can be rolled back once. */
-export function ImportHistory() {
+export function ImportHistory({
+  kind,
+  title,
+}: {
+  kind: ImportRecord['kind']
+  title: string
+}) {
   const [page, setPage] = useState(1)
   const [rolling, setRolling] = useState<ImportRecord | null>(null)
-  const imports = useImports({ page, per_page: PER_PAGE })
+  const imports = useImports({ kind, page, per_page: PER_PAGE })
   // A failed rollback (e.g. already rolled back) is shown by the default toast handler.
   const rollback = useRollbackImport({ onSuccess: () => setRolling(null) })
   const rows = imports.data?.data ?? []
@@ -60,13 +61,10 @@ export function ImportHistory() {
       ),
     },
     {
-      key: 'kind',
-      header: 'Jenis',
+      key: 'semester',
+      header: 'Semester',
       cell: (r) => (
-        <span className='text-fg-secondary'>
-          {KIND_LABELS[r.kind]}
-          {r.semester && ` · ${r.semester}`}
-        </span>
+        <span className='text-fg-secondary'>{r.semester ?? '–'}</span>
       ),
     },
     {
@@ -110,10 +108,10 @@ export function ImportHistory() {
 
   return (
     <section
-      aria-label='Riwayat impor'
+      aria-label={title}
       className='flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'
     >
-      <h2 className='type-card-title text-fg'>Riwayat Impor</h2>
+      <h2 className='type-card-title text-fg'>{title}</h2>
       {imports.isError && (
         <Alert variant='error'>
           <AlertCircle />

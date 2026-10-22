@@ -39,7 +39,7 @@ const MENUS: Record<UserRole, MenuItem[]> = {
     { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
     { title: 'Verifikasi', url: '/verify', icon: ShieldCheck },
     { title: 'Laporan', url: '/reports', icon: TriangleAlert },
-    { title: 'Mahasiswa', icon: Users },
+    { title: 'Mahasiswa', url: '/manage/students', icon: Users },
   ],
   KALAB: [
     { title: 'Beranda', url: '/', icon: LayoutGrid },

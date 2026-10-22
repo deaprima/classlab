@@ -79,15 +79,24 @@ const EDIT_FIELDS = {
 export function UserDialog({
   state,
   onClose,
+  studentsOnly = false,
 }: {
   state: UserDialogState
   onClose: () => void
+  /** TU manages student accounts only: no role to choose, and the API refuses any other role. */
+  studentsOnly?: boolean
 }) {
   return (
     <Dialog open={state !== null} onOpenChange={(o) => !o && onClose()}>
-      {state?.mode === 'create' && <CreateUserContent onDone={onClose} />}
+      {state?.mode === 'create' && (
+        <CreateUserContent onDone={onClose} studentsOnly={studentsOnly} />
+      )}
       {state?.mode === 'edit' && (
-        <EditUserContent user={state.user} onDone={onClose} />
+        <EditUserContent
+          user={state.user}
+          onDone={onClose}
+          studentsOnly={studentsOnly}
+        />
       )}
       {state?.mode === 'password' && (
         <ResetPasswordContent user={state.user} onDone={onClose} />
@@ -96,7 +105,13 @@ export function UserDialog({
   )
 }
 
-function CreateUserContent({ onDone }: { onDone: () => void }) {
+function CreateUserContent({
+  onDone,
+  studentsOnly,
+}: {
+  onDone: () => void
+  studentsOnly: boolean
+}) {
   const orgUnitId = useAuthStore((s) => s.auth.user?.org_unit_id)
   const [problem, setProblem] = useState<FormProblem | null>(null)
   const form = useForm<CreateUserValues>({
@@ -143,7 +158,9 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
   return (
     <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-lg'>
       <DialogHeader>
-        <DialogTitle>Tambah pengguna</DialogTitle>
+        <DialogTitle>
+          {studentsOnly ? 'Tambah mahasiswa' : 'Tambah pengguna'}
+        </DialogTitle>
         <DialogDescription>
           Tidak ada registrasi mandiri: berikan kata sandi sementara ini kepada
           pengguna secara langsung. Pengguna wajib menggantinya saat pertama
@@ -164,7 +181,7 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
               name='identifier'
               label='NIM / NIP'
             />
-            <RoleField control={form.control} name='role' />
+            {!studentsOnly && <RoleField control={form.control} name='role' />}
           </div>
           <TextField control={form.control} name='name' label='Nama' />
           <TextField
@@ -214,7 +231,15 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
   )
 }
 
-function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
+function EditUserContent({
+  user,
+  onDone,
+  studentsOnly,
+}: {
+  user: User
+  onDone: () => void
+  studentsOnly: boolean
+}) {
   const isSelf = useAuthStore((s) => s.auth.user?.id === user.id)
   const [problem, setProblem] = useState<FormProblem | null>(null)
   const form = useForm<EditUserValues>({
@@ -246,7 +271,10 @@ function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
         name: v.name.trim(),
         // An empty email is left out: the API cannot clear an address.
         ...(v.email.trim() && { email: v.email.trim() }),
-        ...(!isSelf && { role: v.role, is_active: v.is_active }),
+        ...(!isSelf && {
+          ...(!studentsOnly && { role: v.role }),
+          is_active: v.is_active,
+        }),
         ...(v.role === 'ORGANISASI' && {
           pic_name: v.pic_name.trim(),
           pic_phone: v.pic_phone.trim(),
@@ -278,7 +306,9 @@ function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
             label='Email (opsional)'
             type='email'
           />
-          <RoleField control={form.control} name='role' disabled={isSelf} />
+          {!studentsOnly && (
+            <RoleField control={form.control} name='role' disabled={isSelf} />
+          )}
           {role === 'ORGANISASI' && (
             <div className='grid items-start gap-4 sm:grid-cols-2'>
               <TextField
