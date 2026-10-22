@@ -3,6 +3,7 @@ import {
   addDays,
   dateParts,
   formatDate,
+  formatClock,
   formatDuration,
   formatSlot,
   formatTime,
@@ -26,6 +27,7 @@ describe('datetime (WIB)', () => {
   it('formats instants in WIB whatever their offset', () => {
     // 01:00 UTC = 08:00 WIB
     expect(formatTime('2026-10-20T01:00:00Z')).toBe('08:00')
+    expect(formatClock('2026-10-20T01:00:05Z')).toBe('08:00:05')
     expect(formatTime('2026-10-20T08:00:00+07:00')).toBe('08:00')
     expect(toWibTime('2026-10-20T13:30:00Z')).toBe('20:30')
   })

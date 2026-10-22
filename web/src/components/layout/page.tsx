@@ -13,6 +13,8 @@ type PageProps = {
   description?: ReactNode
   /** Buttons shown next to the title; on mobile they become a bar fixed to the bottom. */
   actions?: ReactNode
+  /** Beside the title on the right, e.g. a clock; stays in the header on mobile too. */
+  aside?: ReactNode
   children: ReactNode
 }
 
@@ -22,6 +24,7 @@ export function Page({
   barTitle,
   description,
   actions,
+  aside,
   children,
 }: PageProps) {
   // The Top Bar already shows the title on desktop. With nothing else in the header it would be said
@@ -57,6 +60,7 @@ export function Page({
               <p className='type-body text-fg-secondary'>{description}</p>
             )}
           </div>
+          {aside && <div className='shrink-0'>{aside}</div>}
           {actions && (
             <div
               data-slot='page-actions'

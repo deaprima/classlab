@@ -95,8 +95,11 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
         'Mahasiswa',
       ],
     ],
-    ['KALAB', ['Beranda', 'Approval Lab', 'Ruang & Jadwal', 'Laporan']],
-    ['OB', ['Beranda', 'Verifikasi', 'Laporan', 'Notifikasi']],
+    [
+      'KALAB',
+      ['Beranda', 'Approval Lab', 'Ruang & Jadwal', 'Papan Ruang', 'Laporan'],
+    ],
+    ['OB', ['Beranda', 'Papan Ruang', 'Verifikasi', 'Laporan', 'Notifikasi']],
     [
       'ADMIN',
       [

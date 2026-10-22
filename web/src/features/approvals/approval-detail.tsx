@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { attendanceRules } from '@/config/attendance-rules'
 import { AlertCircle, Download, Loader2, TriangleAlert } from 'lucide-react'
 import { getErrorMessage } from '@/lib/api-error'
@@ -7,20 +6,14 @@ import { formatDateTime, formatTimeRange } from '@/lib/datetime'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ConfirmDialog } from '@/components/confirm-dialog'
 import { BookingStatusBadge } from '@/components/status-badge'
 import { StatusPill } from '@/components/status-pill'
-import {
-  useApproveBooking,
-  useBooking,
-  useBookings,
-  useRejectBooking,
-} from '@/features/bookings/api'
-import { ReasonDialog } from '@/features/bookings/components/reason-dialog'
+import { useBooking, useBookings } from '@/features/bookings/api'
 import { hasEnded } from '@/features/bookings/transitions'
 import { dayShort } from '@/features/my-bookings/format'
 import { ROOM_TYPE_LABELS } from '@/features/rooms/labels'
 import { useDownloadLetter } from './api'
+import { DecisionButtons } from './decision-buttons'
 import { MANUAL_REASON_LABELS, expiryLabel } from './rules'
 
 /** The "Alasan Manual" pill: why the system did not approve this request by itself. */
@@ -89,19 +82,11 @@ function Body({
   now: Date
   onDecided?: () => void
 }) {
-  const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null)
-  const approve = useApproveBooking()
-  const reject = useRejectBooking()
   const download = useDownloadLetter()
   const pending = b.status === 'MENUNGGU'
   const ended = hasEnded(b, now.getTime())
   const left = b.expires_at ? expiryLabel(b.expires_at, now) : null
   const summary = b.requester_summary
-  const slot = `${b.room.code}, ${dayShort(b.start_at)} ${formatTimeRange(b.start_at, b.end_at)}`
-  const done = () => {
-    setDialog(null)
-    onDecided?.()
-  }
 
   return (
     <div className='flex flex-col gap-4'>
@@ -235,71 +220,13 @@ function Body({
       )}
 
       {pending && (
-        <div className='flex gap-2'>
-          <Button
-            variant='secondary'
-            className='h-10 flex-1'
-            onClick={() => setDialog('reject')}
-          >
-            Tolak
-          </Button>
-          <Button
-            className='h-10 flex-1'
-            disabled={ended}
-            onClick={() => setDialog('approve')}
-          >
-            Setujui
-          </Button>
-        </div>
+        <DecisionButtons
+          booking={b}
+          dateCount={dates.length}
+          ended={ended}
+          onDecided={onDecided}
+        />
       )}
-
-      <ConfirmDialog
-        open={dialog === 'approve'}
-        onOpenChange={(o) => !o && setDialog(null)}
-        title='Setujui pengajuan?'
-        desc={
-          <p>
-            {b.requester.name} meminjam <strong>{slot}</strong>
-            {dates.length > 1
-              ? ` dan ${dates.length - 1} tanggal lainnya`
-              : ''}{' '}
-            untuk “{b.purpose}”. Peminjam diberi notifikasi.
-          </p>
-        }
-        confirmText={
-          approve.isPending ? (
-            <>
-              <Loader2 className='animate-spin' />
-              Menyetujui…
-            </>
-          ) : (
-            'Setujui'
-          )
-        }
-        isLoading={approve.isPending}
-        handleConfirm={() =>
-          approve.mutate(b.id, {
-            onSuccess: done,
-            onError: () => setDialog(null),
-          })
-        }
-      />
-      <ReasonDialog
-        open={dialog === 'reject'}
-        onOpenChange={(o) => !o && setDialog(null)}
-        title='Tolak pengajuan?'
-        description={
-          <p>Pemohon menerima notifikasi beserta alasan penolakan.</p>
-        }
-        label='Alasan penolakan'
-        placeholder='Minimal 5 karakter. Contoh: Bentrok dengan kegiatan jurusan.'
-        confirmText='Tolak'
-        required
-        isPending={reject.isPending}
-        onSubmit={(reason) =>
-          reject.mutate({ id: b.id, reason }, { onSuccess: done })
-        }
-      />
     </div>
   )
 }

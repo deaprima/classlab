@@ -13,6 +13,7 @@ import { Route as DesignRouteImport } from './routes/design'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedTodayRouteImport } from './routes/_authenticated/today'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
 import { Route as AuthenticatedGuideRouteImport } from './routes/_authenticated/guide'
@@ -52,6 +53,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTodayRoute = AuthenticatedTodayRouteImport.update({
+  id: '/today',
+  path: '/today',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
@@ -181,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/guide': typeof AuthenticatedGuideRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/schedule': typeof AuthenticatedScheduleRoute
+  '/today': typeof AuthenticatedTodayRoute
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -206,6 +213,7 @@ export interface FileRoutesByTo {
   '/guide': typeof AuthenticatedGuideRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/schedule': typeof AuthenticatedScheduleRoute
+  '/today': typeof AuthenticatedTodayRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
@@ -234,6 +242,7 @@ export interface FileRoutesById {
   '/_authenticated/guide': typeof AuthenticatedGuideRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
+  '/_authenticated/today': typeof AuthenticatedTodayRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/rooms': typeof AuthenticatedAdminRoomsRoute
   '/_authenticated/admin/schedules': typeof AuthenticatedAdminSchedulesRoute
@@ -263,6 +272,7 @@ export interface FileRouteTypes {
     | '/guide'
     | '/history'
     | '/schedule'
+    | '/today'
     | '/admin/rooms'
     | '/admin/schedules'
     | '/admin/users'
@@ -288,6 +298,7 @@ export interface FileRouteTypes {
     | '/guide'
     | '/history'
     | '/schedule'
+    | '/today'
     | '/'
     | '/admin/rooms'
     | '/admin/schedules'
@@ -315,6 +326,7 @@ export interface FileRouteTypes {
     | '/_authenticated/guide'
     | '/_authenticated/history'
     | '/_authenticated/schedule'
+    | '/_authenticated/today'
     | '/_authenticated/'
     | '/_authenticated/admin/rooms'
     | '/_authenticated/admin/schedules'
@@ -368,6 +380,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/today': {
+      id: '/_authenticated/today'
+      path: '/today'
+      fullPath: '/today'
+      preLoaderRoute: typeof AuthenticatedTodayRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/schedule': {
@@ -526,6 +545,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedGuideRoute: typeof AuthenticatedGuideRoute
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
+  AuthenticatedTodayRoute: typeof AuthenticatedTodayRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminRoomsRoute: typeof AuthenticatedAdminRoomsRoute
   AuthenticatedAdminSchedulesRoute: typeof AuthenticatedAdminSchedulesRoute
@@ -545,6 +565,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedGuideRoute: AuthenticatedGuideRoute,
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
+  AuthenticatedTodayRoute: AuthenticatedTodayRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminRoomsRoute: AuthenticatedAdminRoomsRoute,
   AuthenticatedAdminSchedulesRoute: AuthenticatedAdminSchedulesRoute,

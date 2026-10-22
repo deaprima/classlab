@@ -21,6 +21,8 @@ export const ACCESS = {
   approveBookings: ['TU', 'KALAB', 'ADMIN'],
   manageRooms: ['TU', 'KALAB', 'ADMIN'],
   manageSchedules: ['TU', 'KALAB', 'ADMIN'],
+  // The all-rooms day board; requesters pick a room on /schedule instead.
+  viewRoomBoard: ['TU', 'KALAB', 'OB', 'ADMIN'],
   manageUsers: ['ADMIN'],
   updateReportStatus: ['TU', 'KALAB', 'ADMIN'],
 } as const satisfies Record<string, readonly UserRole[]>

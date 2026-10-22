@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, getRouteApi } from '@tanstack/react-router'
 import {
   AlertCircle,
+  CalendarClock,
   CalendarDays,
   DoorOpen,
   MoreHorizontal,
@@ -216,12 +217,20 @@ export function RoomManager() {
                 { value: 'jadwal', label: 'Jadwal' },
               ]}
             />
-            {tab === 'ruang' && (
-              <Button onClick={() => setDialog({ mode: 'create' })}>
-                <Plus />
-                Tambah Ruang
+            <div className='flex flex-wrap items-center gap-2'>
+              <Button variant='secondary' asChild>
+                <Link to='/today'>
+                  <CalendarClock />
+                  Papan Ruang
+                </Link>
               </Button>
-            )}
+              {tab === 'ruang' && (
+                <Button onClick={() => setDialog({ mode: 'create' })}>
+                  <Plus />
+                  Tambah Ruang
+                </Button>
+              )}
+            </div>
           </div>
 
           {tab === 'jadwal' ? (

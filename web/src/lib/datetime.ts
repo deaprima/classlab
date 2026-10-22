@@ -30,6 +30,13 @@ const timeFormat = new Intl.DateTimeFormat('en-GB', {
   minute: '2-digit',
   hourCycle: 'h23',
 })
+const clockFormat = new Intl.DateTimeFormat('en-GB', {
+  timeZone: APP_TIME_ZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
 // en-CA formats dates as YYYY-MM-DD.
 const isoDateFormat = new Intl.DateTimeFormat('en-CA', {
   timeZone: APP_TIME_ZONE,
@@ -51,6 +58,11 @@ export function formatDateShort(value: DateInput): string {
 /** "08:00" (WIB) */
 export function formatTime(value: DateInput): string {
   return timeFormat.format(toDate(value))
+}
+
+/** "08:00:05" (WIB), for a ticking clock. */
+export function formatClock(value: DateInput): string {
+  return clockFormat.format(toDate(value))
 }
 
 /** "Sel, 20 Okt 2026, 08:00" */

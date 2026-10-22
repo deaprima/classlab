@@ -1,5 +1,6 @@
 import {
   Bell,
+  CalendarClock,
   CalendarDays,
   ClipboardCheck,
   DoorOpen,
@@ -43,10 +44,12 @@ const MENUS: Record<UserRole, MenuItem[]> = {
     { title: 'Beranda', url: '/', icon: LayoutGrid },
     { title: 'Approval Lab', url: '/approvals', icon: ClipboardCheck },
     { title: 'Ruang & Jadwal', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Papan Ruang', url: '/today', icon: CalendarClock },
     { title: 'Laporan', url: '/reports', icon: TriangleAlert },
   ],
   OB: [
     { title: 'Beranda', url: '/', icon: LayoutGrid },
+    { title: 'Papan Ruang', url: '/today', icon: CalendarClock },
     { title: 'Verifikasi', icon: ShieldCheck },
     { title: 'Laporan', url: '/reports', icon: TriangleAlert },
     { title: 'Notifikasi', url: '/notifications', icon: Bell },
