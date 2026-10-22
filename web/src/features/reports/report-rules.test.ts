@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { nextReportStatus, reportFormSchema } from './report-rules'
+import {
+  nextReportStatus,
+  remainingSteps,
+  reportFormSchema,
+} from './report-rules'
 
 const file = (type: string, size: number) =>
   new File([new Uint8Array(size)], 'foto', { type })
@@ -48,5 +52,13 @@ describe('reportFormSchema', () => {
       reportFormSchema.safeParse({ ...base, description: '  ' }).error
         ?.issues[0].message
     ).toBe('Jelaskan kerusakannya.')
+  })
+})
+
+describe('remainingSteps', () => {
+  it('lists the steps still to come, none once finished', () => {
+    expect(remainingSteps('BARU')).toEqual(['DITERIMA', 'DIPROSES', 'SELESAI'])
+    expect(remainingSteps('DIPROSES')).toEqual(['SELESAI'])
+    expect(remainingSteps('SELESAI')).toEqual([])
   })
 })

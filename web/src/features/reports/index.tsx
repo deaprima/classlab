@@ -27,6 +27,7 @@ import { SegmentedControl } from '@/components/segmented-control'
 import { ReportStatusBadge } from '@/components/status-badge'
 import { useRooms } from '@/features/rooms/api'
 import { useReports } from './api'
+import { ReportBoard } from './components/report-board'
 import { ReportDetailSheet } from './components/report-detail-sheet'
 import { ReportFormDialog } from './components/report-form-dialog'
 
@@ -38,11 +39,52 @@ const SEES_ALL = ['TU', 'KALAB', 'ADMIN'] as const
 
 type Tab = ReportStatus | typeof ALL
 
-/** Laporan Kerusakan (Figma): the reader's reports (managers: every room) with status and room filters. */
+/** Laporan Kerusakan: managers work from the board, everyone else reads their own reports. */
 export function Reports() {
+  const seesAll = useHasRole(SEES_ALL)
+  return seesAll ? <ManagerReports /> : <MyReports />
+}
+
+/** Figma "TU – Laporan": a column per step with a card per report; a card opens the detail drawer. */
+function ManagerReports() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
-  const seesAll = useHasRole(SEES_ALL)
+  const [formOpen, setFormOpen] = useState(false)
+  const openDetail = (id: string | undefined) =>
+    navigate({ search: (prev) => ({ ...prev, report: id }) })
+
+  return (
+    <Page
+      title='Laporan Kerusakan'
+      description='Semua laporan kondisi dan kerusakan ruang.'
+      actions={
+        <Button onClick={() => setFormOpen(true)}>
+          <TriangleAlert />
+          Buat Laporan
+        </Button>
+      }
+    >
+      <ReportBoard />
+      <ReportFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        onCreated={(report) => {
+          setFormOpen(false)
+          openDetail(report.id)
+        }}
+      />
+      <ReportDetailSheet
+        reportId={search.report}
+        onClose={() => openDetail(undefined)}
+      />
+    </Page>
+  )
+}
+
+/** Laporan Kerusakan (Figma "OB – Laporan"): the reader's own reports with status and room filters. */
+function MyReports() {
+  const search = route.useSearch()
+  const navigate = route.useNavigate()
   const [formOpen, setFormOpen] = useState(false)
   const rooms = useRooms({ per_page: 100 })
   const page = search.page ?? 1
@@ -84,17 +126,6 @@ export function Reports() {
         </span>
       ),
     },
-    ...(seesAll
-      ? [
-          {
-            key: 'reporter',
-            header: 'Pelapor',
-            cell: (r: DamageReport) => (
-              <span className='text-fg-secondary'>{r.reporter.name}</span>
-            ),
-          },
-        ]
-      : []),
     {
       key: 'when',
       header: 'Dilaporkan',
@@ -114,11 +145,7 @@ export function Reports() {
   return (
     <Page
       title='Laporan Kerusakan'
-      description={
-        seesAll
-          ? 'Semua laporan kondisi dan kerusakan ruang.'
-          : 'Laporkan kerusakan ruang dan pantau penanganannya.'
-      }
+      description='Laporkan kerusakan ruang dan pantau penanganannya.'
       actions={
         <Button onClick={() => setFormOpen(true)}>
           <TriangleAlert />

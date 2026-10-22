@@ -37,3 +37,11 @@ export const reportFormSchema = z.object({
 })
 
 export type ReportFormValues = z.input<typeof reportFormSchema>
+
+/** The four steps of a report, in order; the columns of the board. */
+export const REPORT_FLOW: readonly ReportStatus[] = FLOW
+
+/** The steps after `status`, which the detail trail shows as "Belum". */
+export function remainingSteps(status: ReportStatus): ReportStatus[] {
+  return FLOW.slice(FLOW.indexOf(status) + 1)
+}
