@@ -36,7 +36,7 @@ const MENUS: Record<UserRole, MenuItem[]> = {
     { title: 'Beranda', url: '/', icon: LayoutGrid },
     { title: 'Approval', url: '/approvals', icon: ClipboardCheck },
     { title: 'Ruang & Jadwal', url: '/admin/rooms', icon: DoorOpen },
-    { title: 'Verifikasi', icon: ShieldCheck },
+    { title: 'Verifikasi', url: '/verify', icon: ShieldCheck },
     { title: 'Laporan', url: '/reports', icon: TriangleAlert },
     { title: 'Mahasiswa', icon: Users },
   ],
@@ -50,7 +50,7 @@ const MENUS: Record<UserRole, MenuItem[]> = {
   OB: [
     { title: 'Beranda', url: '/', icon: LayoutGrid },
     { title: 'Papan Ruang', url: '/today', icon: CalendarClock },
-    { title: 'Verifikasi', icon: ShieldCheck },
+    { title: 'Verifikasi', url: '/verify', icon: ShieldCheck },
     { title: 'Laporan', url: '/reports', icon: TriangleAlert },
     { title: 'Notifikasi', url: '/notifications', icon: Bell },
   ],

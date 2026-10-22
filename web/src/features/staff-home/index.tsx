@@ -31,7 +31,8 @@ import { greetingName } from '@/features/dashboard/selectors'
 import { dayShort } from '@/features/my-bookings/format'
 import { useReports } from '@/features/reports/api'
 import { useRoomTypes } from '@/features/room-types/api'
-import { useAuditCount, useCheckouts } from './api'
+import { useCheckouts } from '@/features/verify/api'
+import { useAuditCount } from './api'
 import { InUseCard } from './in-use-card'
 import { RoomStatusCard } from './room-status-card'
 import {
@@ -451,6 +452,12 @@ function CheckoutQueue({ now }: { now: Date }) {
           ))}
         </ul>
       )}
+      <Button variant='ghost' className='w-fit' asChild>
+        <Link to='/verify'>
+          Lihat semua verifikasi
+          <ChevronRight />
+        </Link>
+      </Button>
     </BentoCard>
   )
 }
