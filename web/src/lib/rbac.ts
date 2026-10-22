@@ -21,10 +21,14 @@ export const ACCESS = {
   approveBookings: ['TU', 'KALAB', 'ADMIN'],
   manageRooms: ['TU', 'KALAB', 'ADMIN'],
   manageSchedules: ['TU', 'KALAB', 'ADMIN'],
-  // The all-rooms day board; requesters pick a room on /schedule instead.
   // Photos of how rooms were left; the server scopes TU and KALAB to the types they approve.
   verifyCheckouts: ['TU', 'KALAB', 'OB', 'ADMIN'],
+  // The all-rooms day board; requesters pick a room on /schedule instead.
   viewRoomBoard: ['TU', 'KALAB', 'OB', 'ADMIN'],
+  // CSV imports of schedules and student accounts (brief 7.2).
+  manageImports: ['TU', 'ADMIN'],
+  // Student accounts: TU and Admin may create and edit them; the API limits TU to role MAHASISWA.
+  manageStudents: ['TU', 'ADMIN'],
   manageUsers: ['ADMIN'],
   updateReportStatus: ['TU', 'KALAB', 'ADMIN'],
 } as const satisfies Record<string, readonly UserRole[]>

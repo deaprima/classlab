@@ -89,7 +89,8 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
       [
         'Beranda',
         'Approval',
-        'Ruang & Jadwal',
+        'Ruang',
+        'Jadwal',
         'Verifikasi',
         'Laporan',
         'Mahasiswa',
@@ -97,7 +98,7 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
     ],
     [
       'KALAB',
-      ['Beranda', 'Approval Lab', 'Ruang & Jadwal', 'Papan Ruang', 'Laporan'],
+      ['Beranda', 'Approval Lab', 'Ruang', 'Jadwal', 'Papan Ruang', 'Laporan'],
     ],
     ['OB', ['Beranda', 'Papan Ruang', 'Verifikasi', 'Laporan', 'Notifikasi']],
     [
@@ -105,7 +106,8 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
       [
         'Beranda',
         'Approval',
-        'Ruang & Jadwal',
+        'Ruang',
+        'Jadwal',
         'Pengguna',
         'Kebijakan Ruang',
         'Audit Log',
@@ -113,7 +115,7 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
     ],
   ])('%s sees the designed menu in order', (role, titles) => {
     expect(planned(role)).toEqual(titles)
-    expect(titles.length).toBeLessThanOrEqual(6)
+    expect(titles.length).toBeLessThanOrEqual(7)
   })
 
   it('only links to pages that exist, and never shows a link without a page', () => {
@@ -133,8 +135,9 @@ describe('sidebar menu per role (DESIGN.md section 5)', () => {
 
   it('keeps approval and administration away from requesters', () => {
     expect(shown('MAHASISWA')).not.toContain('Approval')
-    expect(shown('ORGANISASI')).not.toContain('Ruang & Jadwal')
+    expect(shown('ORGANISASI')).not.toContain('Ruang')
     expect(shown('TU')).not.toContain('Pengguna')
+    expect(shown('TU')).toContain('Mahasiswa')
     expect(shown('KALAB')).not.toContain('Pengajuan Saya')
   })
 

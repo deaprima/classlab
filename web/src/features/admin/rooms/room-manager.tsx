@@ -36,11 +36,9 @@ import {
   ResponsiveDataList,
 } from '@/components/responsive-data-list'
 import { SearchInput } from '@/components/search-input'
-import { SegmentedControl } from '@/components/segmented-control'
 import { useRoomTypes } from '@/features/room-types/api'
 import { useRooms } from '@/features/rooms/api'
 import { ROOM_TYPE_LABELS } from '@/features/rooms/labels'
-import { SchedulesTab } from '../schedules'
 import { useDeleteRoom } from './api'
 import { RoomQrDialog } from './qr-dialog'
 import { RoomForm, RoomFormDialog } from './room-form-dialog'
@@ -63,7 +61,6 @@ export function RoomManager() {
   // Errors (e.g. 409 ROOM_HAS_ACTIVE_BOOKINGS) are shown by the default toast handler.
   const remove = useDeleteRoom({ onSuccess: () => setDeleting(null) })
 
-  const tab = search.tab ?? 'ruang'
   const type = search.type
   const rooms = useRooms({
     page: search.page ?? 1,
@@ -190,33 +187,18 @@ export function RoomManager() {
     >
       <div className='grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]'>
         <section
-          aria-label={tab === 'ruang' ? 'Kelola Ruang' : 'Jadwal Manual'}
+          aria-label='Kelola Ruang'
           className='flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'
         >
-          <h2 className='type-card-title text-fg'>
-            {tab === 'ruang' ? 'Kelola Ruang' : 'Jadwal Manual'}
-          </h2>
           <div className='flex flex-wrap items-center justify-between gap-3'>
-            <SegmentedControl<'ruang' | 'jadwal'>
-              aria-label='Bagian'
-              value={tab}
-              onValueChange={(t) =>
-                navigate({
-                  search: (prev) => ({
-                    ...prev,
-                    tab: t === 'ruang' ? undefined : t,
-                  }),
-                })
-              }
-              options={[
-                {
-                  value: 'ruang',
-                  label: 'Ruang',
-                  count: total.data?.meta.total,
-                },
-                { value: 'jadwal', label: 'Jadwal' },
-              ]}
-            />
+            <h2 className='type-card-title text-fg'>
+              Kelola Ruang
+              {total.data && (
+                <span className='ms-2 type-body-sm text-fg-secondary'>
+                  {total.data.meta.total} ruang
+                </span>
+              )}
+            </h2>
             <div className='flex flex-wrap items-center gap-2'>
               <Button variant='secondary' asChild>
                 <Link to='/today'>
@@ -224,18 +206,14 @@ export function RoomManager() {
                   Papan Ruang
                 </Link>
               </Button>
-              {tab === 'ruang' && (
-                <Button onClick={() => setDialog({ mode: 'create' })}>
-                  <Plus />
-                  Tambah Ruang
-                </Button>
-              )}
+              <Button onClick={() => setDialog({ mode: 'create' })}>
+                <Plus />
+                Tambah Ruang
+              </Button>
             </div>
           </div>
 
-          {tab === 'jadwal' ? (
-            <SchedulesTab />
-          ) : (
+          {
             <>
               <div className='flex flex-wrap items-center gap-2'>
                 <FilterChip
@@ -304,10 +282,10 @@ export function RoomManager() {
                 </>
               )}
             </>
-          )}
+          }
         </section>
 
-        {wide && tab === 'ruang' && selected && (
+        {wide && selected && (
           <aside
             aria-label='Edit ruang'
             className='flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5'

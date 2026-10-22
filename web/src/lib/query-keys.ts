@@ -1,6 +1,7 @@
 import {
   type AvailabilityQuery,
   type BookingListQuery,
+  type ImportKind,
   type NotificationListQuery,
   type ReportListQuery,
   type RoomListQuery,
@@ -48,6 +49,11 @@ export const queryKeys = {
     list: (query: ReportListQuery) => ['reports', 'list', query] as const,
     detail: (id: string) => ['reports', 'detail', id] as const,
     photo: (id: string) => ['reports', 'photo', id] as const,
+  },
+  imports: {
+    all: ['imports'] as const,
+    list: (query: { kind?: ImportKind; page?: number; per_page?: number }) =>
+      ['imports', 'list', query] as const,
   },
   users: {
     all: ['users'] as const,
