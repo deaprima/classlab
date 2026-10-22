@@ -5,7 +5,7 @@ import { useDataUrl } from '@/hooks/use-data-url'
 
 type Page<T> = { data: T[]; meta: PaginationMeta }
 
-export type CheckoutQuery = {
+type CheckoutQuery = {
   from: string
   to: string
   per_page: number

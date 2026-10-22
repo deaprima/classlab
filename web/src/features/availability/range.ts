@@ -7,7 +7,7 @@ import {
   toWibTime,
 } from '@/lib/datetime'
 
-export type TimeRange = { date: string; start: string; end: string }
+type TimeRange = { date: string; start: string; end: string }
 
 const DEFAULT_LENGTH_MINUTES = 120
 

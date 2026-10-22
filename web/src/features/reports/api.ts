@@ -60,7 +60,7 @@ export function useReportPhoto(
   }
 }
 
-export type CreateReportInput = {
+type CreateReportInput = {
   room_id: string
   description: string
   photo?: File
