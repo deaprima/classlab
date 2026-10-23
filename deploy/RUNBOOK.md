@@ -65,8 +65,9 @@ bukan alamat internal Docker (`172.x`). Jika yang tampil alamat internal, periks
 `Caddyfile` dan `TRUSTED_PROXIES` di `docker-compose.prod.yml`.
 
 **Unggahan gagal.**
-Jika jawabannya 429 `RATE_LIMITED`: satu pengguna dibatasi `UPLOAD_RATE_PER_MIN` (bawaan 10) unggahan per menit
-untuk semua jenis berkas; tunggu sesuai `Retry-After`, atau naikkan nilainya di `.env` lalu `dc up -d api`.
+Jika jawabannya 429 `RATE_LIMITED`: satu pengguna dibatasi `UPLOAD_RATE_PER_MIN` (bawaan 10) unggahan surat dan
+foto per menit, dan `IMPORT_RATE_PER_MIN` (bawaan 30) untuk impor CSV (TU dan admin; pratinjau tidak dihitung,
+hanya langkah terapkan). Tunggu sesuai `Retry-After`, atau naikkan nilainya di `.env` lalu `dc up -d api`.
 Batas satu berkas 5 MB (`MAX_UPLOAD_MB`), Caddy menolak badan di atas 8 MB. Jika semua unggahan gagal,
 periksa `df -h` dan izin volume `uploads` (API berjalan sebagai pengguna `app`, uid 10001).
 

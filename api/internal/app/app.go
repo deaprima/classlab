@@ -21,6 +21,7 @@ import (
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/password"
+	"classlab/api/internal/platform/ratelimit"
 	"classlab/api/internal/reports"
 	"classlab/api/internal/rooms"
 	"classlab/api/internal/roomtypes"
@@ -95,6 +96,11 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 	bookingsHandler := bookings.NewHandler(bookings.NewService(pool, clk, types, notifier, files, reportsSvc, bookingSettings(cfg)), cfg.Business.MaxUploadBytes)
 	violationsHandler := violations.NewHandler(violations.NewService(pool, clk, cfg.Business.ViolationWindow))
 
+	// One budget per user for the multipart uploads of letters and photos, and a larger one of its own for the
+	// CSV imports (TU and administrators work in bulk; previews are free).
+	uploadLimit := httpx.LimitUploads(ratelimit.New(cfg.Business.UploadsPerMinute, time.Minute, clk))
+	importLimit := httpx.LimitUploads(ratelimit.New(cfg.Business.ImportsPerMinute, time.Minute, clk), httpx.SkipDryRun())
+
 	r := chi.NewRouter()
 	r.Use(httpx.RequestID)
 	r.Use(httpx.WithClientInfo(cfg.TrustedProxies))
@@ -121,10 +127,10 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 		r.Use(httpx.NoStore)
 		r.Mount("/auth", auth.NewHandler(authSvc, cfg.CookieSecure).Routes(authenticate))
 		r.With(authenticate, httpx.RequirePasswordChanged).Mount("/users", users.NewHandler(usersSvc).Routes())
-		r.With(authenticate, httpx.RequirePasswordChanged).Mount("/imports", importsHandler.Routes())
+		r.With(authenticate, httpx.RequirePasswordChanged, importLimit).Mount("/imports", importsHandler.Routes())
 		r.With(authenticate, httpx.RequirePasswordChanged, httpx.RequireRoles(httpx.RoleAdmin)).Get("/audit-logs", audit.NewHandler(audit.NewService(pool)).List)
 		r.Group(func(r chi.Router) {
-			r.Use(authenticate, httpx.RequirePasswordChanged)
+			r.Use(authenticate, httpx.RequirePasswordChanged, uploadLimit)
 			r.Route("/rooms", func(r chi.Router) {
 				roomsHandler.Register(r)
 				r.Get("/{id}/schedule", availabilityHandler.Timeline)

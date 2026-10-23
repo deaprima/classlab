@@ -90,6 +90,10 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	// High on purpose: most tests make many bookings for one account. Quota tests set the real values.
 	cfg.Business.MaxActiveBookings = 100
 	cfg.Business.MaxActiveBookingsOrg = 100
+	// Same reason: the mock clock stands still, so a test that uploads many photos would use up the per-minute
+	// budget. The upload limit has its own test with the real shape.
+	cfg.Business.UploadsPerMinute = 1000
+	cfg.Business.ImportsPerMinute = 1000
 	// Auto-approval (BR-17) is off by default so that the many tests of the manual flow (approve, reject, expiry,
 	// notifications to approvers) keep working on KELAS rooms. Tests of auto-approval pass withAutoApproval.
 	cfg.Business.AutoApproveMaxPoints = 0
