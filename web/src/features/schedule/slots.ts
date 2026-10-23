@@ -1,7 +1,7 @@
 import { type TimelineItem } from '@/lib/api-types'
 import { minutesOfDay, timeFromMinutes, toApiDateTime } from '@/lib/datetime'
 
-export type SlotState = 'free' | 'used' | 'past'
+type SlotState = 'free' | 'used' | 'past'
 
 export type DaySlot = {
   /** Start of the slot, "08:00". */
