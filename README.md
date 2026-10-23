@@ -1,4 +1,4 @@
-# ClassLab.io
+# ClassLab
 
 Sistem web peminjaman ruang kampus (ruang kelas, laboratorium, dan ruang khusus): ketersediaan ruang, pengajuan dengan validasi bentrok, persetujuan menurut tipe ruang, check-in QR, check-out foto, dan laporan kerusakan. Proyek Manajemen Proyek, Kelompok 2.
 
