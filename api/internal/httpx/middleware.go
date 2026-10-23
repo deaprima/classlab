@@ -60,7 +60,7 @@ func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("request_id", reqID),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				slog.String("remote_addr", r.RemoteAddr),
+				slog.String("remote_addr", ClientInfoFrom(r.Context()).IP),
 				slog.Int("status", rec.statusCode),
 				slog.Duration("duration", duration),
 			)

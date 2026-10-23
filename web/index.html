@@ -44,16 +44,8 @@
       crossorigin
     />
 
-    <!-- Apply the saved theme before first paint. Keep in sync with context/theme-provider.tsx. -->
-    <script>
-      try {
-        var t = localStorage.getItem('classlab-theme')
-        var dark =
-          t === 'dark' ||
-          (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
-        document.documentElement.classList.add(dark ? 'dark' : 'light')
-      } catch (e) {}
-    </script>
+    <!-- Applies the saved theme before first paint (public/theme-init.js; not inline, for the CSP). -->
+    <script src="/theme-init.js"></script>
 
     <meta name="theme-color" content="#ededec" />
   </head>
