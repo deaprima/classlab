@@ -103,6 +103,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 
 	r := chi.NewRouter()
 	r.Use(httpx.RequestID)
+	r.Use(httpx.NoSniff)
 	r.Use(httpx.WithClientInfo(cfg.TrustedProxies))
 	r.Use(httpx.RequestLogger(log))
 	r.Use(httpx.Recoverer)

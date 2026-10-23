@@ -95,3 +95,13 @@ func NoStore(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// NoSniff stops a browser from guessing a response's type, on every response (JSON, errors, health), not
+// only the file downloads that set it themselves. The API is normally reached through Caddy, which adds the
+// same header; this keeps it when the API is reached any other way.
+func NoSniff(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
+}
