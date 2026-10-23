@@ -22,7 +22,7 @@ trap cleanup EXIT
 
 echo "restoring $DUMP into a throwaway database"
 docker run -d --name "$NAME" -e POSTGRES_PASSWORD=restore-test -e POSTGRES_DB=restore_test \
-  postgres:16-alpine > /dev/null
+  postgres:16.14-alpine > /dev/null
 
 i=0
 until docker exec "$NAME" pg_isready -U postgres -d restore_test > /dev/null 2>&1; do

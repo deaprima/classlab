@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
+# Image versions are pinned (Go, Alpine) so a build today and a build in a year give the same result;
+# bump them on purpose, see "Memperbarui versi image" in deploy/RUNBOOK.md.
 
 # ---- build: static binaries, no CGO, so the runtime image needs nothing but CA certificates ----
-FROM golang:1.26-alpine AS build
+FROM golang:1.26.10-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -11,7 +13,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/createadmin ./cmd/createadmin
 
 # ---- runtime ----
-FROM alpine:3.21
+FROM alpine:3.21.9
 RUN apk add --no-cache ca-certificates \
  && addgroup -S app && adduser -S -G app -u 10001 app \
  && mkdir -p /data/uploads && chown -R app:app /data

@@ -26,7 +26,7 @@ Hanya port 80 dan 443 (Caddy) yang terbuka ke luar. API dan Postgres tidak punya
 | Harian | `backup.sh` lewat cron, dan salinan cadangan keluar dari server (lihat README) |
 | Bulanan | `./restore-test.sh`: bukti bahwa cadangan bisa dipulihkan |
 | Tiap rilis | `git pull`, lalu `dc up -d --build`; periksa `dc ps` dan `dc logs --since 5m api` |
-| Triwulan | Perbarui dependensi dan jalankan CI (`go test`, `govulncheck`, `pnpm audit --prod`) |
+| Triwulan | Perbarui dependensi dan versi image (di bawah), lalu jalankan CI (`go test`, `govulncheck`, `pnpm audit --prod`) |
 | Sesuai kebutuhan | Rotasi `JWT_SECRET` (di bawah), terutama bila bocor |
 
 ## Memeriksa kesehatan
@@ -65,6 +65,8 @@ bukan alamat internal Docker (`172.x`). Jika yang tampil alamat internal, periks
 `Caddyfile` dan `TRUSTED_PROXIES` di `docker-compose.prod.yml`.
 
 **Unggahan gagal.**
+Jika jawabannya 429 `RATE_LIMITED`: satu pengguna dibatasi `UPLOAD_RATE_PER_MIN` (bawaan 10) unggahan per menit
+untuk semua jenis berkas; tunggu sesuai `Retry-After`, atau naikkan nilainya di `.env` lalu `dc up -d api`.
 Batas satu berkas 5 MB (`MAX_UPLOAD_MB`), Caddy menolak badan di atas 8 MB. Jika semua unggahan gagal,
 periksa `df -h` dan izin volume `uploads` (API berjalan sebagai pengguna `app`, uid 10001).
 
@@ -107,6 +109,23 @@ dc up -d api
 ```
 
 Gunakan hex saja (`openssl rand -hex 16`): password ini berada di dalam URL koneksi.
+
+## Memperbarui versi image
+
+Image dipasang pada versi persis supaya build hari ini dan setahun lagi sama. Konsekuensinya, patch
+keamanan tidak masuk sendiri; naikkan dengan sengaja:
+
+| Image | Ada di |
+|---|---|
+| `golang:1.26.x-alpine` (samakan dengan `go` di `api/go.mod`) | `api/Dockerfile` |
+| `alpine:3.21.x` | `api/Dockerfile` |
+| `node:22.x-alpine` | `web/Dockerfile` |
+| `caddy:2.x-alpine` | `web/Dockerfile` |
+| `postgres:16.x-alpine` (tetap di versi mayor 16 supaya data lama terbaca) | `docker-compose.yml`, `deploy/docker-compose.prod.yml`, `deploy/restore-test.sh`, `api/internal/platform/testdb/testdb.go` |
+| `migrate/migrate:vX.Y.Z` | `deploy/docker-compose.prod.yml` |
+
+Cari tag terbaru di Docker Hub, ganti, jalankan CI, lalu `dc up -d --build`. Versi Go yang rentan
+ditunjukkan `govulncheck`; versi lain ikuti pengumuman rilis keamanannya.
 
 ## Membatalkan rilis (rollback)
 
