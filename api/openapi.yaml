@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: ClassLab.io API
+  title: ClassLab API
   version: 1.0.0
   description: |
     Sistem Web Peminjaman Ruang Kelas dan Laboratorium Kampus (MVP Rumpun TI).

@@ -30,7 +30,7 @@ export function Nav() {
       >
         <Link to='/' className='flex items-center gap-2 type-section text-fg'>
           <Logo className='size-7' />
-          ClassLab.io
+          ClassLab
         </Link>
         <ul className='hidden items-center gap-6 md:flex'>
           {NAV_LINKS.map((l) => (

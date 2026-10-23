@@ -6,7 +6,7 @@ function BrandLogo() {
   return (
     <div className='flex items-center gap-2'>
       <Logo className='size-8' />
-      <span className='type-section text-fg'>ClassLab.io</span>
+      <span className='type-section text-fg'>ClassLab</span>
     </div>
   )
 }
@@ -59,7 +59,7 @@ export function SplitAuthLayout({
             </div>
           </div>
           <div className='flex items-center justify-between gap-4 type-body-sm text-fg-secondary'>
-            <span>© 2026 ClassLab.io</span>
+            <span>© 2026 ClassLab</span>
             <span>Kebijakan Privasi</span>
           </div>
         </div>
