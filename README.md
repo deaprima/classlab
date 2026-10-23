@@ -61,4 +61,8 @@ cd api ; go vet ./... ; go test ./... ; cd ..          # tes backend memakai Doc
 cd web ; pnpm run lint ; pnpm run format:check ; pnpm run test ; pnpm run build
 ```
 
-Dokumentasi lengkap (deploy, runbook, ERD) menyusul di Phase 7.
+Dokumentasi:
+
+- [deploy/README.md](deploy/README.md): memasang dan memperbarui di server, cadangan dan pemulihan.
+- [deploy/RUNBOOK.md](deploy/RUNBOOK.md): apa yang dilakukan saat ada gangguan, rotasi rahasia, rollback.
+- [api/db/ERD.md](api/db/ERD.md): diagram tabel database.
