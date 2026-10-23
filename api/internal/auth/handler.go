@@ -153,9 +153,13 @@ func (h *Handler) clearRefreshCookie(w http.ResponseWriter) {
 	})
 }
 
-// clientIP uses the socket address on purpose: X-Forwarded-For is client-controlled and would let an
-// attacker dodge the login limiter by rotating the header. Behind a reverse proxy this needs a trusted-proxy setting.
+// clientIP is the address httpx.WithClientInfo resolved: the socket peer, or the proxy-reported one when
+// the peer is a trusted proxy. A client-supplied header alone never counts, or an attacker could dodge the
+// login limiter by rotating it.
 func clientIP(r *http.Request) string {
+	if ip := httpx.ClientInfoFrom(r.Context()).IP; ip != "" {
+		return ip
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
@@ -24,9 +25,11 @@ type Config struct {
 	Argon2Iterations   uint32
 	Argon2Parallelism  uint8
 	CORSAllowedOrigins []string
-	UploadDir          string
-	SSEHeartbeat       time.Duration
-	DBLockTimeout      time.Duration
+	// TrustedProxies are the ranges whose X-Real-IP header is believed (the reverse proxy in front of the API).
+	TrustedProxies []netip.Prefix
+	UploadDir      string
+	SSEHeartbeat   time.Duration
+	DBLockTimeout  time.Duration
 
 	// Business holds the BR-11 to BR-28 settings. The older booking and upload settings above stay until
 	// the phase that replaces the code reading them (bookings: Phase 3, uploads: Phase 3).
@@ -87,6 +90,11 @@ func Load() (*Config, error) {
 	if err := validateCORSOrigins(cfg.CORSAllowedOrigins); err != nil {
 		return nil, err
 	}
+	proxies, err := parseTrustedProxies(getStringSliceEnv("TRUSTED_PROXIES", nil))
+	if err != nil {
+		return nil, err
+	}
+	cfg.TrustedProxies = proxies
 	business, err := loadBusiness(os.Getenv)
 	if err != nil {
 		return nil, fmt.Errorf("invalid business settings: %w", err)
@@ -164,6 +172,23 @@ func getStringSliceEnv(key string, defaultVal []string) []string {
 		}
 	}
 	return defaultVal
+}
+
+// parseTrustedProxies reads CIDR ranges; a bare address counts as a single-host range.
+func parseTrustedProxies(entries []string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, e := range entries {
+		if p, err := netip.ParsePrefix(e); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(e)
+		if err != nil {
+			return nil, fmt.Errorf("TRUSTED_PROXIES entry %q must be an IP address or a CIDR range", e)
+		}
+		out = append(out, netip.PrefixFrom(a, a.BitLen()))
+	}
+	return out, nil
 }
 
 // validateCORSOrigins refuses a wildcard: the API always answers with credentials allowed, and a

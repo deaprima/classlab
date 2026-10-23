@@ -60,7 +60,7 @@ func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("request_id", reqID),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				slog.String("remote_addr", r.RemoteAddr),
+				slog.String("remote_addr", ClientInfoFrom(r.Context()).IP),
 				slog.Int("status", rec.statusCode),
 				slog.Duration("duration", duration),
 			)
@@ -92,6 +92,16 @@ func Recoverer(next http.Handler) http.Handler {
 func NoStore(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// NoSniff stops a browser from guessing a response's type, on every response (JSON, errors, health), not
+// only the file downloads that set it themselves. The API is normally reached through Caddy, which adds the
+// same header; this keeps it when the API is reached any other way.
+func NoSniff(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		next.ServeHTTP(w, r)
 	})
 }

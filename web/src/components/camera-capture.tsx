@@ -12,12 +12,7 @@ const JPEG_QUALITY = 0.8
 type Facing = 'environment' | 'user'
 
 type Failure =
-  | 'denied'
-  | 'no-camera'
-  | 'busy'
-  | 'interrupted'
-  | 'capture'
-  | 'other'
+  'denied' | 'no-camera' | 'busy' | 'interrupted' | 'capture' | 'other'
 
 type Status =
   | { kind: 'idle' }

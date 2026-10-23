@@ -37,7 +37,7 @@ var (
 func Run(m *testing.M) int {
 	ctx := context.Background()
 
-	ctr, err := tcpostgres.Run(ctx, "postgres:16-alpine",
+	ctr, err := tcpostgres.Run(ctx, "postgres:16.14-alpine",
 		tcpostgres.WithDatabase("postgres"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),

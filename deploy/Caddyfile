@@ -9,6 +9,9 @@
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		# Everything is served from this origin. 'unsafe-inline' for styles only (React style
+		# attributes and the print frame of the room QR); data:/blob: for the QR and camera photos.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		# The camera is needed on this origin for check-in and check-out photos; nothing else is.
 		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=()"
 		-Server
@@ -21,6 +24,9 @@
 		}
 		# flush_interval -1 passes the notification stream (SSE) through as it is written.
 		reverse_proxy api:8080 {
+			# Overwrites anything the caller sent; the API believes this header only from this proxy
+			# (TRUSTED_PROXIES), so the login limiter and audit log see the real address.
+			header_up X-Real-IP {client_ip}
 			flush_interval -1
 		}
 	}

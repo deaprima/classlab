@@ -52,6 +52,12 @@ type Business struct {
 
 	PhotoRetention time.Duration // BR-16
 	MaxUploadBytes int64
+
+	// UploadsPerMinute is how many files one user may send per minute (letters, photos, CSV imports).
+	UploadsPerMinute int
+	// ImportsPerMinute is the same for the CSV import routes, which TU and administrators use in bulk (each
+	// import is a preview and an apply). Previews do not count.
+	ImportsPerMinute int
 }
 
 // envReader collects every malformed value so a start-up failure lists all of them at once.
@@ -124,6 +130,9 @@ func loadBusiness(get func(string) string) (Business, error) {
 
 		PhotoRetention: r.duration("PHOTO_RETENTION_DAYS", 60, 24*time.Hour),
 		MaxUploadBytes: r.bytes("MAX_UPLOAD_MB", 5),
+
+		UploadsPerMinute: r.integer("UPLOAD_RATE_PER_MIN", 10),
+		ImportsPerMinute: r.integer("IMPORT_RATE_PER_MIN", 30),
 	}
 	if len(r.errs) > 0 {
 		return Business{}, errors.Join(r.errs...)
@@ -174,6 +183,9 @@ func (b Business) validate() error {
 	}
 	if b.MaxLetterBytes < megabyte || b.MaxUploadBytes < megabyte {
 		bad("MAX_LETTER_MB and MAX_UPLOAD_MB must each be at least 1")
+	}
+	if b.UploadsPerMinute < 1 || b.ImportsPerMinute < 1 {
+		bad("UPLOAD_RATE_PER_MIN and IMPORT_RATE_PER_MIN must each be at least 1")
 	}
 	if b.LetterRetention < 24*time.Hour || b.PhotoRetention < 24*time.Hour {
 		bad("LETTER_RETENTION_DAYS and PHOTO_RETENTION_DAYS must each be at least 1")

@@ -42,6 +42,8 @@ func TestBusinessDefaultsMatchBrief(t *testing.T) {
 		PointsLateCancel:     1,
 		PhotoRetention:       60 * 24 * time.Hour,
 		MaxUploadBytes:       5 * megabyte,
+		UploadsPerMinute:     10,
+		ImportsPerMinute:     30,
 	}
 	if got != want {
 		t.Errorf("defaults = %+v\nwant       %+v", got, want)
@@ -115,6 +117,8 @@ func TestBusinessRejectsOutOfRangeValues(t *testing.T) {
 		"POINTS_NO_SHOW":            "0",
 		"PHOTO_RETENTION_DAYS":      "0",
 		"MAX_UPLOAD_MB":             "0",
+		"UPLOAD_RATE_PER_MIN":       "0",
+		"IMPORT_RATE_PER_MIN":       "0",
 	} {
 		t.Run(key, func(t *testing.T) {
 			t.Setenv(key, value)

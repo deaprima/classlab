@@ -76,7 +76,7 @@ function AppBrand() {
       className='flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring'
     >
       <Logo className='size-9' />
-      <span className='type-section text-sidebar-foreground'>ClassLab.io</span>
+      <span className='type-section text-sidebar-foreground'>ClassLab</span>
     </Link>
   )
 }

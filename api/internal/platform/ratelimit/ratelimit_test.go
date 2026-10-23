@@ -1,4 +1,4 @@
-package auth
+package ratelimit
 
 import (
 	"testing"
@@ -7,9 +7,11 @@ import (
 	"classlab/api/internal/platform/clock"
 )
 
-func TestLoginLimiterBlocksSixthAttempt(t *testing.T) {
+var epoch = time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)
+
+func TestLimiterBlocksSixthAttempt(t *testing.T) {
 	clk := clock.NewMockClock(epoch)
-	l := NewLoginLimiter(5, 15*time.Minute, clk)
+	l := New(5, 15*time.Minute, clk)
 
 	for i := 1; i <= 5; i++ {
 		if _, ok := l.Allow("a|1.1.1.1"); !ok {
@@ -27,9 +29,9 @@ func TestLoginLimiterBlocksSixthAttempt(t *testing.T) {
 	}
 }
 
-func TestLoginLimiterWindowSlides(t *testing.T) {
+func TestLimiterWindowSlides(t *testing.T) {
 	clk := clock.NewMockClock(epoch)
-	l := NewLoginLimiter(2, 15*time.Minute, clk)
+	l := New(2, 15*time.Minute, clk)
 
 	l.Allow("k")
 	clk.Add(10 * time.Minute)
@@ -48,8 +50,8 @@ func TestLoginLimiterWindowSlides(t *testing.T) {
 	}
 }
 
-func TestLoginLimiterKeysAreIndependent(t *testing.T) {
-	l := NewLoginLimiter(1, time.Minute, clock.NewMockClock(epoch))
+func TestLimiterKeysAreIndependent(t *testing.T) {
+	l := New(1, time.Minute, clock.NewMockClock(epoch))
 	if _, ok := l.Allow("victim|1.1.1.1"); !ok {
 		t.Fatal("first attempt blocked")
 	}
@@ -61,8 +63,8 @@ func TestLoginLimiterKeysAreIndependent(t *testing.T) {
 	}
 }
 
-func TestLoginLimiterReset(t *testing.T) {
-	l := NewLoginLimiter(1, time.Minute, clock.NewMockClock(epoch))
+func TestLimiterReset(t *testing.T) {
+	l := New(1, time.Minute, clock.NewMockClock(epoch))
 	l.Allow("k")
 	l.Reset("k")
 	if _, ok := l.Allow("k"); !ok {
@@ -70,9 +72,9 @@ func TestLoginLimiterReset(t *testing.T) {
 	}
 }
 
-func TestLoginLimiterSweepsIdleKeys(t *testing.T) {
+func TestLimiterSweepsIdleKeys(t *testing.T) {
 	clk := clock.NewMockClock(epoch)
-	l := NewLoginLimiter(5, time.Minute, clk)
+	l := New(5, time.Minute, clk)
 	for i := 0; i < 100; i++ {
 		l.Allow(string(rune('a'+i%26)) + string(rune('A'+i/26)))
 	}

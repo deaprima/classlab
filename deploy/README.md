@@ -96,6 +96,16 @@ setiap kali skema berubah besar.
    lalu menyalakan lagi.
 4. Masuk, buka satu pengajuan dan satu foto check-out untuk memastikan.
 
+## Alamat IP pengunjung
+
+Caddy mengisi header `X-Real-IP` dengan alamat pengunjung, dan API hanya mempercayainya dari rentang
+`TRUSTED_PROXIES` (sudah diisi di `docker-compose.prod.yml`). Tanpa ini semua pengunjung tampak berasal dari
+satu alamat (Caddy), sehingga batas percobaan login dipakai bersama. Alamat ini dipakai untuk batas login,
+log audit, dan log permintaan.
+
+Kalau nanti memakai Cloudflare, Caddy harus diberi tahu rentang IP Cloudflare (`trusted_proxies` dan
+`client_ip_headers CF-Connecting-IP`) supaya `{client_ip}` berisi alamat pengunjung, bukan alamat Cloudflare.
+
 ## Memeriksa
 
 ```sh

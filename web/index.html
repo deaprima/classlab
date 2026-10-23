@@ -28,7 +28,7 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>ClassLab.io</title>
+    <title>ClassLab</title>
     <meta
       name="description"
       content="Peminjaman ruang kelas dan laboratorium kampus (Rumpun TI)."
@@ -44,22 +44,14 @@
       crossorigin
     />
 
-    <!-- Apply the saved theme before first paint. Keep in sync with context/theme-provider.tsx. -->
-    <script>
-      try {
-        var t = localStorage.getItem('classlab-theme')
-        var dark =
-          t === 'dark' ||
-          (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
-        document.documentElement.classList.add(dark ? 'dark' : 'light')
-      } catch (e) {}
-    </script>
+    <!-- Applies the saved theme before first paint (public/theme-init.js; not inline, for the CSP). -->
+    <script src="/theme-init.js"></script>
 
     <meta name="theme-color" content="#ededec" />
   </head>
 
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/entry.ts"></script>
   </body>
 </html>
