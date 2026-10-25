@@ -170,6 +170,11 @@ erDiagram
 - **Dua lampiran per booking:** surat pengajuan (`letter_attachment_id`) dan foto check-out
   (`checkout_attachment_id`) sama-sama menunjuk `attachments`. Berkas fisiknya ada di `UPLOAD_DIR`; setelah
   masa simpan lewat, berkasnya dihapus dan baris `attachments` diberi `purged_at`.
+- **Ruang dan jam tidak bisa terpakai dua kali, dijaga database:** constraint `EXCLUDE` menolak dua
+  booking aktif (MENUNGGU, DISETUJUI, BERLANGSUNG) yang tumpang tindih di satu ruang, dan dua jadwal yang
+  tumpang tindih. Booking vs jadwal ada di dua tabel, jadi dijaga trigger `bookings_no_schedule_overlap` dan
+  `room_schedules_no_booking_overlap` (migrasi 000009) yang mengunci baris ruang lalu menolak dengan kode
+  `23P01`. Lapisan pertamanya tetap kunci `rooms ... FOR UPDATE` di service.
 - **`audit_logs`:** `actor_id` mengacu ke `users` tetapi boleh kosong (aksi sistem). `entity_id` tidak punya
   foreign key karena `entity_type` yang menentukan tabel tujuannya.
 - **Enum:** `user_role` (MAHASISWA, ORGANISASI, TU, KALAB, OB, ADMIN), `booking_status` (MENUNGGU,

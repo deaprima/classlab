@@ -164,8 +164,8 @@ func TestApprovingAGroupFailsAsAWholeWhenOneDateNowCollides(t *testing.T) {
 	res := e.postGroup(student, room, []map[string]string{occ(mon, "08:00", "10:00"), occ(tue, "08:00", "10:00")}, nil)
 	mustStatus(t, res, http.StatusCreated)
 	_, ids := groupIDs(t, res)
-	// A schedule lands on the second date after the request was made.
-	e.insertSchedule(room, "Dosen tamu", at(tue, "09:00"), at(tue, "10:00"))
+	// A schedule sits on the second date anyway, as data from before the guard trigger of migration 000009 can.
+	e.insertScheduleUnguarded(room, "Dosen tamu", at(tue, "09:00"), at(tue, "10:00"))
 
 	r := e.action(e.kalabToken(), ids[0], "approve", nil)
 	if r.Code != http.StatusConflict || r.errorCode() != "BOOKING_CONFLICT" {

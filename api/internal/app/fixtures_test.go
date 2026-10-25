@@ -77,6 +77,28 @@ func (e *env) insertSchedule(roomID, title, start, end string) string {
 	return id
 }
 
+// insertScheduleUnguarded writes a schedule even over a live booking, as rows from before migration 000009 may
+// be, so the application's own re-checks stay tested. The guard trigger is off for this one transaction only.
+func (e *env) insertScheduleUnguarded(roomID, title, start, end string) {
+	e.t.Helper()
+	tx, err := e.pool.Begin(e.t.Context())
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(e.t.Context()) }() // a no-op after Commit
+	if _, err := tx.Exec(e.t.Context(), "SET LOCAL session_replication_role = replica"); err != nil {
+		e.t.Fatal(err)
+	}
+	if _, err := tx.Exec(e.t.Context(),
+		`INSERT INTO room_schedules (room_id, title, start_at, end_at, created_by) VALUES ($1, $2, $3, $4, $5)`,
+		roomID, title, start, end, e.userIDOf(tuID)); err != nil {
+		e.t.Fatalf("inserting schedule %q: %v", title, err)
+	}
+	if err := tx.Commit(e.t.Context()); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
 // insertBooking writes a booking directly; the booking API arrives in phase 3.
 func (e *env) insertBooking(roomID, requester, status, purpose, start, end string) string {
 	e.t.Helper()
