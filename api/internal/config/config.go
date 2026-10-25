@@ -30,6 +30,9 @@ type Config struct {
 	UploadDir      string
 	SSEHeartbeat   time.Duration
 	DBLockTimeout  time.Duration
+	// DevClockStart, when set, makes the server's clock start at this instant and run on from there, so an
+	// end-to-end run can book and check in at a fixed time of day. Zero means the real clock.
+	DevClockStart time.Time
 
 	// Business holds the BR-11 to BR-28 settings. The older booking and upload settings above stay until
 	// the phase that replaces the code reading them (bookings: Phase 3, uploads: Phase 3).
@@ -95,6 +98,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.TrustedProxies = proxies
+	if cfg.DevClockStart, err = parseDevClockStart(os.Getenv("DEV_CLOCK_START"), cfg.AppEnv); err != nil {
+		return nil, err
+	}
 	business, err := loadBusiness(os.Getenv)
 	if err != nil {
 		return nil, fmt.Errorf("invalid business settings: %w", err)
@@ -189,6 +195,24 @@ func parseTrustedProxies(entries []string) ([]netip.Prefix, error) {
 		out = append(out, netip.PrefixFrom(a, a.BitLen()))
 	}
 	return out, nil
+}
+
+// parseDevClockStart reads DEV_CLOCK_START (RFC 3339, e.g. 2026-10-26T08:50:00+07:00). Every deadline in the
+// system (check-in windows, expiry, violations, token lifetimes) follows the server clock, so a moved clock in
+// production would hand out and take away bookings at the wrong time: the server refuses to start there.
+// A start more than REFRESH_TOKEN_EXPIRY in the past makes browsers drop the session cookie at once.
+func parseDevClockStart(val, appEnv string) (time.Time, error) {
+	if val == "" {
+		return time.Time{}, nil
+	}
+	if appEnv == "production" {
+		return time.Time{}, fmt.Errorf("DEV_CLOCK_START must not be set when APP_ENV=production")
+	}
+	t, err := time.Parse(time.RFC3339, val)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("DEV_CLOCK_START %q must be an RFC 3339 time such as 2026-10-26T08:50:00+07:00", val)
+	}
+	return t, nil
 }
 
 // validateCORSOrigins refuses a wildcard: the API always answers with credentials allowed, and a

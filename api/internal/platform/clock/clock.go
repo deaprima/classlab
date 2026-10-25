@@ -21,6 +21,20 @@ func (RealClock) Now() time.Time {
 	return time.Now().UTC()
 }
 
+// ShiftedClock runs at real speed from a chosen starting instant. It exists for local end-to-end runs that
+// need a fixed time of day (DEV_CLOCK_START); production always uses RealClock.
+type ShiftedClock struct {
+	offset time.Duration
+}
+
+func NewShiftedClock(start time.Time) *ShiftedClock {
+	return &ShiftedClock{offset: time.Until(start)}
+}
+
+func (s *ShiftedClock) Now() time.Time {
+	return time.Now().Add(s.offset).UTC()
+}
+
 // MockClock is a controllable clock for testing.
 type MockClock struct {
 	mu  sync.RWMutex
