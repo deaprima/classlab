@@ -26,6 +26,13 @@ const SHOTS = process.env.SMOKE_SHOTS || join(tmpdir(), 'classlab-e2e')
 const PG_CONTAINER = 'classlab-postgres'
 const DB_NAME = 'classlab_e2e'
 const DATABASE_URL = `postgres://classlab:classlab_secret@localhost:5432/${DB_NAME}?sslmode=disable`
+// Everything the API and the seed need, so the run does not depend on a local .env (CI has none).
+const GO_ENV = {
+  ...process.env,
+  APP_ENV: 'development',
+  DATABASE_URL,
+  JWT_SECRET: 'e2e-only-secret-that-is-at-least-32-chars',
+}
 
 // Seed accounts (api/internal/seed), all with the published dev password.
 const PASSWORD = 'classlab-dev-2026'
@@ -58,7 +65,7 @@ function prepareDatabase() {
     '-v', `${join(ROOT, 'api/db/migrations')}:/migrations`,
     'migrate/migrate:v4.18.3', '-path=/migrations', '-database', DATABASE_URL, 'up',
   ])
-  run('go', ['run', './cmd/seed'], { cwd: join(ROOT, 'api'), env: { ...process.env, DATABASE_URL } })
+  run('go', ['run', './cmd/seed'], { cwd: join(ROOT, 'api'), env: GO_ENV })
 }
 
 async function startApi() {
@@ -68,11 +75,8 @@ async function startApi() {
     cwd: join(ROOT, 'api'),
     stdio: ['ignore', 'ignore', 'inherit'],
     env: {
-      ...process.env,
-      APP_ENV: 'development',
+      ...GO_ENV,
       PORT: String(API_PORT),
-      DATABASE_URL,
-      JWT_SECRET: 'e2e-only-secret-that-is-at-least-32-chars',
       // The QR link is built from the first origin, so it points at this test's web server.
       CORS_ALLOWED_ORIGINS: BASE,
       UPLOAD_DIR: mkdtempSync(join(tmpdir(), 'classlab-e2e-uploads-')),
@@ -195,8 +199,7 @@ try {
     await student.getByRole('link', { name: 'Check-out' }).click()
     await student.getByRole('radio', { name: 'Bersih dan kondisi baik' }).click()
     await student.getByRole('button', { name: 'Buka kamera' }).click()
-    // The shutter is enabled once the stream opens; a frame to capture arrives a moment later.
-    await student.waitForFunction(() => document.querySelector('video')?.videoWidth > 0, null, { polling: 100 })
+    // Playwright waits for the shutter to be enabled, which happens once the first frame shows.
     await student.getByRole('button', { name: 'Jepret' }).click()
     await student.getByRole('button', { name: 'Gunakan foto' }).click()
     const done = student.waitForResponse((r) => r.url().endsWith(`/bookings/${booking.id}/check-out`))

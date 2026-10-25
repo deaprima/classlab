@@ -138,6 +138,8 @@ export function CameraCapture({
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [facing, setFacing] = useState<Facing>('environment')
   const [canSwitch, setCanSwitch] = useState(false)
+  // The stream opens before its first frame arrives; until then there is nothing to capture.
+  const [hasFrame, setHasFrame] = useState(false)
   const streamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   // Bumped on every start/stop, so a getUserMedia that resolves late can tell it was abandoned.
@@ -156,6 +158,7 @@ export function CameraCapture({
     async (wanted: Facing) => {
       stop()
       const mine = attempt.current
+      setHasFrame(false)
       setStatus({ kind: 'starting' })
       try {
         const stream = await openStream(wanted)
@@ -241,8 +244,9 @@ export function CameraCapture({
             muted
             aria-label='Pratinjau kamera'
             className='size-full object-contain'
+            onLoadedData={() => setHasFrame(true)}
           />
-          {status.kind === 'starting' && (
+          {(status.kind === 'starting' || !hasFrame) && (
             <div className='absolute inset-0 flex items-center justify-center gap-2'>
               <Loader2 className='animate-spin' aria-hidden />
               Membuka kamera...
@@ -262,7 +266,7 @@ export function CameraCapture({
           <button
             type='button'
             onClick={shoot}
-            disabled={status.kind !== 'live'}
+            disabled={status.kind !== 'live' || !hasFrame}
             aria-label='Jepret'
             className='flex size-18 items-center justify-center rounded-full border-4 border-white bg-white/20 outline-none focus-visible:ring-4 focus-visible:ring-ring disabled:opacity-40'
           >
