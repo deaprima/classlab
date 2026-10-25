@@ -117,14 +117,14 @@ export function Verify() {
               {ROOM_TYPE_LABELS[t]}
             </FilterChip>
           ))}
-          <div className='flex gap-2 sm:ms-auto'>
+          <div className='grid w-full grid-cols-2 gap-2 sm:ms-auto sm:flex sm:w-auto'>
             <Select
               value={search.room ?? ALL_ROOMS}
               onValueChange={(v) =>
                 refine({ room: v === ALL_ROOMS ? undefined : v })
               }
             >
-              <SelectTrigger className='w-40' aria-label='Ruang'>
+              <SelectTrigger className='w-full sm:w-40' aria-label='Ruang'>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -142,7 +142,10 @@ export function Verify() {
                 refine({ range: v === 'today' ? undefined : (v as RangeKey) })
               }
             >
-              <SelectTrigger className='w-40' aria-label='Rentang waktu'>
+              <SelectTrigger
+                className='w-full sm:w-40'
+                aria-label='Rentang waktu'
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

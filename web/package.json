@@ -19,7 +19,8 @@
     "test:coverage": "vitest run --coverage --browser.headless",
     "test:browser:install": "playwright install chromium --with-deps",
     "smoke:responsive": "node e2e/responsive-smoke.mjs",
-    "smoke:landing": "node e2e/landing-shots.mjs"
+    "smoke:landing": "node e2e/landing-shots.mjs",
+    "smoke:e2e": "node e2e/flow-smoke.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",

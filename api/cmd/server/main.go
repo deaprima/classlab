@@ -50,10 +50,17 @@ func main() {
 		}
 	}
 
-	go maintenance.Run(ctx, pool, clock.NewRealClock(), appLogger, time.Hour)
-	go app.NewJobRunner(cfg, pool, appLogger, clock.NewRealClock()).Run(ctx, time.Minute)
+	// One clock for the router and the jobs, so a booking made at a shifted time also expires on that time.
+	var clk clock.Clock = clock.NewRealClock()
+	if !cfg.DevClockStart.IsZero() {
+		clk = clock.NewShiftedClock(cfg.DevClockStart)
+		appLogger.Warn("using a shifted clock for local testing", slog.Time("starts_at", cfg.DevClockStart))
+	}
 
-	router, err := app.NewRouter(ctx, cfg, pool, appLogger, clock.NewRealClock())
+	go maintenance.Run(ctx, pool, clk, appLogger, time.Hour)
+	go app.NewJobRunner(cfg, pool, appLogger, clk).Run(ctx, time.Minute)
+
+	router, err := app.NewRouter(ctx, cfg, pool, appLogger, clk)
 	if err != nil {
 		appLogger.Error("failed to build router", slog.String("error", err.Error()))
 		os.Exit(1)

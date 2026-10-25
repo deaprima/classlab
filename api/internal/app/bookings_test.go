@@ -817,8 +817,8 @@ func TestApproveRechecksTheSlot(t *testing.T) {
 	room := e.freshRoom()
 	id := idOf(e.postBooking(e.login(mahasiswaA).accessToken, room, at(tue, "08:00"), at(tue, "10:00"), nil))
 
-	// A schedule that appeared after the request (the exclusion constraints cannot see across tables).
-	e.insertSchedule(room, "Kuliah Pengganti", at(tue, "09:00"), at(tue, "11:00"))
+	// A schedule that sits on the request anyway, as data from before the guard trigger of migration 000009 can.
+	e.insertScheduleUnguarded(room, "Kuliah Pengganti", at(tue, "09:00"), at(tue, "11:00"))
 
 	res := e.action(e.tuToken(), id, "approve", nil)
 	if res.Code != http.StatusConflict || res.errorCode() != "BOOKING_CONFLICT" || !slices.Equal(conflictKinds(res), []string{"SCHEDULE"}) {

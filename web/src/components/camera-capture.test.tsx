@@ -88,10 +88,8 @@ describe('CameraCapture', () => {
     const { screen, onCapture } = await renderCamera()
     await userEvent.click(screen.getByRole('button', { name: 'Buka kamera' }))
     const shutter = screen.getByRole('button', { name: 'Jepret' })
+    // The shutter waits for the first frame on its own.
     await expect.element(shutter).toBeEnabled()
-    // Wait for the first frame, or the video still reports 0x0.
-    const video = document.querySelector('video')!
-    await vi.waitFor(() => expect(video.videoWidth).toBeGreaterThan(0))
     await userEvent.click(shutter)
 
     await expect
@@ -105,6 +103,17 @@ describe('CameraCapture', () => {
     expect(blob.type).toBe('image/jpeg')
     expect(blob.size).toBeGreaterThan(0)
     fake.done()
+  })
+
+  it('keeps the shutter disabled until the stream shows a frame', async () => {
+    // A stream without tracks opens but never delivers a picture.
+    getUserMedia.mockResolvedValue(new MediaStream())
+    const { screen } = await renderCamera()
+    await userEvent.click(screen.getByRole('button', { name: 'Buka kamera' }))
+    await expect
+      .element(screen.getByRole('button', { name: 'Jepret' }))
+      .toBeDisabled()
+    await expect.element(screen.getByText('Membuka kamera...')).toBeVisible()
   })
 
   it('keeps the longest side of the photo at 1280 px', async () => {

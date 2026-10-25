@@ -28,6 +28,23 @@ func TestMockClock(t *testing.T) {
 	}
 }
 
+func TestShiftedClockStartsAtTheGivenInstantAndKeepsRunning(t *testing.T) {
+	start := time.Date(2026, 10, 26, 1, 50, 0, 0, time.UTC)
+	clk := clock.NewShiftedClock(start)
+
+	first := clk.Now()
+	if d := first.Sub(start); d < 0 || d > time.Second {
+		t.Fatalf("first reading %v is %v away from the start %v", first, d, start)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if !clk.Now().After(first) {
+		t.Fatal("shifted clock did not advance")
+	}
+	if clk.Now().Location() != time.UTC {
+		t.Fatal("shifted clock must report UTC like RealClock")
+	}
+}
+
 func TestRealClock(t *testing.T) {
 	clk := clock.NewRealClock()
 	now := clk.Now()

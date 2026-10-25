@@ -112,7 +112,8 @@ export function AdminSchedules() {
       <div className='flex flex-col gap-4'>
         <Card>
           <CardContent className='flex flex-wrap items-end gap-4'>
-            <div className='grid min-w-64 gap-2'>
+            {/* A fixed track, so a long room name is cut short instead of widening the page on a phone. */}
+            <div className='grid w-full grid-cols-[minmax(0,1fr)] gap-2 sm:w-auto sm:max-w-md sm:min-w-64 lg:max-w-xl'>
               <Label htmlFor='sc-room'>Ruang</Label>
               <Select
                 value={roomId ?? ''}
