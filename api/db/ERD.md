@@ -1,6 +1,6 @@
 # ERD ClassLab
 
-Skema PostgreSQL setelah migrasi `000008`. Sumber kebenarannya tetap berkas di `migrations/`; diagram ini
+Skema PostgreSQL setelah migrasi `000009` (000009 hanya menambah trigger, tanpa tabel atau kolom baru). Sumber kebenarannya tetap berkas di `migrations/`; diagram ini
 dibuat dari database yang sudah dimigrasi dan hanya memuat kolom yang menjelaskan hubungan antartabel.
 Semua primary key bertipe `uuid`, semua waktu `timestamptz`.
 
