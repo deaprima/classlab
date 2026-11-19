@@ -38,43 +38,43 @@ Peminjaman ruang kampus sering masih manual: ketersediaan tersebar di chat dan s
 <table>
   <tr>
     <td width="33%" valign="top">
-      <h3>📅 Ketersediaan langsung</h3>
+      <h3>Ketersediaan langsung</h3>
       Status <code>TERSEDIA</code>, <code>DIAJUKAN</code>, dan <code>DIGUNAKAN</code> per ruang dan per jam, dengan tampilan timeline di desktop dan daftar slot di ponsel.
     </td>
     <td width="33%" valign="top">
-      <h3>🛡️ Anti bentrok berlapis</h3>
+      <h3>Anti bentrok berlapis</h3>
       Kunci baris ruang di service, constraint <code>EXCLUDE</code> di PostgreSQL, dan trigger untuk booking melawan jadwal. Diuji dengan 20 permintaan paralel pada slot yang sama.
     </td>
     <td width="33%" valign="top">
-      <h3>✅ Persetujuan per tipe ruang</h3>
+      <h3>Persetujuan per tipe ruang</h3>
       Otomatis untuk mahasiswa di ruang kelas bila riwayatnya baik, manual untuk lab dan ruang khusus. Penyetuju, kuota, dan jam operasional diatur admin sebagai kebijakan, tanpa deploy ulang.
     </td>
   </tr>
   <tr>
     <td width="33%" valign="top">
-      <h3>📲 Check-in QR, check-out foto</h3>
+      <h3>Check-in QR, check-out foto</h3>
       Mahasiswa memindai QR di pintu untuk check-in dan memotret ruangan saat selesai. Pemesan yang tidak hadir dilepas otomatis oleh job terjadwal.
     </td>
     <td width="33%" valign="top">
-      <h3>⚠️ Pelanggaran dan laporan</h3>
+      <h3>Pelanggaran dan laporan</h3>
       Poin pelanggaran, blokir sementara, laporan kerusakan dengan papan status, dan audit log yang hanya bisa ditambah, tidak bisa diubah.
     </td>
     <td width="33%" valign="top">
-      <h3>📥 Impor CSV</h3>
+      <h3>Impor CSV</h3>
       Impor jadwal akademik dan akun mahasiswa dalam dua langkah (pratinjau lalu terapkan), dengan rollback. Jadwal akademik selalu didahulukan di atas pengajuan.
     </td>
   </tr>
   <tr>
     <td width="33%" valign="top">
-      <h3>👥 Enam peran</h3>
+      <h3>Enam peran</h3>
       Mahasiswa, Organisasi (dengan surat tugas), TU, Kalab, OB, dan Admin. Setiap peran punya beranda dan menu sendiri.
     </td>
     <td width="33%" valign="top">
-      <h3>📱 Mobile-first</h3>
+      <h3>Mobile-first</h3>
       Diuji pada empat ukuran layar dari 360 px sampai 1280 px, termasuk kamera, dengan mode terang dan gelap.
     </td>
     <td width="33%" valign="top">
-      <h3>🚀 Siap produksi</h3>
+      <h3>Siap produksi</h3>
       Docker Compose dengan Caddy (HTTPS otomatis), cadangan dan pemulihan database, runbook gangguan, dan pembuatan admin pertama lewat satu perintah.
     </td>
   </tr>
