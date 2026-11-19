@@ -3,7 +3,6 @@
 package reports
 
 import (
-	"fmt"
 	"time"
 
 	"classlab/api/internal/platform/clock"
@@ -12,10 +11,6 @@ import (
 
 	"github.com/google/uuid"
 )
-
-// photoPathFormat is where a report's photo is served. photo_path in responses is this URL path, not
-// a file system path: the stored file name never leaves the server.
-const photoPathFormat = "/api/v1/reports/%s/photo"
 
 // Reporter is the person who filed the report, as shown to handlers.
 type Reporter struct {
@@ -31,10 +26,11 @@ type Report struct {
 	ReporterID  uuid.UUID  `json:"reporter_id"`
 	Reporter    Reporter   `json:"reporter"`
 	Description string     `json:"description"`
-	PhotoPath   *string    `json:"photo_path,omitempty"`
-	Status      string     `json:"status"`
-	HandledBy   *uuid.UUID `json:"handled_by,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	// AttachmentID is the photo, opened through GET /attachments/{id} by those allowed to see the report.
+	AttachmentID *uuid.UUID `json:"attachment_id"`
+	Status       string     `json:"status"`
+	HandledBy    *uuid.UUID `json:"handled_by,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // Detail is a report together with its history, for GET /reports/{id}.
@@ -57,9 +53,10 @@ func fromRow(r dbgen.GetReportRow) Report {
 	rep := Report{
 		ID:     r.ID,
 		RoomID: r.RoomID,
-		Room: rooms.FromRow(dbgen.Room{
+		Room: rooms.FromRow(rooms.Row{
 			ID: r.RoomID, OrgUnitID: r.RoomOrgUnitID, Code: r.RoomCode, Name: r.RoomName,
 			Type: r.RoomType, Capacity: r.RoomCapacity, Facilities: r.RoomFacilities, IsActive: r.RoomIsActive,
+			OpenTime: r.RoomOpenTime, CloseTime: r.RoomCloseTime,
 		}),
 		ReporterID:  r.ReporterID,
 		Reporter:    Reporter{ID: r.ReporterID, Identifier: r.ReporterIdentifier, Name: r.ReporterName},
@@ -67,9 +64,9 @@ func fromRow(r dbgen.GetReportRow) Report {
 		Status:      string(r.Status),
 		CreatedAt:   clock.ToWIB(r.CreatedAt),
 	}
-	if r.PhotoPath.Valid {
-		p := photoURL(r.ID)
-		rep.PhotoPath = &p
+	if r.AttachmentID.Valid {
+		id := uuid.UUID(r.AttachmentID.Bytes)
+		rep.AttachmentID = &id
 	}
 	if r.HandledBy.Valid {
 		id := uuid.UUID(r.HandledBy.Bytes)
@@ -77,8 +74,6 @@ func fromRow(r dbgen.GetReportRow) Report {
 	}
 	return rep
 }
-
-func photoURL(reportID uuid.UUID) string { return fmt.Sprintf(photoPathFormat, reportID) }
 
 func eventFromRow(r dbgen.ReportEvent) Event {
 	e := Event{

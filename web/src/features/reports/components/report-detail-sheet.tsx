@@ -29,7 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { ReportStatusBadge } from '@/components/status-badge'
 import { useReport, useReportPhoto, useUpdateReportStatus } from '../api'
-import { NOTE_MAX, nextReportStatus } from '../report-rules'
+import { NOTE_MAX, nextReportStatus, remainingSteps } from '../report-rules'
 
 /** Report detail with photo and append-only status trail. Opened from the list by `?report=<id>`. */
 export function ReportDetailSheet({
@@ -67,7 +67,10 @@ export function ReportDetailSheet({
           {report.data && <ReportInfo report={report.data} />}
         </div>
         {report.data && (
-          <SheetFooter className='border-t'>
+          <SheetFooter className='border-t sm:flex-row sm:justify-end'>
+            <Button variant='outline' onClick={onClose}>
+              Tutup
+            </Button>
             <StatusAction report={report.data} />
           </SheetFooter>
         )}
@@ -99,7 +102,7 @@ function ReportInfo({ report }: { report: ReportDetail }) {
           {report.description}
         </dd>
       </dl>
-      {report.photo_path && <ReportPhoto report={report} />}
+      {report.attachment_id && <ReportPhoto report={report} />}
       <EventTrail report={report} />
     </div>
   )
@@ -130,7 +133,7 @@ function EventTrail({ report }: { report: ReportDetail }) {
   const actor = (e: ReportEvent) => {
     if (e.actor_id === me) return 'Anda'
     if (e.actor_id === report.reporter_id) return report.reporter.name
-    return 'TU/Kepala Lab'
+    return 'TU/Pengurus Lab'
   }
   return (
     <section>
@@ -147,6 +150,12 @@ function EventTrail({ report }: { report: ReportDetail }) {
               {formatDateTime(e.created_at)} · {actor(e)}
             </p>
             {e.note && <p className='mt-1 break-words'>“{e.note}”</p>}
+          </li>
+        ))}
+        {remainingSteps(report.status).map((s) => (
+          <li key={s} className='text-sm text-muted-foreground'>
+            <p className='font-medium'>{REPORT_STATUS_LABELS[s]}</p>
+            <p>Belum</p>
           </li>
         ))}
       </ol>

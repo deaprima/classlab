@@ -1,0 +1,3 @@
+# Real settings and the backups taken by backup.sh stay on the server.
+.env
+backups/

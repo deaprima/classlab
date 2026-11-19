@@ -14,7 +14,7 @@ import (
 )
 
 const listBookableRooms = `-- name: ListBookableRooms :many
-SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 FROM rooms
 WHERE deleted_at IS NULL AND is_active
   AND ($1::room_type IS NULL OR type = $1::room_type)
@@ -27,15 +27,31 @@ type ListBookableRoomsParams struct {
 	CapacityMin pgtype.Int4  `json:"capacity_min"`
 }
 
-func (q *Queries) ListBookableRooms(ctx context.Context, arg ListBookableRoomsParams) ([]Room, error) {
+type ListBookableRoomsRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
+}
+
+func (q *Queries) ListBookableRooms(ctx context.Context, arg ListBookableRoomsParams) ([]ListBookableRoomsRow, error) {
 	rows, err := q.db.Query(ctx, listBookableRooms, arg.Type, arg.CapacityMin)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Room{}
+	items := []ListBookableRoomsRow{}
 	for rows.Next() {
-		var i Room
+		var i ListBookableRoomsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgUnitID,
@@ -48,6 +64,8 @@ func (q *Queries) ListBookableRooms(ctx context.Context, arg ListBookableRoomsPa
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OpenTime,
+			&i.CloseTime,
 		); err != nil {
 			return nil, err
 		}

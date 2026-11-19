@@ -51,3 +51,18 @@ export function safeRedirectPath(redirect: string | undefined): string {
   if (redirect.startsWith('/sign-in')) return '/'
   return redirect
 }
+
+export const CHANGE_PASSWORD_PATH = '/change-password'
+
+/**
+ * Where an account with a temporary password must go instead of `pathname`: it may only use the
+ * change-password page (the API answers 403 PASSWORD_CHANGE_REQUIRED elsewhere). Null when the
+ * user may stay.
+ */
+export function passwordChangeRedirect(
+  user: Pick<User, 'must_change_password'> | null,
+  pathname: string
+): string | null {
+  if (!user?.must_change_password) return null
+  return pathname === CHANGE_PASSWORD_PATH ? null : CHANGE_PASSWORD_PATH
+}

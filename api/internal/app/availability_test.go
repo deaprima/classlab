@@ -154,13 +154,13 @@ func TestAvailabilityFilters(t *testing.T) {
 	if slices.Contains(all, "FL-INACTIVE") || slices.Contains(all, "FL-DELETED") {
 		t.Errorf("inactive or deleted rooms are not bookable and must not be listed: %v", all)
 	}
-	if len(all) != 6 {
-		t.Errorf("rooms = %v; want the 6 seeded ones", all)
+	if len(all) != 10 {
+		t.Errorf("rooms = %v; want the 10 seeded ones", all)
 	}
 	if got := list("&type=LAB"); !slices.Equal(got, []string{"LAB-1", "LAB-2", "LAB-3"}) {
 		t.Errorf("type=LAB: %v", got)
 	}
-	if got := list("&capacity_min=40"); !slices.Equal(got, []string{"KLS-101", "KLS-102", "KLS-201", "LAB-2"}) {
+	if got := list("&capacity_min=40"); !slices.Equal(got, []string{"AUD-1", "KLS-101", "KLS-102", "KLS-201", "LAB-2", "UJI-1", "UJI-2"}) {
 		t.Errorf("capacity_min=40: %v", got)
 	}
 	if got := list("&type=LAB&capacity_min=40"); !slices.Equal(got, []string{"LAB-2"}) {
@@ -328,5 +328,32 @@ func TestRoomTimelineErrors(t *testing.T) {
 	mustStatus(t, e.do("DELETE", "/api/v1/rooms/"+room, nil, bearer(e.adminToken())), http.StatusNoContent)
 	if res := e.do("GET", timelinePath(room, from, to), nil, tok); res.Code != http.StatusNotFound {
 		t.Errorf("deleted room: %d; want 404", res.Code)
+	}
+}
+
+// Every room type is a valid availability filter, not just the original KELAS and LAB.
+func TestAvailabilityFiltersByEveryRoomType(t *testing.T) {
+	e := newEnv(t)
+	tok := bearer(e.login(mahasiswaA).accessToken)
+	for typ, want := range map[string][]string{
+		"KELAS":        {"KLS-101", "KLS-102", "KLS-201"},
+		"LAB":          {"LAB-1", "LAB-2", "LAB-3"},
+		"AUDITORIUM":   {"AUD-1"},
+		"RUANG_UJIAN":  {"UJI-1", "UJI-2"},
+		"RUANG_SIDANG": {"SDG-1"},
+	} {
+		res := e.do("GET", availabilityPath(at(tue, "20:00"), at(tue, "21:00"), "&type="+typ), nil, tok)
+		if res.Code != http.StatusOK {
+			t.Errorf("type=%s: %d %s; want 200", typ, res.Code, res.Body.String())
+			continue
+		}
+		var got []string
+		for code := range statusByCode(res) {
+			got = append(got, code)
+		}
+		slices.Sort(got)
+		if !slices.Equal(got, want) {
+			t.Errorf("type=%s: %v; want %v", typ, got, want)
+		}
 	}
 }

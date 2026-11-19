@@ -18,10 +18,10 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
 
 const originalAdapter = api.defaults.adapter
-const KAPRODI = {
+const ADMIN = {
   ...sampleUser,
-  id: 'kaprodi-id',
-  role: 'KAPRODI' as const,
+  id: 'admin-id',
+  role: 'ADMIN' as const,
   name: 'Budi',
 }
 const ROOM: Room = {
@@ -33,6 +33,8 @@ const ROOM: Room = {
   capacity: 30,
   facilities: ['Proyektor', 'AC'],
   is_active: true,
+  open_time: '07:00',
+  close_time: '21:00',
 }
 
 function wrap(ui: React.ReactNode) {
@@ -44,7 +46,7 @@ function wrap(ui: React.ReactNode) {
 describe('admin dialogs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useAuthStore.getState().auth.setSession('t', KAPRODI)
+    useAuthStore.getState().auth.setSession('t', ADMIN)
   })
   afterEach(() => {
     api.defaults.adapter = originalAdapter
@@ -73,13 +75,60 @@ describe('admin dialogs', () => {
 
     await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
     expect(bodies[0]).toEqual({
-      org_unit_id: KAPRODI.org_unit_id,
+      org_unit_id: ADMIN.org_unit_id,
       code: 'lab-4',
       name: 'Lab AI',
       type: 'KELAS',
       capacity: 25,
       facilities: ['Proyektor', 'AC', 'GPU'],
     })
+  })
+
+  it('sends custom opening hours when creating a room', async () => {
+    const bodies: Record<string, unknown>[] = []
+    api.defaults.adapter = mockAdapter((config) => {
+      bodies.push(JSON.parse(String(config.data)))
+      return { status: 201, data: ROOM }
+    })
+    const onOpenChange = vi.fn()
+    const screen = await wrap(
+      <RoomFormDialog open onOpenChange={onOpenChange} />
+    )
+
+    await userEvent.fill(screen.getByLabelText('Kode'), 'LAB-5')
+    await userEvent.fill(screen.getByLabelText('Nama'), 'Lab Malam')
+    await userEvent.fill(screen.getByLabelText('Kapasitas'), '20')
+    // Early hours, so the options sit inside the small test viewport.
+    await userEvent.click(screen.getByLabelText('Buka (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: '01:00' }))
+    await userEvent.click(screen.getByLabelText('Tutup (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: '02:00' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(bodies[0]).toMatchObject({ open_time: '01:00', close_time: '02:00' })
+  })
+
+  it('returns a room to its type hours with clear_operating_hours', async () => {
+    const bodies: Record<string, unknown>[] = []
+    api.defaults.adapter = mockAdapter((config) => {
+      bodies.push(JSON.parse(String(config.data)))
+      return { status: 200, data: ROOM }
+    })
+    const onOpenChange = vi.fn()
+    const screen = await wrap(
+      <RoomFormDialog open room={ROOM} onOpenChange={onOpenChange} />
+    )
+
+    await userEvent.click(screen.getByLabelText('Buka (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: 'Ikut tipe' }))
+    await userEvent.click(screen.getByLabelText('Tutup (khusus)'))
+    await userEvent.click(screen.getByRole('option', { name: 'Ikut tipe' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(bodies[0]).toMatchObject({ clear_operating_hours: true })
+    expect(bodies[0]).not.toHaveProperty('open_time')
   })
 
   it('shows a duplicate room code on the code field', async () => {
@@ -141,10 +190,10 @@ describe('admin dialogs', () => {
       .element(screen.getByText('Jadwal bentrok.'))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByText(/Sen, 26 Okt 2026, 08:00–10:00/))
+      .element(screen.getByText(/Sen, 26 Okt 2026, 08:00 – 10:00/))
       .toBeInTheDocument()
     await expect
-      .element(screen.getByText(/Sen, 2 Nov 2026, 09:00–11:00/))
+      .element(screen.getByText(/Sen, 2 Nov 2026, 09:00 – 11:00/))
       .toBeInTheDocument()
     expect(bodies[0]).toMatchObject({
       room_id: ROOM.id,
@@ -156,14 +205,14 @@ describe('admin dialogs', () => {
     })
   })
 
-  it('does not send role or status when Kaprodi edits their own account', async () => {
+  it('does not send role or status when Admin edits their own account', async () => {
     const bodies: unknown[] = []
     api.defaults.adapter = mockAdapter((config) => {
       bodies.push(JSON.parse(String(config.data)))
-      return { status: 200, data: KAPRODI }
+      return { status: 200, data: ADMIN }
     })
     const screen = await wrap(
-      <UserDialog state={{ mode: 'edit', user: KAPRODI }} onClose={vi.fn()} />
+      <UserDialog state={{ mode: 'edit', user: ADMIN }} onClose={vi.fn()} />
     )
 
     await expect.element(screen.getByRole('switch')).toBeDisabled()
@@ -171,15 +220,61 @@ describe('admin dialogs', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
 
     await vi.waitFor(() =>
-      expect(bodies).toEqual([{ name: 'Budi Santoso', email: KAPRODI.email }])
+      expect(bodies).toEqual([{ name: 'Budi Santoso', email: ADMIN.email }])
     )
   })
 
-  it('resets a password only when both entries match', async () => {
+  it('creates an ORGANISASI account with its person in charge and no email', async () => {
     const bodies: unknown[] = []
     api.defaults.adapter = mockAdapter((config) => {
       bodies.push(JSON.parse(String(config.data)))
-      return { status: 200, data: sampleUser }
+      return { status: 201, data: { ...sampleUser, role: 'ORGANISASI' } }
+    })
+    const screen = await wrap(
+      <UserDialog state={{ mode: 'create' }} onClose={vi.fn()} />
+    )
+
+    await expect
+      .element(screen.getByLabelText('Nama penanggung jawab'))
+      .not.toBeInTheDocument()
+    await userEvent.fill(screen.getByLabelText('NIM / NIP'), 'himpunan01')
+    await userEvent.fill(
+      screen.getByLabelText('Nama', { exact: true }),
+      'Himpunan Informatika'
+    )
+    await userEvent.click(screen.getByRole('combobox', { name: 'Peran' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Organisasi' }))
+    await userEvent.fill(screen.getByLabelText('Nama penanggung jawab'), 'Rina')
+    await userEvent.fill(
+      screen.getByLabelText('Telepon penanggung jawab'),
+      '081234567890'
+    )
+    await userEvent.fill(
+      screen.getByLabelText('Kata sandi sementara'),
+      'sementara-123'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Buat akun' }))
+
+    await vi.waitFor(() =>
+      expect(bodies).toEqual([
+        {
+          org_unit_id: ADMIN.org_unit_id,
+          identifier: 'himpunan01',
+          name: 'Himpunan Informatika',
+          role: 'ORGANISASI',
+          password: 'sementara-123',
+          pic_name: 'Rina',
+          pic_phone: '081234567890',
+        },
+      ])
+    )
+  })
+
+  it('resets a password through the API and shows the temporary one', async () => {
+    const calls: { method?: string; url?: string }[] = []
+    api.defaults.adapter = mockAdapter((config) => {
+      calls.push({ method: config.method, url: config.url })
+      return { status: 200, data: { temporary_password: 'Tmp-pass-9x7Qk2' } }
     })
     const screen = await wrap(
       <UserDialog
@@ -188,29 +283,21 @@ describe('admin dialogs', () => {
       />
     )
 
-    await userEvent.fill(
-      screen.getByLabelText('Kata sandi baru', { exact: true }),
-      'baru-12345'
-    )
-    await userEvent.fill(
-      screen.getByLabelText('Ulangi kata sandi baru'),
-      'beda-12345'
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Reset kata sandi' })
-    )
     await expect
-      .element(screen.getByText('Konfirmasi kata sandi tidak sama.'))
-      .toBeInTheDocument()
-    expect(bodies).toHaveLength(0)
-
-    await userEvent.fill(
-      screen.getByLabelText('Ulangi kata sandi baru'),
-      'baru-12345'
-    )
+      .element(screen.getByText('Tmp-pass-9x7Qk2'))
+      .not.toBeInTheDocument()
     await userEvent.click(
       screen.getByRole('button', { name: 'Reset kata sandi' })
     )
-    await vi.waitFor(() => expect(bodies).toEqual([{ password: 'baru-12345' }]))
+
+    await expect
+      .element(screen.getByText('Tmp-pass-9x7Qk2'))
+      .toBeInTheDocument()
+    await expect
+      .element(screen.getByText(/hanya ditampilkan sekali/))
+      .toBeInTheDocument()
+    expect(calls).toEqual([
+      { method: 'post', url: `/users/${sampleUser.id}/reset-password` },
+    ])
   })
 })

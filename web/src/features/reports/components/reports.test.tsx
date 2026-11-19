@@ -87,7 +87,13 @@ describe('ReportFormDialog', () => {
     api.defaults.adapter = mockAdapter((config) => {
       if (config.url === '/rooms') return roomsReply
       sent = config.data as FormData
-      return { status: 201, data: { ...REPORT, photo_path: '/x' } }
+      return {
+        status: 201,
+        data: {
+          ...REPORT,
+          attachment_id: '22222222-2222-4222-8222-222222222222',
+        },
+      }
     })
     const onCreated = vi.fn()
     const screen = await wrap(
@@ -143,7 +149,7 @@ describe('ReportDetailSheet status action', () => {
   it('lets TU/Kalab move the report one step with a note', async () => {
     useAuthStore
       .getState()
-      .auth.setSession('t', { ...sampleUser, id: 'tu', role: 'TU_KALAB' })
+      .auth.setSession('t', { ...sampleUser, id: 'tu', role: 'TU' })
     const patches: unknown[] = []
     api.defaults.adapter = mockAdapter((config) => {
       if (config.method === 'patch') {

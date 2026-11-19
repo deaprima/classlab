@@ -2,7 +2,7 @@ package app_test
 
 import (
 	"bytes"
-	"encoding/binary"
+	"encoding/base64"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -28,7 +28,7 @@ type photoPart struct {
 	data        []byte
 }
 
-// The photo fixtures are structurally valid files, because uploads are parsed and stripped of metadata.
+// The photo fixtures are real pictures, because uploads are decoded and written again as JPEG.
 
 // jpegBytes is a real JPEG padded with trailing zeros up to size. Bytes after the end marker are kept,
 // which lets the size-limit tests hit an exact length.
@@ -47,16 +47,6 @@ func pngBytes(size int) []byte {
 		panic(err)
 	}
 	return buf.Bytes()
-}
-
-// webpBytes is a well-framed RIFF/WebP container of about size bytes. Its image data is filler, which
-// is enough because the server checks and strips the framing but never decodes the picture.
-func webpBytes(size int) []byte {
-	payload := make([]byte, max(size-20, 10)&^1) // even length, so no padding byte is needed
-	out := []byte("RIFF\x00\x00\x00\x00WEBPVP8L\x00\x00\x00\x00")
-	binary.LittleEndian.PutUint32(out[4:], uint32(4+8+len(payload)))
-	binary.LittleEndian.PutUint32(out[16:], uint32(len(payload)))
-	return append(out, payload...)
 }
 
 func pad(data []byte, size int) []byte {
@@ -130,18 +120,18 @@ func (e *env) reportEventCount(id string) int {
 	return e.countRows("SELECT count(*) FROM report_events WHERE report_id = $1", id)
 }
 
-// reportAt creates a report for the student and advances it (as TU/Kalab) to the wanted status.
+// reportAt creates a report for the student in a KELAS room and advances it (as the TU, who approves that type) to the wanted status.
 func (e *env) reportAt(status, student string) string {
 	e.t.Helper()
 	res := e.postReport(e.login(student).accessToken, e.freshRoom(), "Proyektor rusak", nil)
 	mustStatus(e.t, res, http.StatusCreated)
 	id := idOf(res)
-	admin := e.adminToken()
+	tu := e.tuToken()
 	for _, step := range []string{"DITERIMA", "DIPROSES", "SELESAI"} {
 		if e.reportStatus(id) == status {
 			break
 		}
-		mustStatus(e.t, e.patchReport(admin, id, map[string]string{"status": step}), http.StatusOK)
+		mustStatus(e.t, e.patchReport(tu, id, map[string]string{"status": step}), http.StatusOK)
 	}
 	if e.reportStatus(id) != status {
 		e.t.Fatalf("could not bring report to %s", status)
@@ -149,20 +139,21 @@ func (e *env) reportAt(status, student string) string {
 	return id
 }
 
-// addTU creates another active TU/Kalab account through the API.
+// addTU creates another active TU account through the API. The account still has a temporary password, which
+// is fine for the tests that only need it to exist as a notification recipient.
 func (e *env) addTU(identifier string) string {
 	e.t.Helper()
 	body := e.newUserBody(identifier)
-	body["role"] = "TU_KALAB"
-	res := e.do("POST", "/api/v1/users", body, bearer(e.login(kaprodiID).accessToken))
+	body["role"] = "TU"
+	res := e.do("POST", "/api/v1/users", body, bearer(e.adminToken()))
 	mustStatus(e.t, res, http.StatusCreated)
 	return res.json()["id"].(string)
 }
 
-// uploadedFiles lists the photo files on disk.
+// uploadedFiles lists the files stored under <UPLOAD_DIR>/attachments.
 func (e *env) uploadedFiles() []string {
 	e.t.Helper()
-	entries, err := os.ReadDir(filepath.Join(e.cfg.UploadDir, "reports"))
+	entries, err := os.ReadDir(filepath.Join(e.cfg.UploadDir, "attachments"))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -176,13 +167,13 @@ func (e *env) uploadedFiles() []string {
 	return names
 }
 
-var storedPhotoName = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$`)
+var storedPhotoName = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}.jpg$`)
 
 func TestCreateReportAsEveryRole(t *testing.T) {
 	e := newEnv(t)
 	room := e.freshRoom()
 
-	for _, who := range []string{mahasiswaA, obID, tuKalabID, kaprodiID} {
+	for _, who := range []string{mahasiswaA, orgID, obID, tuID, kalabID, adminID} {
 		sess := e.login(who)
 		res := e.postReport(sess.accessToken, room, "  AC bocor  ", nil)
 		mustStatus(t, res, http.StatusCreated)
@@ -194,7 +185,7 @@ func TestCreateReportAsEveryRole(t *testing.T) {
 		if rep, _ := r["reporter"].(map[string]any); rep["identifier"] != who || rep["email"] != nil {
 			t.Errorf("%s: reporter should expose identifier and name only: %v", who, r["reporter"])
 		}
-		if r["photo_path"] != nil || r["handled_by"] != nil {
+		if r["attachment_id"] != nil || r["handled_by"] != nil {
 			t.Errorf("%s: a new report has no photo or handler: %v", who, r)
 		}
 
@@ -261,56 +252,75 @@ func TestCreateReportValidation(t *testing.T) {
 	}
 }
 
+// realWebP is a 1x1 lossless WebP (a hand-written file, because the standard library only reads WebP).
+func realWebP() []byte {
+	b, err := base64.StdEncoding.DecodeString("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// Every accepted format comes back as a JPEG (BR-16): the upload is decoded and written again.
 func TestReportPhotoUploadAndDownload(t *testing.T) {
 	e := newEnv(t)
 	tok := e.login(mahasiswaA).accessToken
 	room := e.freshRoom()
 
 	for _, tc := range []struct {
-		name        string
-		photo       *photoPart
-		ext, mime   string
-		wantContent []byte
+		name  string
+		photo *photoPart
 	}{
-		{"jpeg", &photoPart{"foto.jpg", "image/jpeg", jpegBytes(300)}, ".jpg", "image/jpeg", jpegBytes(300)},
-		{"png", &photoPart{"foto.png", "image/png", pngBytes(300)}, ".png", "image/png", pngBytes(300)},
-		{"webp", &photoPart{"foto.webp", "image/webp", webpBytes(300)}, ".webp", "image/webp", webpBytes(300)},
+		{"jpeg", &photoPart{"foto.jpg", "image/jpeg", jpegBytes(300)}},
+		{"png", &photoPart{"foto.png", "image/png", pngBytes(300)}},
+		{"webp", &photoPart{"foto.webp", "image/webp", realWebP()}},
 		// The file's own bytes decide, not what the client claims.
-		{"png sent as .jpg with a text/plain type", &photoPart{"../../evil.php", "text/plain", pngBytes(64)}, ".png", "image/png", pngBytes(64)},
+		{"png sent as .php with a text/plain type", &photoPart{"../../evil.php", "text/plain", pngBytes(64)}},
 	} {
 		before := e.uploadedFiles()
 		res := e.postReport(tok, room, "Papan tulis rusak", tc.photo)
 		mustStatus(t, res, http.StatusCreated)
 		id := idOf(res)
 
-		if want := "/api/v1/reports/" + id + "/photo"; res.json()["photo_path"] != want {
-			t.Errorf("%s: photo_path = %v; want %s", tc.name, res.json()["photo_path"], want)
+		attachmentID, _ := res.json()["attachment_id"].(string)
+		if attachmentID == "" {
+			t.Errorf("%s: attachment_id = %v; want the photo's id", tc.name, res.json()["attachment_id"])
+		}
+		if _, has := res.json()["photo_path"]; has {
+			t.Errorf("%s: the response still has photo_path", tc.name)
 		}
 		added, _ := diff(before, e.uploadedFiles())
-		if len(added) != 1 || !storedPhotoName.MatchString(added[0]) || filepath.Ext(added[0]) != tc.ext {
-			t.Errorf("%s: stored files %v; want one UUID name ending %s", tc.name, added, tc.ext)
+		if len(added) != 1 || !storedPhotoName.MatchString(added[0]) || filepath.Ext(added[0]) != ".jpg" {
+			t.Errorf("%s: stored files %v; want one UUID name ending .jpg", tc.name, added)
 		}
 		if strings.Contains(strings.Join(added, ""), "evil") {
 			t.Errorf("%s: client file name leaked into the stored name %v", tc.name, added)
 		}
 
-		got := e.do("GET", "/api/v1/reports/"+id+"/photo", nil, bearer(tok))
+		got := e.do("GET", "/api/v1/attachments/"+attachmentID, nil, bearer(tok))
 		mustStatus(t, got, http.StatusOK)
-		if got.Header().Get("Content-Type") != tc.mime || got.Header().Get("X-Content-Type-Options") != "nosniff" ||
-			got.Header().Get("Content-Disposition") != "inline" || !bytes.Equal(got.Body.Bytes(), tc.wantContent) {
-			t.Errorf("%s: served %q (%d bytes), nosniff=%q, disposition=%q", tc.name, got.Header().Get("Content-Type"), got.Body.Len(),
+		if got.Header().Get("Content-Type") != "image/jpeg" || got.Header().Get("X-Content-Type-Options") != "nosniff" ||
+			!strings.HasPrefix(got.Header().Get("Content-Disposition"), "inline") {
+			t.Errorf("%s: served %q, nosniff=%q, disposition=%q", tc.name, got.Header().Get("Content-Type"),
 				got.Header().Get("X-Content-Type-Options"), got.Header().Get("Content-Disposition"))
+		}
+		if _, err := jpeg.Decode(bytes.NewReader(got.Body.Bytes())); err != nil {
+			t.Errorf("%s: the served photo is not a JPEG: %v", tc.name, err)
 		}
 		if strings.Contains(res.Body.String(), filepath.Join(e.cfg.UploadDir)) || strings.Contains(res.Body.String(), added[0]) {
 			t.Errorf("%s: the response reveals where the file is stored: %s", tc.name, res.Body.String())
+		}
+		// The old per-report route is gone.
+		if old := e.do("GET", "/api/v1/reports/"+id+"/photo", nil, bearer(tok)); old.Code != http.StatusNotFound && old.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s: GET /reports/{id}/photo = %d; want it removed", tc.name, old.Code)
 		}
 	}
 
 	// An empty file part, as a browser sends when no file was chosen, means no photo.
 	res := e.postReport(tok, room, "Tanpa foto", &photoPart{"", "application/octet-stream", nil})
 	mustStatus(t, res, http.StatusCreated)
-	if res.json()["photo_path"] != nil {
-		t.Errorf("empty file part produced a photo: %v", res.json()["photo_path"])
+	if res.json()["attachment_id"] != nil {
+		t.Errorf("empty file part produced a photo: %v", res.json()["attachment_id"])
 	}
 }
 
@@ -332,7 +342,7 @@ func TestReportPhotoRejections(t *testing.T) {
 	e := newEnv(t)
 	tok := e.login(mahasiswaA).accessToken
 	room := e.freshRoom()
-	limit := int(e.cfg.UploadMaxBytes)
+	limit := int(e.cfg.Business.MaxUploadBytes)
 
 	for _, tc := range []struct {
 		name  string
@@ -369,35 +379,39 @@ func TestReportPhotoRejections(t *testing.T) {
 func TestReportPhotoAccess(t *testing.T) {
 	e := newEnv(t)
 	owner := e.login(mahasiswaA).accessToken
-	withPhoto := idOf(e.postReport(owner, e.freshRoom(), "Rusak", &photoPart{"a.jpg", "image/jpeg", jpegBytes(100)}))
-	without := idOf(e.postReport(owner, e.freshRoom(), "Rusak", nil))
+	withPhotoRes := e.postReport(owner, e.freshRoom(), "Rusak", &photoPart{"a.jpg", "image/jpeg", jpegBytes(100)})
+	mustStatus(t, withPhotoRes, http.StatusCreated)
+	photoID, _ := withPhotoRes.json()["attachment_id"].(string)
+	without := e.postReport(owner, e.freshRoom(), "Rusak", nil)
+	mustStatus(t, without, http.StatusCreated)
+	if without.json()["attachment_id"] != nil {
+		t.Errorf("report without a photo has attachment_id %v", without.json()["attachment_id"])
+	}
 
 	get := func(tok, id string) int {
-		return e.do("GET", "/api/v1/reports/"+id+"/photo", nil, bearer(tok)).Code
+		return e.do("GET", "/api/v1/attachments/"+id, nil, bearer(tok)).Code
 	}
-	for name, tok := range map[string]string{"owner": owner, "TU_KALAB": e.adminToken(), "KAPRODI": e.login(kaprodiID).accessToken} {
-		if code := get(tok, withPhoto); code != http.StatusOK {
+	// The uploader, the approver of the room's type, ADMIN, and OB (who handles every damage photo).
+	for name, tok := range map[string]string{"owner": owner, "TU": e.tuToken(), "ADMIN": e.adminToken(), "OB": e.login(obID).accessToken} {
+		if code := get(tok, photoID); code != http.StatusOK {
 			t.Errorf("%s: %d; want 200", name, code)
 		}
 	}
-	for name, tok := range map[string]string{"another student": e.login(mahasiswaB).accessToken, "OB": e.login(obID).accessToken} {
-		if code := get(tok, withPhoto); code != http.StatusNotFound {
+	for name, tok := range map[string]string{"another student": e.login(mahasiswaB).accessToken, "KALAB (not the approver of KELAS)": e.kalabToken()} {
+		if code := get(tok, photoID); code != http.StatusNotFound {
 			t.Errorf("%s: %d; want 404", name, code)
 		}
 	}
-	if code := get(owner, without); code != http.StatusNotFound {
-		t.Errorf("report without a photo: %d; want 404", code)
-	}
-	if res := e.do("GET", "/api/v1/reports/"+withPhoto+"/photo", nil); res.Code != http.StatusUnauthorized {
+	if res := e.do("GET", "/api/v1/attachments/"+photoID, nil); res.Code != http.StatusUnauthorized {
 		t.Errorf("anonymous: %d; want 401", res.Code)
 	}
 
 	// A database row that names something other than one of our own files must never reach the disk.
-	for _, name := range []string{"../../../etc/passwd", "..\\..\\secret.jpg", "/etc/passwd", "x.jpg", "00000000-0000-4000-8000-000000000000.jpg"} {
-		if _, err := e.pool.Exec(t.Context(), "UPDATE damage_reports SET photo_path = $1 WHERE id = $2", name, withPhoto); err != nil {
+	for _, name := range []string{"../../../etc/passwd", `..\..\secret.jpg`, "/etc/passwd", "x.jpg", "attachments/00000000-0000-4000-8000-000000000000.sh"} {
+		if _, err := e.pool.Exec(t.Context(), "UPDATE attachments SET storage_path = $1 WHERE id = $2", name, photoID); err != nil {
 			t.Fatal(err)
 		}
-		if code := get(owner, withPhoto); code != http.StatusNotFound {
+		if code := get(owner, photoID); code != http.StatusNotFound {
 			t.Errorf("stored name %q: %d; want 404", name, code)
 		}
 	}
@@ -406,7 +420,7 @@ func TestReportPhotoAccess(t *testing.T) {
 func TestReportVisibilityAndListing(t *testing.T) {
 	e := newEnv(t)
 	a, b, ob := e.login(mahasiswaA).accessToken, e.login(mahasiswaB).accessToken, e.login(obID).accessToken
-	tu, kaprodi := e.adminToken(), e.login(kaprodiID).accessToken
+	tu, admin := e.tuToken(), e.adminToken()
 	roomX, roomY := e.freshRoom(), e.freshRoom()
 
 	a1 := idOf(e.postReport(a, roomX, "a1", nil))
@@ -436,7 +450,7 @@ func TestReportVisibilityAndListing(t *testing.T) {
 	same("student B", list(b, ""))
 	same("OB sees only their own", list(ob, ""), o1)
 	same("TU_KALAB sees all", list(tu, ""), o1, a2, a1)
-	same("KAPRODI sees all", list(kaprodi, ""), o1, a2, a1)
+	same("KAPRODI sees all", list(admin, ""), o1, a2, a1)
 	same("status filter", list(tu, "?status=DITERIMA"), a2)
 	same("room filter", list(tu, "?room_id="+roomX), o1, a1)
 	same("student cannot reach others by filter", list(a, "?room_id="+roomX), a1)
@@ -452,11 +466,11 @@ func TestReportVisibilityAndListing(t *testing.T) {
 	}
 
 	// Detail: the reporter and the handlers see it with its history; anyone else gets 404.
-	for name, tok := range map[string]string{"reporter": a, "TU_KALAB": tu, "KAPRODI": kaprodi} {
+	for name, tok := range map[string]string{"reporter": a, "TU": tu, "ADMIN": admin} {
 		res := e.do("GET", "/api/v1/reports/"+a2, nil, bearer(tok))
 		mustStatus(t, res, http.StatusOK)
 		events, _ := res.json()["events"].([]any)
-		if len(events) != 2 || res.json()["status"] != "DITERIMA" || res.json()["handled_by"] != e.userIDOf(tuKalabID) {
+		if len(events) != 2 || res.json()["status"] != "DITERIMA" || res.json()["handled_by"] != e.userIDOf(tuID) {
 			t.Errorf("%s: detail = %v", name, res.json())
 		}
 	}
@@ -473,14 +487,14 @@ func TestReportVisibilityAndListing(t *testing.T) {
 // BR-08: a report moves exactly one step forward. Every pair of statuses is tried.
 func TestReportStatusLifecycle(t *testing.T) {
 	e := newEnv(t)
-	admin := e.adminToken()
+	tu := e.tuToken()
 	order := []string{"BARU", "DITERIMA", "DIPROSES", "SELESAI"}
 
 	for fi, from := range order {
 		for ti, to := range order {
 			id := e.reportAt(from, mahasiswaA)
 			events := e.reportEventCount(id)
-			res := e.patchReport(admin, id, map[string]string{"status": to})
+			res := e.patchReport(tu, id, map[string]string{"status": to})
 
 			if ti == fi+1 {
 				mustStatus(t, res, http.StatusOK)
@@ -504,7 +518,7 @@ func TestReportStatusLifecycle(t *testing.T) {
 
 func TestReportStatusUpdateDetails(t *testing.T) {
 	e := newEnv(t)
-	admin := e.adminToken()
+	tu := e.tuToken()
 	reporter := e.userIDOf(mahasiswaA)
 	id := e.reportAt("BARU", mahasiswaA)
 
@@ -513,12 +527,12 @@ func TestReportStatusUpdateDetails(t *testing.T) {
 		"empty status":   map[string]string{},
 		"long note":      map[string]string{"status": "DITERIMA", "note": strings.Repeat("x", 501)},
 	} {
-		if res := e.patchReport(admin, id, body); res.Code != http.StatusUnprocessableEntity {
+		if res := e.patchReport(tu, id, body); res.Code != http.StatusUnprocessableEntity {
 			t.Errorf("%s: %d; want 422", name, res.Code)
 		}
 	}
 	for name, body := range map[string]string{"not json": "status=DITERIMA", "unknown field": `{"status":"DITERIMA","x":1}`} {
-		if res := e.do("PATCH", "/api/v1/reports/"+id+"/status", body, bearer(admin)); res.Code != http.StatusBadRequest {
+		if res := e.do("PATCH", "/api/v1/reports/"+id+"/status", body, bearer(tu)); res.Code != http.StatusBadRequest {
 			t.Errorf("%s: %d; want 400", name, res.Code)
 		}
 	}
@@ -526,9 +540,9 @@ func TestReportStatusUpdateDetails(t *testing.T) {
 		t.Fatal("a rejected request changed the report")
 	}
 
-	res := e.patchReport(admin, id, map[string]string{"status": "DITERIMA", "note": "  Teknisi dijadwalkan  "})
+	res := e.patchReport(tu, id, map[string]string{"status": "DITERIMA", "note": "  Teknisi dijadwalkan  "})
 	mustStatus(t, res, http.StatusOK)
-	if res.json()["handled_by"] != e.userIDOf(tuKalabID) {
+	if res.json()["handled_by"] != e.userIDOf(tuID) {
 		t.Errorf("handled_by = %v; want the TU/Kalab who acted", res.json()["handled_by"])
 	}
 	var note string
@@ -546,18 +560,19 @@ func TestReportStatusUpdateDetails(t *testing.T) {
 		t.Errorf("notification body = %q", body)
 	}
 
-	// Only TU/Kalab changes status; others are refused before anything is looked up.
+	// Only the approver of the room type changes status; others are refused.
 	for name, tok := range map[string]string{
-		"reporter": e.login(mahasiswaA).accessToken, "OB": e.login(obID).accessToken, "KAPRODI": e.login(kaprodiID).accessToken,
+		"reporter": e.login(mahasiswaA).accessToken, "OB": e.login(obID).accessToken,
+		"ADMIN": e.adminToken(), "KALAB": e.kalabToken(), // neither approves a KELAS room (BR-10)
 	} {
 		if res := e.patchReport(tok, id, map[string]string{"status": "DIPROSES"}); res.Code != http.StatusForbidden {
 			t.Errorf("%s: %d; want 403", name, res.Code)
 		}
 	}
-	if res := e.patchReport(admin, "00000000-0000-4000-8000-0000000000aa", map[string]string{"status": "DITERIMA"}); res.Code != http.StatusNotFound {
+	if res := e.patchReport(tu, "00000000-0000-4000-8000-0000000000aa", map[string]string{"status": "DITERIMA"}); res.Code != http.StatusNotFound {
 		t.Errorf("missing report: %d; want 404", res.Code)
 	}
-	if res := e.patchReport(admin, "nope", map[string]string{"status": "DITERIMA"}); res.Code != http.StatusNotFound {
+	if res := e.patchReport(tu, "nope", map[string]string{"status": "DITERIMA"}); res.Code != http.StatusNotFound {
 		t.Errorf("malformed id: %d; want 404", res.Code)
 	}
 }
@@ -566,53 +581,80 @@ func TestReportNotifications(t *testing.T) {
 	e := newEnv(t)
 	other := e.addTU("198505052010012004")
 	gone := e.addTU("198505052010012005")
-	mustStatus(t, e.do("PATCH", "/api/v1/users/"+gone, map[string]any{"is_active": false}, bearer(e.login(kaprodiID).accessToken)), http.StatusOK)
-	tuID, studentID, kaprodi := e.userIDOf(tuKalabID), e.userIDOf(mahasiswaA), e.userIDOf(kaprodiID)
+	mustStatus(t, e.do("PATCH", "/api/v1/users/"+gone, map[string]any{"is_active": false}, bearer(e.adminToken())), http.StatusOK)
+	tuUserID, studentID, adminUserID, kalabUserID := e.userIDOf(tuID), e.userIDOf(mahasiswaA), e.userIDOf(adminID), e.userIDOf(kalabID)
 	room := e.freshRoom()
 
 	long := strings.Repeat("kerusakan ", 30)
 	res := e.postReport(e.login(mahasiswaA).accessToken, room, long, nil)
 	mustStatus(t, res, http.StatusCreated)
-	for name, who := range map[string]string{"first TU_KALAB": tuID, "second TU_KALAB": other} {
+	for name, who := range map[string]string{"first TU": tuUserID, "second TU": other} {
 		if n := e.notificationCount(who, "REPORT_CREATED"); n != 1 {
 			t.Errorf("%s got %d REPORT_CREATED; want 1", name, n)
 		}
 	}
-	for name, who := range map[string]string{"deactivated TU": gone, "KAPRODI": kaprodi, "reporter": studentID} {
+	for name, who := range map[string]string{"deactivated TU": gone, "ADMIN": adminUserID, "KALAB": kalabUserID, "reporter": studentID} {
 		if n := e.notificationCount(who, "REPORT_CREATED"); n != 0 {
 			t.Errorf("%s got %d REPORT_CREATED; want 0", name, n)
 		}
 	}
 	var refType, refID, body string
-	if err := e.pool.QueryRow(t.Context(), "SELECT ref_type, ref_id::text, body FROM notifications WHERE user_id = $1 AND type = 'REPORT_CREATED'", tuID).Scan(&refType, &refID, &body); err != nil {
+	if err := e.pool.QueryRow(t.Context(), "SELECT ref_type, ref_id::text, body FROM notifications WHERE user_id = $1 AND type = 'REPORT_CREATED'", tuUserID).Scan(&refType, &refID, &body); err != nil {
 		t.Fatal(err)
 	}
 	if refType != "REPORT" || refID != idOf(res) || !strings.Contains(body, "…") || len([]rune(body)) > 200 {
 		t.Errorf("notification = %s %s %q; want REPORT ref and a shortened body", refType, refID, body)
 	}
 
-	// A TU/Kalab who files a report tells the other approver but not themselves.
-	before := e.notificationCount(tuID, "REPORT_CREATED")
-	mustStatus(t, e.postReport(e.adminToken(), room, "Kursi patah", nil), http.StatusCreated)
-	if n := e.notificationCount(tuID, "REPORT_CREATED"); n != before {
+	// A TU who files a report tells the other approver but not themselves.
+	before := e.notificationCount(tuUserID, "REPORT_CREATED")
+	mustStatus(t, e.postReport(e.tuToken(), room, "Kursi patah", nil), http.StatusCreated)
+	if n := e.notificationCount(tuUserID, "REPORT_CREATED"); n != before {
 		t.Errorf("reporting notified the reporter themselves")
 	}
 	if n := e.notificationCount(other, "REPORT_CREATED"); n != 2 {
-		t.Errorf("second TU_KALAB has %d REPORT_CREATED; want 2", n)
+		t.Errorf("second TU has %d REPORT_CREATED; want 2", n)
 	}
 
 	// ...and handling their own report does not notify them either.
-	own := idOf(e.postReport(e.adminToken(), room, "Lampu mati", nil))
+	own := idOf(e.postReport(e.tuToken(), room, "Lampu mati", nil))
 	notes := e.countRows("SELECT count(*) FROM notifications")
-	mustStatus(t, e.patchReport(e.adminToken(), own, map[string]string{"status": "DITERIMA"}), http.StatusOK)
+	mustStatus(t, e.patchReport(e.tuToken(), own, map[string]string{"status": "DITERIMA"}), http.StatusOK)
 	if after := e.countRows("SELECT count(*) FROM notifications"); after != notes {
-		t.Errorf("a TU/Kalab updating their own report created %d notifications", after-notes)
+		t.Errorf("a TU updating their own report created %d notifications", after-notes)
+	}
+
+	// Who is told follows the type of the room (BR-10): the KALAB for a LAB, the TU and the ADMIN for a special room.
+	createdFor := func(roomID, desc string) map[string]int {
+		t.Helper()
+		rep := idOf(e.postReport(e.login(mahasiswaA).accessToken, roomID, desc, nil))
+		out := map[string]int{}
+		for name, who := range map[string]string{"TU": tuUserID, "second TU": other, "deactivated TU": gone, "KALAB": kalabUserID, "ADMIN": adminUserID, "OB": e.userIDOf(obID)} {
+			out[name] = e.countRows("SELECT count(*) FROM notifications WHERE user_id = $1 AND type = 'REPORT_CREATED' AND ref_id = $2", who, rep)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		typ  string
+		want map[string]int
+	}{
+		{"LAB", map[string]int{"KALAB": 1}},
+		{"AUDITORIUM", map[string]int{"TU": 1, "second TU": 1, "ADMIN": 1}},
+		{"RUANG_UJIAN", map[string]int{"TU": 1, "second TU": 1, "ADMIN": 1}},
+		{"RUANG_SIDANG", map[string]int{"TU": 1, "second TU": 1, "ADMIN": 1}},
+	} {
+		got := createdFor(e.insertRoom("RN-"+tc.typ, tc.typ, 20), "Rusak di "+tc.typ)
+		for name, n := range got {
+			if n != tc.want[name] {
+				t.Errorf("%s report: %s got %d REPORT_CREATED; want %d", tc.typ, name, n, tc.want[name])
+			}
+		}
 	}
 }
 
 func TestReportStatusConcurrentUpdates(t *testing.T) {
 	e := newEnv(t)
-	admin := e.adminToken()
+	tu := e.tuToken()
 	id := e.reportAt("BARU", mahasiswaA)
 
 	results := make([]response, 8)
@@ -621,7 +663,7 @@ func TestReportStatusConcurrentUpdates(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = e.patchReport(admin, id, map[string]string{"status": "DITERIMA"})
+			results[i] = e.patchReport(tu, id, map[string]string{"status": "DITERIMA"})
 		}()
 	}
 	wg.Wait()
@@ -671,7 +713,7 @@ func TestReportEventsAreAppendOnly(t *testing.T) {
 func TestReportWritesAreAtomic(t *testing.T) {
 	e := newEnv(t)
 	student := e.login(mahasiswaA).accessToken
-	admin := e.adminToken()
+	tu := e.tuToken()
 	room := e.freshRoom()
 
 	breakTable := func(table string) {
@@ -707,7 +749,7 @@ func TestReportWritesAreAtomic(t *testing.T) {
 	id := e.reportAt("BARU", mahasiswaA)
 	events, notes := e.reportEventCount(id), e.countRows("SELECT count(*) FROM notifications")
 	breakTable("notifications")
-	if res := e.doUnchecked("PATCH", "/api/v1/reports/"+id+"/status", map[string]string{"status": "DITERIMA"}, bearer(admin)); res.Code != http.StatusInternalServerError {
+	if res := e.doUnchecked("PATCH", "/api/v1/reports/"+id+"/status", map[string]string{"status": "DITERIMA"}, bearer(tu)); res.Code != http.StatusInternalServerError {
 		t.Fatalf("update with failing notification: %d; want 500", res.Code)
 	}
 	if e.reportStatus(id) != "BARU" || e.reportEventCount(id) != events || e.countRows("SELECT count(*) FROM notifications") != notes {
@@ -717,7 +759,7 @@ func TestReportWritesAreAtomic(t *testing.T) {
 
 	// ...and so does a failing event insert.
 	breakTable("report_events")
-	if res := e.doUnchecked("PATCH", "/api/v1/reports/"+id+"/status", map[string]string{"status": "DITERIMA"}, bearer(admin)); res.Code != http.StatusInternalServerError {
+	if res := e.doUnchecked("PATCH", "/api/v1/reports/"+id+"/status", map[string]string{"status": "DITERIMA"}, bearer(tu)); res.Code != http.StatusInternalServerError {
 		t.Fatalf("update with failing event: %d; want 500", res.Code)
 	}
 	if e.reportStatus(id) != "BARU" || e.countRows("SELECT count(*) FROM notifications") != notes {
@@ -725,7 +767,7 @@ func TestReportWritesAreAtomic(t *testing.T) {
 	}
 	repair("report_events")
 
-	mustStatus(t, e.patchReport(admin, id, map[string]string{"status": "DITERIMA"}), http.StatusOK)
+	mustStatus(t, e.patchReport(tu, id, map[string]string{"status": "DITERIMA"}), http.StatusOK)
 }
 
 // If the photo cannot be written, the report is not created.
@@ -750,7 +792,8 @@ func TestReportIsNotCreatedWhenThePhotoCannotBeStored(t *testing.T) {
 	mustStatus(t, e.postReport(tok, room, "Tanpa foto", nil), http.StatusCreated)
 }
 
-// Phones put the GPS position of a photo into its EXIF block; it must not be stored or served.
+// Phones put the GPS position of a photo into its EXIF block; it must not be stored or served. Uploads are
+// decoded and written again as JPEG, so nothing but pixels survives (BR-16).
 func TestReportPhotoMetadataIsStripped(t *testing.T) {
 	e := newEnv(t)
 	tok := e.login(mahasiswaA).accessToken
@@ -762,34 +805,41 @@ func TestReportPhotoMetadataIsStripped(t *testing.T) {
 	segment := append([]byte{0xFF, 0xE1, byte((len(payload) + 2) >> 8), byte(len(payload) + 2)}, payload...)
 	plain := jpegBytes(0)
 	withGPS := append(append(append([]byte{}, plain[:2]...), segment...), plain[2:]...)
+	// A payload hidden after the end of the picture must go too.
+	withGPS = append(withGPS, []byte("HIDDEN-PAYLOAD-"+secret)...)
 
 	res := e.postReport(tok, e.freshRoom(), "Rusak", &photoPart{"IMG_0001.jpg", "image/jpeg", withGPS})
 	mustStatus(t, res, http.StatusCreated)
-	id := idOf(res)
+	id, _ := res.json()["attachment_id"].(string)
 
-	served := e.do("GET", "/api/v1/reports/"+id+"/photo", nil, bearer(tok))
+	served := e.do("GET", "/api/v1/attachments/"+id, nil, bearer(tok))
 	mustStatus(t, served, http.StatusOK)
-	if bytes.Contains(served.Body.Bytes(), []byte(secret)) {
-		t.Error("the served photo still carries the GPS data")
+	if served.Header().Get("Content-Type") != "image/jpeg" {
+		t.Errorf("content type = %q; want image/jpeg", served.Header().Get("Content-Type"))
+	}
+	for _, marker := range [][]byte{[]byte(secret), []byte("HIDDEN-PAYLOAD"), []byte("Exif")} {
+		if bytes.Contains(served.Body.Bytes(), marker) {
+			t.Errorf("the served photo still carries %q", marker)
+		}
 	}
 	for _, f := range e.uploadedFiles() {
-		raw, err := os.ReadFile(filepath.Join(e.cfg.UploadDir, "reports", f))
+		raw, err := os.ReadFile(filepath.Join(e.cfg.UploadDir, "attachments", f))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(raw, []byte(secret)) {
-			t.Errorf("the stored file %s still carries the GPS data", f)
+		if bytes.Contains(raw, []byte(secret)) || bytes.Contains(raw, []byte("Exif")) {
+			t.Errorf("the stored file %s still carries metadata", f)
 		}
 	}
-	if _, err := jpeg.Decode(bytes.NewReader(served.Body.Bytes())); err != nil {
-		t.Errorf("the served photo no longer decodes: %v", err)
+	img, err := jpeg.Decode(bytes.NewReader(served.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("the served photo no longer decodes: %v", err)
 	}
-	// The orientation survives, so a portrait photo is not shown on its side.
-	if !bytes.Contains(served.Body.Bytes(), []byte("Exif\x00\x00MM\x00\x2a")) || !bytes.Contains(served.Body.Bytes(), []byte{0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0, 6}) {
-		t.Error("the orientation tag was lost")
-	}
-	if served.Body.Len() >= len(withGPS) {
-		t.Errorf("served %d bytes from %d uploaded; stripping should shrink it", served.Body.Len(), len(withGPS))
+	// Orientation 6 turns the picture on its side; the pixels are rotated and the tag is gone. The fixture is
+	// square (8x8), so only the absence of the tag can be checked here; the unit tests of internal/attachments
+	// check that a non-square picture comes out the right way round.
+	if b := img.Bounds(); b.Dx() != 8 || b.Dy() != 8 {
+		t.Errorf("served photo is %dx%d; want 8x8", b.Dx(), b.Dy())
 	}
 }
 

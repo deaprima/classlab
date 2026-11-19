@@ -4,12 +4,13 @@ import {
   type FieldValues,
   type Path,
   useForm,
+  useWatch,
 } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2 } from 'lucide-react'
+import { Check, Copy, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
-import { formProblemFrom } from '@/lib/api-error'
+import { formProblemFrom, getErrorMessage } from '@/lib/api-error'
 import { type User } from '@/lib/api-types'
 import { ROLE_LABELS } from '@/lib/rbac'
 import { Button } from '@/components/ui/button'
@@ -41,14 +42,12 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { type FormProblem, FormProblemAlert } from '@/components/form-problem'
 import { PasswordInput } from '@/components/password-input'
-import { useCreateUser, useUpdateUser } from './api'
+import { useCreateUser, useResetPassword, useUpdateUser } from './api'
 import {
   type CreateUserValues,
   type EditUserValues,
-  type ResetPasswordValues,
   createUserSchema,
   editUserSchema,
-  resetPasswordSchema,
 } from './user-schema'
 
 export type UserDialogState =
@@ -64,27 +63,40 @@ const CREATE_FIELDS = {
   email: 'email',
   role: 'role',
   password: 'password',
+  pic_name: 'pic_name',
+  pic_phone: 'pic_phone',
 } as const
 const EDIT_FIELDS = {
   name: 'name',
   email: 'email',
   role: 'role',
   is_active: 'is_active',
+  pic_name: 'pic_name',
+  pic_phone: 'pic_phone',
 } as const
 
 /** Content mounts only while open, so each dialog starts from fresh values. */
 export function UserDialog({
   state,
   onClose,
+  studentsOnly = false,
 }: {
   state: UserDialogState
   onClose: () => void
+  /** TU manages student accounts only: no role to choose, and the API refuses any other role. */
+  studentsOnly?: boolean
 }) {
   return (
     <Dialog open={state !== null} onOpenChange={(o) => !o && onClose()}>
-      {state?.mode === 'create' && <CreateUserContent onDone={onClose} />}
+      {state?.mode === 'create' && (
+        <CreateUserContent onDone={onClose} studentsOnly={studentsOnly} />
+      )}
       {state?.mode === 'edit' && (
-        <EditUserContent user={state.user} onDone={onClose} />
+        <EditUserContent
+          user={state.user}
+          onDone={onClose}
+          studentsOnly={studentsOnly}
+        />
       )}
       {state?.mode === 'password' && (
         <ResetPasswordContent user={state.user} onDone={onClose} />
@@ -93,7 +105,13 @@ export function UserDialog({
   )
 }
 
-function CreateUserContent({ onDone }: { onDone: () => void }) {
+function CreateUserContent({
+  onDone,
+  studentsOnly,
+}: {
+  onDone: () => void
+  studentsOnly: boolean
+}) {
   const orgUnitId = useAuthStore((s) => s.auth.user?.org_unit_id)
   const [problem, setProblem] = useState<FormProblem | null>(null)
   const form = useForm<CreateUserValues>({
@@ -104,8 +122,11 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
       email: '',
       role: 'MAHASISWA',
       password: '',
+      pic_name: '',
+      pic_phone: '',
     },
   })
+  const role = useWatch({ control: form.control, name: 'role' })
   const create = useCreateUser({
     onSuccess: (u) => {
       toast.success(`Akun ${u.name} (${u.identifier}) dibuat.`)
@@ -123,19 +144,27 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
       org_unit_id: orgUnitId,
       identifier: v.identifier.trim(),
       name: v.name.trim(),
-      email: v.email.trim(),
+      // Email is optional; the PIC fields exist for ORGANISASI only.
+      ...(v.email.trim() && { email: v.email.trim() }),
       role: v.role,
       password: v.password,
+      ...(v.role === 'ORGANISASI' && {
+        pic_name: v.pic_name.trim(),
+        pic_phone: v.pic_phone.trim(),
+      }),
     })
   })
 
   return (
-    <DialogContent className='sm:max-w-lg'>
+    <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-lg'>
       <DialogHeader>
-        <DialogTitle>Tambah pengguna</DialogTitle>
+        <DialogTitle>
+          {studentsOnly ? 'Tambah mahasiswa' : 'Tambah pengguna'}
+        </DialogTitle>
         <DialogDescription>
-          Tidak ada registrasi mandiri: berikan kata sandi awal ini kepada
-          pengguna secara langsung.
+          Tidak ada registrasi mandiri: berikan kata sandi sementara ini kepada
+          pengguna secara langsung. Pengguna wajib menggantinya saat pertama
+          masuk.
         </DialogDescription>
       </DialogHeader>
       <Form {...form}>
@@ -152,25 +181,40 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
               name='identifier'
               label='NIM / NIP'
             />
-            <RoleField control={form.control} name='role' />
+            {!studentsOnly && <RoleField control={form.control} name='role' />}
           </div>
           <TextField control={form.control} name='name' label='Nama' />
           <TextField
             control={form.control}
             name='email'
-            label='Email'
+            label='Email (opsional)'
             type='email'
           />
+          {role === 'ORGANISASI' && (
+            <div className='grid items-start gap-4 sm:grid-cols-2'>
+              <TextField
+                control={form.control}
+                name='pic_name'
+                label='Nama penanggung jawab'
+              />
+              <TextField
+                control={form.control}
+                name='pic_phone'
+                label='Telepon penanggung jawab'
+                type='tel'
+              />
+            </div>
+          )}
           <FormField
             control={form.control}
             name='password'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Kata sandi awal</FormLabel>
+                <FormLabel>Kata sandi sementara</FormLabel>
                 <FormControl>
                   <PasswordInput autoComplete='new-password' {...field} />
                 </FormControl>
-                <FormDescription>Minimal 8 karakter.</FormDescription>
+                <FormDescription>Minimal 10 karakter.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -187,18 +231,29 @@ function CreateUserContent({ onDone }: { onDone: () => void }) {
   )
 }
 
-function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
+function EditUserContent({
+  user,
+  onDone,
+  studentsOnly,
+}: {
+  user: User
+  onDone: () => void
+  studentsOnly: boolean
+}) {
   const isSelf = useAuthStore((s) => s.auth.user?.id === user.id)
   const [problem, setProblem] = useState<FormProblem | null>(null)
   const form = useForm<EditUserValues>({
     resolver: zodResolver(editUserSchema),
     defaultValues: {
       name: user.name,
-      email: user.email,
+      email: user.email ?? '',
       role: user.role,
       is_active: user.is_active,
+      pic_name: user.pic_name ?? '',
+      pic_phone: user.pic_phone ?? '',
     },
   })
+  const role = useWatch({ control: form.control, name: 'role' })
   const update = useUpdateUser({
     onSuccess: (u) => {
       toast.success(`Akun ${u.name} diperbarui.`)
@@ -214,14 +269,22 @@ function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
       // Own role and status are not sent: the API refuses to change them (decisions.md, Phase 1).
       body: {
         name: v.name.trim(),
-        email: v.email.trim(),
-        ...(!isSelf && { role: v.role, is_active: v.is_active }),
+        // An empty email is left out: the API cannot clear an address.
+        ...(v.email.trim() && { email: v.email.trim() }),
+        ...(!isSelf && {
+          ...(!studentsOnly && { role: v.role }),
+          is_active: v.is_active,
+        }),
+        ...(v.role === 'ORGANISASI' && {
+          pic_name: v.pic_name.trim(),
+          pic_phone: v.pic_phone.trim(),
+        }),
       },
     })
   })
 
   return (
-    <DialogContent className='sm:max-w-lg'>
+    <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-lg'>
       <DialogHeader>
         <DialogTitle>Ubah {user.name}</DialogTitle>
         <DialogDescription>
@@ -240,10 +303,27 @@ function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
           <TextField
             control={form.control}
             name='email'
-            label='Email'
+            label='Email (opsional)'
             type='email'
           />
-          <RoleField control={form.control} name='role' disabled={isSelf} />
+          {!studentsOnly && (
+            <RoleField control={form.control} name='role' disabled={isSelf} />
+          )}
+          {role === 'ORGANISASI' && (
+            <div className='grid items-start gap-4 sm:grid-cols-2'>
+              <TextField
+                control={form.control}
+                name='pic_name'
+                label='Nama penanggung jawab'
+              />
+              <TextField
+                control={form.control}
+                name='pic_phone'
+                label='Telepon penanggung jawab'
+                type='tel'
+              />
+            </div>
+          )}
           <FormField
             control={form.control}
             name='is_active'
@@ -279,6 +359,10 @@ function EditUserContent({ user, onDone }: { user: User; onDone: () => void }) {
   )
 }
 
+/**
+ * Two steps in one dialog: confirm, then show the temporary password. The password lives only in
+ * the mutation state, so closing the dialog discards it for good.
+ */
 function ResetPasswordContent({
   user,
   onDone,
@@ -287,76 +371,85 @@ function ResetPasswordContent({
   onDone: () => void
 }) {
   const [problem, setProblem] = useState<FormProblem | null>(null)
-  const form = useForm<ResetPasswordValues>({
-    resolver: zodResolver(resetPasswordSchema),
-    defaultValues: { password: '', confirm: '' },
-  })
-  const update = useUpdateUser({
-    onSuccess: (u) => {
-      toast.success(
-        `Kata sandi ${u.name} direset. Semua sesinya telah diakhiri.`
-      )
-      onDone()
-    },
-    onError: (e) =>
-      setProblem(formProblemFrom(e, form.setError, { password: 'password' })),
+  const reset = useResetPassword({
+    onError: (e) => setProblem({ message: getErrorMessage(e) }),
   })
 
+  if (reset.data) {
+    return (
+      <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-md'>
+        <DialogHeader>
+          <DialogTitle>Kata sandi sementara</DialogTitle>
+          <DialogDescription>
+            Berikan kata sandi ini kepada {user.name} ({user.identifier}). Kata
+            sandi hanya ditampilkan sekali dan tidak dapat dilihat lagi setelah
+            dialog ini ditutup. Pengguna wajib menggantinya saat masuk.
+          </DialogDescription>
+        </DialogHeader>
+        <TemporaryPassword value={reset.data.temporary_password} />
+        <DialogFooter>
+          <Button onClick={onDone}>Selesai</Button>
+        </DialogFooter>
+      </DialogContent>
+    )
+  }
+
   return (
-    <DialogContent className='sm:max-w-md'>
+    <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-md'>
       <DialogHeader>
         <DialogTitle>Reset kata sandi</DialogTitle>
         <DialogDescription>
           {user.name} ({user.identifier}) akan keluar dari semua perangkat dan
-          harus masuk dengan kata sandi baru.
+          menerima kata sandi sementara acak yang harus diganti saat masuk.
         </DialogDescription>
       </DialogHeader>
-      <Form {...form}>
-        <form
-          id='password-form'
-          noValidate
-          className='grid gap-4'
-          onSubmit={form.handleSubmit((v) => {
+      <FormProblemAlert problem={problem} />
+      <DialogFooter>
+        <Button variant='outline' disabled={reset.isPending} onClick={onDone}>
+          Batal
+        </Button>
+        <Button
+          disabled={reset.isPending}
+          onClick={() => {
             setProblem(null)
-            update.mutate({ id: user.id, body: { password: v.password } })
-          })}
+            reset.mutate(user.id)
+          }}
         >
-          <FormProblemAlert problem={problem} />
-          <FormField
-            control={form.control}
-            name='password'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Kata sandi baru</FormLabel>
-                <FormControl>
-                  <PasswordInput autoComplete='new-password' {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name='confirm'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Ulangi kata sandi baru</FormLabel>
-                <FormControl>
-                  <PasswordInput autoComplete='new-password' {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </form>
-      </Form>
-      <Footer
-        pending={update.isPending}
-        onCancel={onDone}
-        formId='password-form'
-        label='Reset kata sandi'
-      />
+          {reset.isPending && <Loader2 className='animate-spin' />}
+          Reset kata sandi
+        </Button>
+      </DialogFooter>
     </DialogContent>
+  )
+}
+
+function TemporaryPassword({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+    } catch {
+      toast.error('Tidak dapat menyalin. Salin kata sandi secara manual.')
+    }
+  }
+  return (
+    <div className='flex items-center gap-2'>
+      <code
+        aria-label='Kata sandi sementara'
+        className='min-w-0 flex-1 rounded-md border bg-muted px-3 py-2 font-mono text-base break-all select-all'
+      >
+        {value}
+      </code>
+      <Button
+        variant='outline'
+        size='icon'
+        aria-label='Salin kata sandi'
+        onClick={copy}
+      >
+        {copied ? <Check /> : <Copy />}
+      </Button>
+    </div>
   )
 }
 

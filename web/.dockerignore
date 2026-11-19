@@ -1,0 +1,8 @@
+node_modules
+dist
+.tanstack
+.vitest-attachments
+e2e
+.env
+.env.*
+!.env.example

@@ -19,15 +19,18 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // Register mounts the room routes on a router that is already behind httpx.Authenticate.
-// Reads are open to every role; writes are limited to TU_KALAB and KAPRODI.
+// Reads are open to every role. Writes need TU, KALAB or ADMIN here, and the service then requires the
+// actor to manage the specific room type (brief BR-10).
 func (h *Handler) Register(r chi.Router) {
 	r.Get("/", h.list)
 	r.Get("/{id}", h.get)
 	r.Group(func(r chi.Router) {
-		r.Use(httpx.RequireRoles(httpx.RoleTUKalab, httpx.RoleKaprodi))
+		r.Use(httpx.RequireRoles(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin))
 		r.Post("/", h.create)
 		r.Patch("/{id}", h.update)
 		r.Delete("/{id}", h.delete)
+		r.Get("/{id}/qr", h.qr)
+		r.Post("/{id}/qr/rotate", h.rotateQR)
 	})
 }
 
@@ -95,6 +98,8 @@ type createRequest struct {
 	Type       string    `json:"type"`
 	Capacity   int       `json:"capacity"`
 	Facilities []string  `json:"facilities"`
+	OpenTime   string    `json:"open_time"`
+	CloseTime  string    `json:"close_time"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -114,11 +119,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateRequest struct {
-	Name       *string   `json:"name"`
-	Type       *string   `json:"type"`
-	Capacity   *int      `json:"capacity"`
-	Facilities *[]string `json:"facilities"`
-	IsActive   *bool     `json:"is_active"`
+	Name                *string   `json:"name"`
+	Type                *string   `json:"type"`
+	Capacity            *int      `json:"capacity"`
+	Facilities          *[]string `json:"facilities"`
+	IsActive            *bool     `json:"is_active"`
+	OpenTime            *string   `json:"open_time"`
+	CloseTime           *string   `json:"close_time"`
+	ClearOperatingHours bool      `json:"clear_operating_hours"`
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -162,4 +170,32 @@ func parseID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+func (h *Handler) qr(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	out, err := h.svc.QR(r.Context(), actor, id)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) rotateQR(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.PrincipalFrom(r.Context())
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	out, err := h.svc.RotateQR(r.Context(), actor, id)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }

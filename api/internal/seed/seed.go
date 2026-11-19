@@ -13,14 +13,15 @@ import (
 	"classlab/api/internal/platform/password"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // DevPassword is printed by `make seed` and is intentionally not a secret.
 const DevPassword = "classlab-dev-2026"
 
 const (
-	orgUnitName       = "Rumpun TI"
-	tuKalabIdentifier = "198203152008012002"
+	orgUnitName  = "Rumpun TI"
+	tuIdentifier = "198203152008012002"
 )
 
 type account struct {
@@ -28,18 +29,27 @@ type account struct {
 	Name       string
 	Email      string
 	Role       dbgen.UserRole
+	PicName    string // organisation accounts only (BR-18)
+	PicPhone   string
 }
 
+// One account per role, an organisation with its contact person, and five students. The first two
+// identifiers are the ones the previous seed used for the administrator and TU accounts, so a
+// database migrated from the old schema keeps matching them.
 var accounts = []account{
-	{"197501012000011001", "Dr. Budi Santoso", "kaprodi@classlab.test", dbgen.UserRoleKAPRODI},
-	{"198203152008012002", "Siti Rahma (TU/Kalab)", "tukalab@classlab.test", dbgen.UserRoleTUKALAB},
-	{"199001102015011003", "Agus Prasetyo (OB)", "ob@classlab.test", dbgen.UserRoleOB},
-	{"2021101001", "Andi Pratama", "andi@classlab.test", dbgen.UserRoleMAHASISWA},
-	{"2021101002", "Bunga Lestari", "bunga@classlab.test", dbgen.UserRoleMAHASISWA},
-	{"2021101003", "Citra Dewi", "citra@classlab.test", dbgen.UserRoleMAHASISWA},
-	{"2021101004", "Dimas Saputra", "dimas@classlab.test", dbgen.UserRoleMAHASISWA},
-	{"2021101005", "Eka Wijaya", "eka@classlab.test", dbgen.UserRoleMAHASISWA},
+	{"197501012000011001", "Dr. Budi Santoso (Admin)", "admin@classlab.test", dbgen.UserRoleADMIN, "", ""},
+	{"198203152008012002", "Siti Rahma (TU)", "tu@classlab.test", dbgen.UserRoleTU, "", ""},
+	{"197805202005011003", "Dr. Hendra Wijaya (Kalab)", "kalab@classlab.test", dbgen.UserRoleKALAB, "", ""},
+	{"199001102015011003", "Agus Prasetyo (OB)", "ob@classlab.test", dbgen.UserRoleOB, "", ""},
+	{"HIMA-TI", "HIMA Teknik Informatika", "hima@classlab.test", dbgen.UserRoleORGANISASI, "Rizky Maulana", "081234567890"},
+	{"2021101001", "Andi Pratama", "andi@classlab.test", dbgen.UserRoleMAHASISWA, "", ""},
+	{"2021101002", "Bunga Lestari", "bunga@classlab.test", dbgen.UserRoleMAHASISWA, "", ""},
+	{"2021101003", "Citra Dewi", "citra@classlab.test", dbgen.UserRoleMAHASISWA, "", ""},
+	{"2021101004", "Dimas Saputra", "dimas@classlab.test", dbgen.UserRoleMAHASISWA, "", ""},
+	{"2021101005", "Eka Wijaya", "eka@classlab.test", dbgen.UserRoleMAHASISWA, "", ""},
 }
+
+func optional(v string) pgtype.Text { return pgtype.Text{String: v, Valid: v != ""} }
 
 func identifiers() []string {
 	ids := make([]string, len(accounts))
@@ -73,8 +83,8 @@ func Run(ctx context.Context, pool *db.Pool, hasher *password.Hasher, clk clock.
 
 	for _, a := range accounts {
 		n, err := q.SeedUser(ctx, dbgen.SeedUserParams{
-			OrgUnitID: unit.ID, Identifier: a.Identifier, Name: a.Name, Email: a.Email,
-			PasswordHash: hash, Role: a.Role, CreatedAt: now,
+			OrgUnitID: unit.ID, Identifier: a.Identifier, Name: a.Name, Email: optional(a.Email),
+			PasswordHash: hash, Role: a.Role, PicName: optional(a.PicName), PicPhone: optional(a.PicPhone), CreatedAt: now,
 		})
 		if err != nil {
 			return res, fmt.Errorf("seeding %s: %w", a.Identifier, err)
@@ -82,8 +92,8 @@ func Run(ctx context.Context, pool *db.Pool, hasher *password.Hasher, clk clock.
 		res.Accounts += int(n)
 	}
 
-	// Schedules are attributed to the TU/Kalab account, who manages them in real use.
-	owner, err := q.GetUserForLogin(ctx, tuKalabIdentifier)
+	// Schedules are attributed to the TU account, who manages them in real use.
+	owner, err := q.GetUserForLogin(ctx, tuIdentifier)
 	if err != nil {
 		return res, fmt.Errorf("looking up schedule owner: %w", err)
 	}

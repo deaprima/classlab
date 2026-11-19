@@ -29,8 +29,10 @@ func TestMain(m *testing.M) {
 
 // Seed account identifiers (see internal/seed). All share seed.DevPassword.
 const (
-	kaprodiID  = "197501012000011001"
-	tuKalabID  = "198203152008012002"
+	adminID    = "197501012000011001"
+	tuID       = "198203152008012002"
+	kalabID    = "197805202005011003"
+	orgID      = "HIMA-TI"
 	obID       = "199001102015011003"
 	mahasiswaA = "2021101001"
 	mahasiswaB = "2021101002"
@@ -80,19 +82,21 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		Argon2Parallelism:  1,
 		CORSAllowedOrigins: []string{"http://localhost:5173"},
 
-		// BR-01 defaults, as in .env.example.
-		OperatingHoursStart:       "07:00",
-		OperatingHoursEnd:         "21:00",
-		BookingMinDurationMinutes: 30,
-		BookingMaxDurationHours:   8,
-		BookingMaxFutureDays:      30,
-		// High on purpose: most tests make many bookings for one student. Quota tests set it to 5, the real default.
-		BookingMaxActivePerUser: 100,
+		Business: config.DefaultBusiness(),
 
-		UploadDir:      t.TempDir(),
-		UploadMaxBytes: 5 << 20,
-		SSEHeartbeat:   25 * time.Second,
+		UploadDir:    t.TempDir(),
+		SSEHeartbeat: 25 * time.Second,
 	}
+	// High on purpose: most tests make many bookings for one account. Quota tests set the real values.
+	cfg.Business.MaxActiveBookings = 100
+	cfg.Business.MaxActiveBookingsOrg = 100
+	// Same reason: the mock clock stands still, so a test that uploads many photos would use up the per-minute
+	// budget. The upload limit has its own test with the real shape.
+	cfg.Business.UploadsPerMinute = 1000
+	cfg.Business.ImportsPerMinute = 1000
+	// Auto-approval (BR-17) is off by default so that the many tests of the manual flow (approve, reject, expiry,
+	// notifications to approvers) keep working on KELAS rooms. Tests of auto-approval pass withAutoApproval.
+	cfg.Business.AutoApproveMaxPoints = 0
 	for _, fn := range mutate {
 		fn(cfg)
 	}

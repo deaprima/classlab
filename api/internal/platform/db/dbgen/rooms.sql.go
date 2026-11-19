@@ -16,7 +16,7 @@ import (
 const countLiveBookingsForRoom = `-- name: CountLiveBookingsForRoom :one
 SELECT count(*)
 FROM bookings
-WHERE room_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI') AND end_at > $2
+WHERE room_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG') AND end_at > $2
 `
 
 type CountLiveBookingsForRoomParams struct {
@@ -66,22 +66,41 @@ func (q *Queries) CountRooms(ctx context.Context, arg CountRoomsParams) (int64, 
 }
 
 const createRoom = `-- name: CreateRoom :one
-INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-RETURNING id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, qr_token, qr_rotated_at, created_at, updated_at, open_time, close_time)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8, $9, $10)
+RETURNING id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 `
 
 type CreateRoomParams struct {
-	OrgUnitID  uuid.UUID `json:"org_unit_id"`
-	Code       string    `json:"code"`
-	Name       string    `json:"name"`
-	Type       RoomType  `json:"type"`
-	Capacity   int32     `json:"capacity"`
-	Facilities []string  `json:"facilities"`
-	CreatedAt  time.Time `json:"created_at"`
+	OrgUnitID   uuid.UUID   `json:"org_unit_id"`
+	Code        string      `json:"code"`
+	Name        string      `json:"name"`
+	Type        RoomType    `json:"type"`
+	Capacity    int32       `json:"capacity"`
+	Facilities  []string    `json:"facilities"`
+	QrToken     string      `json:"qr_token"`
+	QrRotatedAt time.Time   `json:"qr_rotated_at"`
+	OpenTime    pgtype.Time `json:"open_time"`
+	CloseTime   pgtype.Time `json:"close_time"`
 }
 
-func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (Room, error) {
+type CreateRoomRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
+}
+
+func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (CreateRoomRow, error) {
 	row := q.db.QueryRow(ctx, createRoom,
 		arg.OrgUnitID,
 		arg.Code,
@@ -89,9 +108,12 @@ func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (Room, e
 		arg.Type,
 		arg.Capacity,
 		arg.Facilities,
-		arg.CreatedAt,
+		arg.QrToken,
+		arg.QrRotatedAt,
+		arg.OpenTime,
+		arg.CloseTime,
 	)
-	var i Room
+	var i CreateRoomRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgUnitID,
@@ -104,19 +126,37 @@ func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (Room, e
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OpenTime,
+		&i.CloseTime,
 	)
 	return i, err
 }
 
 const getRoom = `-- name: GetRoom :one
-SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 FROM rooms
 WHERE id = $1 AND deleted_at IS NULL
 `
 
-func (q *Queries) GetRoom(ctx context.Context, id uuid.UUID) (Room, error) {
+type GetRoomRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
+}
+
+func (q *Queries) GetRoom(ctx context.Context, id uuid.UUID) (GetRoomRow, error) {
 	row := q.db.QueryRow(ctx, getRoom, id)
-	var i Room
+	var i GetRoomRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgUnitID,
@@ -129,12 +169,14 @@ func (q *Queries) GetRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OpenTime,
+		&i.CloseTime,
 	)
 	return i, err
 }
 
 const getRoomByCode = `-- name: GetRoomByCode :one
-SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 FROM rooms
 WHERE org_unit_id = $1 AND code = $2 AND deleted_at IS NULL
 `
@@ -144,9 +186,25 @@ type GetRoomByCodeParams struct {
 	Code      string    `json:"code"`
 }
 
-func (q *Queries) GetRoomByCode(ctx context.Context, arg GetRoomByCodeParams) (Room, error) {
+type GetRoomByCodeRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
+}
+
+func (q *Queries) GetRoomByCode(ctx context.Context, arg GetRoomByCodeParams) (GetRoomByCodeRow, error) {
 	row := q.db.QueryRow(ctx, getRoomByCode, arg.OrgUnitID, arg.Code)
-	var i Room
+	var i GetRoomByCodeRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgUnitID,
@@ -159,12 +217,14 @@ func (q *Queries) GetRoomByCode(ctx context.Context, arg GetRoomByCodeParams) (R
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OpenTime,
+		&i.CloseTime,
 	)
 	return i, err
 }
 
 const listRooms = `-- name: ListRooms :many
-SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 FROM rooms
 WHERE deleted_at IS NULL
   AND ($1::room_type IS NULL OR type = $1::room_type)
@@ -188,7 +248,23 @@ type ListRoomsParams struct {
 	PageLimit   int32        `json:"page_limit"`
 }
 
-func (q *Queries) ListRooms(ctx context.Context, arg ListRoomsParams) ([]Room, error) {
+type ListRoomsRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
+}
+
+func (q *Queries) ListRooms(ctx context.Context, arg ListRoomsParams) ([]ListRoomsRow, error) {
 	rows, err := q.db.Query(ctx, listRooms,
 		arg.Type,
 		arg.CapacityMin,
@@ -201,9 +277,9 @@ func (q *Queries) ListRooms(ctx context.Context, arg ListRoomsParams) ([]Room, e
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Room{}
+	items := []ListRoomsRow{}
 	for rows.Next() {
-		var i Room
+		var i ListRoomsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgUnitID,
@@ -216,6 +292,8 @@ func (q *Queries) ListRooms(ctx context.Context, arg ListRoomsParams) ([]Room, e
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OpenTime,
+			&i.CloseTime,
 		); err != nil {
 			return nil, err
 		}
@@ -228,16 +306,32 @@ func (q *Queries) ListRooms(ctx context.Context, arg ListRoomsParams) ([]Room, e
 }
 
 const lockRoom = `-- name: LockRoom :one
-SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+SELECT id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 FROM rooms
 WHERE id = $1 AND deleted_at IS NULL
 FOR UPDATE
 `
 
+type LockRoomRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
+}
+
 // Every write that touches a room's bookings or schedules takes this lock first (brief 4.4).
-func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
+func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (LockRoomRow, error) {
 	row := q.db.QueryRow(ctx, lockRoom, id)
-	var i Room
+	var i LockRoomRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgUnitID,
@@ -250,24 +344,27 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OpenTime,
+		&i.CloseTime,
 	)
 	return i, err
 }
 
 const seedRoom = `-- name: SeedRoom :execrows
-INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO rooms (org_unit_id, code, name, type, capacity, facilities, qr_token, qr_rotated_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
 ON CONFLICT (org_unit_id, code) WHERE deleted_at IS NULL DO NOTHING
 `
 
 type SeedRoomParams struct {
-	OrgUnitID  uuid.UUID `json:"org_unit_id"`
-	Code       string    `json:"code"`
-	Name       string    `json:"name"`
-	Type       RoomType  `json:"type"`
-	Capacity   int32     `json:"capacity"`
-	Facilities []string  `json:"facilities"`
-	CreatedAt  time.Time `json:"created_at"`
+	OrgUnitID   uuid.UUID `json:"org_unit_id"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Type        RoomType  `json:"type"`
+	Capacity    int32     `json:"capacity"`
+	Facilities  []string  `json:"facilities"`
+	QrToken     string    `json:"qr_token"`
+	QrRotatedAt time.Time `json:"qr_rotated_at"`
 }
 
 func (q *Queries) SeedRoom(ctx context.Context, arg SeedRoomParams) (int64, error) {
@@ -278,7 +375,8 @@ func (q *Queries) SeedRoom(ctx context.Context, arg SeedRoomParams) (int64, erro
 		arg.Type,
 		arg.Capacity,
 		arg.Facilities,
-		arg.CreatedAt,
+		arg.QrToken,
+		arg.QrRotatedAt,
 	)
 	if err != nil {
 		return 0, err
@@ -308,32 +406,57 @@ UPDATE rooms SET
   capacity   = COALESCE($3::int, capacity),
   facilities = COALESCE($4::text[], facilities),
   is_active  = COALESCE($5::boolean, is_active),
-  updated_at = $6
-WHERE id = $7 AND deleted_at IS NULL
-RETURNING id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at
+  -- clear_operating_hours puts the room back on the type's default hours (BR-29).
+  open_time  = CASE WHEN $6::boolean THEN NULL ELSE COALESCE($7::time, open_time) END,
+  close_time = CASE WHEN $6::boolean THEN NULL ELSE COALESCE($8::time, close_time) END,
+  updated_at = $9
+WHERE id = $10 AND deleted_at IS NULL
+RETURNING id, org_unit_id, code, name, type, capacity, facilities, is_active, deleted_at, created_at, updated_at, open_time, close_time
 `
 
 type UpdateRoomParams struct {
-	Name       pgtype.Text  `json:"name"`
-	Type       NullRoomType `json:"type"`
-	Capacity   pgtype.Int4  `json:"capacity"`
-	Facilities []string     `json:"facilities"`
-	IsActive   pgtype.Bool  `json:"is_active"`
-	UpdatedAt  time.Time    `json:"updated_at"`
-	ID         uuid.UUID    `json:"id"`
+	Name                pgtype.Text  `json:"name"`
+	Type                NullRoomType `json:"type"`
+	Capacity            pgtype.Int4  `json:"capacity"`
+	Facilities          []string     `json:"facilities"`
+	IsActive            pgtype.Bool  `json:"is_active"`
+	ClearOperatingHours bool         `json:"clear_operating_hours"`
+	OpenTime            pgtype.Time  `json:"open_time"`
+	CloseTime           pgtype.Time  `json:"close_time"`
+	UpdatedAt           time.Time    `json:"updated_at"`
+	ID                  uuid.UUID    `json:"id"`
 }
 
-func (q *Queries) UpdateRoom(ctx context.Context, arg UpdateRoomParams) (Room, error) {
+type UpdateRoomRow struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgUnitID  uuid.UUID          `json:"org_unit_id"`
+	Code       string             `json:"code"`
+	Name       string             `json:"name"`
+	Type       RoomType           `json:"type"`
+	Capacity   int32              `json:"capacity"`
+	Facilities []string           `json:"facilities"`
+	IsActive   bool               `json:"is_active"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	OpenTime   pgtype.Time        `json:"open_time"`
+	CloseTime  pgtype.Time        `json:"close_time"`
+}
+
+func (q *Queries) UpdateRoom(ctx context.Context, arg UpdateRoomParams) (UpdateRoomRow, error) {
 	row := q.db.QueryRow(ctx, updateRoom,
 		arg.Name,
 		arg.Type,
 		arg.Capacity,
 		arg.Facilities,
 		arg.IsActive,
+		arg.ClearOperatingHours,
+		arg.OpenTime,
+		arg.CloseTime,
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	var i Room
+	var i UpdateRoomRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgUnitID,
@@ -346,6 +469,8 @@ func (q *Queries) UpdateRoom(ctx context.Context, arg UpdateRoomParams) (Room, e
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OpenTime,
+		&i.CloseTime,
 	)
 	return i, err
 }

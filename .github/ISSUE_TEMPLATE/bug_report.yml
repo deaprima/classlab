@@ -1,0 +1,62 @@
+name: Laporan bug
+description: Ada yang tidak berjalan sesuai harapan
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Terima kasih sudah melapor. **Jangan** menempelkan password, token, atau data pengguna asli.
+        Untuk celah keamanan, jangan pakai form ini; lihat SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: Apa yang terjadi
+      description: Jelaskan masalahnya dengan singkat.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Langkah untuk mengulangi
+      placeholder: |
+        1. Masuk sebagai ...
+        2. Buka halaman ...
+        3. Klik ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Yang diharapkan
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Bagian yang terdampak
+      options:
+        - Frontend (web)
+        - Backend (API)
+        - Database / migrasi
+        - Deploy / Docker
+        - Dokumentasi
+        - Belum tahu
+    validations:
+      required: true
+  - type: input
+    id: role
+    attributes:
+      label: Peran pengguna (bila relevan)
+      placeholder: Mahasiswa, Organisasi, TU, Kalab, OB, Admin
+  - type: input
+    id: env
+    attributes:
+      label: Lingkungan
+      description: Browser dan versinya, sistem operasi, atau commit yang dipakai.
+      placeholder: Safari 18 di iOS 18, atau commit abc1234
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log atau tangkapan layar
+      description: Hapus informasi sensitif sebelum menempelkan.
+      render: shell

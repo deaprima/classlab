@@ -9,11 +9,11 @@ export type ErrorBody = Schemas['ErrorBody']
 export type PaginationMeta = Schemas['PaginationMeta']
 
 export type Room = Schemas['Room']
+export type RoomQR = Schemas['RoomQR']
 export type RoomType = Schemas['RoomType']
 export type TimelineItem = Schemas['TimelineItem']
 export type AvailabilityRoom = Schemas['AvailabilityRoom']
 export type AvailabilityStatus = AvailabilityRoom['status']
-export type AvailabilityConflict = AvailabilityRoom['conflicts'][number]
 
 export type Booking = Schemas['Booking']
 export type BookingStatus = Schemas['BookingStatus']
@@ -68,7 +68,6 @@ export type ReportDetail =
   paths['/reports/{id}']['get']['responses']['200']['content']['application/json']
 
 export type Schedule = Schemas['Schedule']
-export type ScheduleSource = Schemas['ScheduleSource']
 export type CreateRoomRequest =
   paths['/rooms']['post']['requestBody']['content']['application/json']
 export type UpdateRoomRequest =
@@ -86,3 +85,42 @@ export type CreateUserRequest =
   paths['/users']['post']['requestBody']['content']['application/json']
 export type UpdateUserRequest =
   paths['/users/{id}']['patch']['requestBody']['content']['application/json']
+export type ResetPasswordResponse =
+  paths['/users/{id}/reset-password']['post']['responses']['200']['content']['application/json']
+
+export type RoomTypeListResponse =
+  paths['/room-types']['get']['responses']['200']['content']['application/json']
+export type RoomTypePolicy = Schemas['RoomTypePolicy']
+export type Attachment = Schemas['Attachment']
+export type BookingGroupResult = Schemas['BookingGroupResult']
+export type EditBookingRequest =
+  paths['/bookings/{id}']['patch']['requestBody']['content']['application/json']
+
+export type CheckoutCondition = Schemas['CheckoutCondition']
+export type CheckInResult = Schemas['CheckInResult']
+export type CheckOutResult = Schemas['CheckOutResult']
+
+export type Checkout = Schemas['Checkout']
+export type Violation = Schemas['Violation']
+export type ViolationListResponse =
+  paths['/users/{id}/violations']['get']['responses']['200']['content']['application/json']
+
+export type ImportKind = Schemas['ImportKind']
+export type ImportRecord = Schemas['Import']
+export type ImportRowError = Schemas['ImportRowError']
+export type ImportUsersPreview = Schemas['ImportUsersPreview']
+export type ImportUsersResult = Schemas['ImportUsersResult']
+export type SchedulePreview = Schemas['SchedulePreview']
+export type ScheduleApplyResult = Schemas['ScheduleApplyResult']
+export type RollbackResult = Schemas['RollbackResult']
+export type ImportListResponse =
+  paths['/imports']['get']['responses']['200']['content']['application/json']
+
+export type AuditLog = Schemas['AuditLog']
+export type AuditLogListQuery = NonNullable<
+  paths['/audit-logs']['get']['parameters']['query']
+>
+export type AuditLogListResponse =
+  paths['/audit-logs']['get']['responses']['200']['content']['application/json']
+export type RoomTypeUpdate =
+  paths['/room-types/{type}']['patch']['requestBody']['content']['application/json']

@@ -37,7 +37,7 @@ async function fillAndSubmit(
   password: string
 ) {
   await userEvent.fill(screen.getByLabelText('NIM / NIP'), identifier)
-  await userEvent.fill(screen.getByLabelText('Kata Sandi'), password)
+  await userEvent.fill(screen.getByLabelText('Password'), password)
   await userEvent.click(screen.getByRole('button', { name: 'Masuk' }))
 }
 
@@ -87,6 +87,26 @@ describe('UserAuthForm', () => {
     )
     expect(useAuthStore.getState().auth.accessToken).toBe('jwt')
     expect(useAuthStore.getState().auth.user?.name).toBe(sampleUser.name)
+  })
+
+  it('sends an account with a temporary password to the change page first', async () => {
+    api.defaults.adapter = mockAdapter(() => ({
+      status: 200,
+      data: {
+        access_token: 'jwt',
+        expires_in: 900,
+        user: { ...sampleUser, must_change_password: true },
+      },
+    }))
+    const screen = await renderForm('/bookings?status=MENUNGGU')
+
+    await fillAndSubmit(screen, '220101001', 'sementara-123')
+
+    await vi.waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        '/change-password?redirect=%2Fbookings%3Fstatus%3DMENUNGGU'
+      )
+    )
   })
 
   it('ignores a redirect to another site', async () => {

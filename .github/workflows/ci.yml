@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - run: go vet ./...
+      # The tests start Postgres with testcontainers; Docker is available on the runner.
+      - run: go test ./...
+      # Fails only for a vulnerability the code actually calls, not for one in an unused module.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm build
+      # The API types are generated from api/openapi.yaml; a stale copy means someone forgot `pnpm gen:api`.
+      - name: API types are up to date
+        run: |
+          pnpm gen:api
+          git diff --exit-code -- src/types/api.ts
+      - run: pnpm test:browser:install
+      - run: pnpm test
+      - run: pnpm audit --prod
+
+  smoke:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:browser:install
+      # Every page at phone and desktop widths, with the API mocked in the browser.
+      - run: pnpm smoke:responsive
+      # One booking from request to history through the real API and the dev compose Postgres.
+      - name: Start Postgres
+        working-directory: .
+        run: docker compose up -d --wait
+      - run: pnpm smoke:e2e
+        env:
+          SMOKE_SHOTS: ${{ runner.temp }}/smoke-shots
+      - name: Keep the screenshot of a failing step
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: ${{ runner.temp }}/smoke-shots
+          if-no-files-found: ignore

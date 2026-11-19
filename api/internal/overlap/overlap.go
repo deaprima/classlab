@@ -32,7 +32,7 @@ type Window struct {
 	End   time.Time
 }
 
-// Find lists existing schedules and live bookings (MENUNGGU holds the slot, BR-03) that overlap any
+// Find lists existing schedules and live bookings (MENUNGGU holds the slot, BR-03; so does BERLANGSUNG) that overlap any
 // window. Intervals are half-open, so back-to-back sessions do not collide (BR-02).
 // excludeSchedule and excludeBooking name the row being edited or approved, which must not conflict
 // with itself; pass uuid.Nil for none.
@@ -62,7 +62,7 @@ func Find(ctx context.Context, q *dbgen.Queries, roomID uuid.UUID, windows []Win
 
 		books, err := q.ListBookingsOverlapping(ctx, dbgen.ListBookingsOverlappingParams{
 			RoomIds:    []uuid.UUID{roomID},
-			Statuses:   []string{string(dbgen.BookingStatusMENUNGGU), string(dbgen.BookingStatusDISETUJUI)},
+			Statuses:   []string{string(dbgen.BookingStatusMENUNGGU), string(dbgen.BookingStatusDISETUJUI), string(dbgen.BookingStatusBERLANGSUNG)},
 			RangeStart: w.Start, RangeEnd: w.End,
 		})
 		if err != nil {

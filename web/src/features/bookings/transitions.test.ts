@@ -21,7 +21,7 @@ function actionsFor(
 
 describe('availableActions (brief 4.1)', () => {
   it('lets TU/Kalab approve or reject a pending request', () => {
-    expect(actionsFor('MENUNGGU', 'TU_KALAB')).toEqual({
+    expect(actionsFor('MENUNGGU', 'TU')).toEqual({
       approve: true,
       reject: true,
       cancelOwn: false,
@@ -30,7 +30,7 @@ describe('availableActions (brief 4.1)', () => {
   })
 
   it('only allows rejecting a pending request whose time has passed', () => {
-    expect(actionsFor('MENUNGGU', 'TU_KALAB', { endAt: past })).toMatchObject({
+    expect(actionsFor('MENUNGGU', 'TU', { endAt: past })).toMatchObject({
       approve: false,
       reject: true,
     })
@@ -47,16 +47,16 @@ describe('availableActions (brief 4.1)', () => {
   })
 
   it('lets TU/Kalab cancel an approved booking that has not ended', () => {
-    expect(actionsFor('DISETUJUI', 'TU_KALAB').cancelApproved).toBe(true)
-    expect(
-      actionsFor('DISETUJUI', 'TU_KALAB', { endAt: past }).cancelApproved
-    ).toBe(false)
+    expect(actionsFor('DISETUJUI', 'TU').cancelApproved).toBe(true)
+    expect(actionsFor('DISETUJUI', 'TU', { endAt: past }).cancelApproved).toBe(
+      false
+    )
   })
 
-  it.each<BookingStatus>(['DITOLAK', 'DIBATALKAN'])(
+  it.each<BookingStatus>(['DITOLAK', 'DIBATALKAN', 'SELESAI', 'KEDALUWARSA'])(
     'offers nothing on final status %s',
     (status) => {
-      for (const role of ['MAHASISWA', 'TU_KALAB', 'KAPRODI'] as const) {
+      for (const role of ['MAHASISWA', 'TU', 'KALAB', 'ADMIN'] as const) {
         expect(Object.values(actionsFor(status, role, { own: true }))).toEqual([
           false,
           false,
@@ -67,9 +67,22 @@ describe('availableActions (brief 4.1)', () => {
     }
   )
 
-  it('gives Kaprodi read-only access', () => {
-    expect(Object.values(actionsFor('MENUNGGU', 'KAPRODI')).some(Boolean)).toBe(
-      false
-    )
-  })
+  it.each<UserRole>(['KALAB', 'ADMIN'])(
+    'lets %s act as an approver (the server scopes by room type)',
+    (role) => {
+      expect(actionsFor('MENUNGGU', role)).toMatchObject({
+        approve: true,
+        reject: true,
+      })
+    }
+  )
+
+  it.each<UserRole>(['ORGANISASI', 'OB'])(
+    'gives %s no approval actions',
+    (role) => {
+      expect(Object.values(actionsFor('MENUNGGU', role)).some(Boolean)).toBe(
+        false
+      )
+    }
+  )
 })

@@ -39,3 +39,8 @@ Thumbs.db
 /api/uploads/
 /tmp/
 /scratch/
+
+# Dokumen kerja lokal (brief, agent, DESIGN, tasks, decisions, commands); tidak di-push
+/docs/
+/agent.md
+/brief.md

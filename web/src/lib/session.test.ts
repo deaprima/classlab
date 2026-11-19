@@ -7,7 +7,11 @@ import {
 import { afterEach, describe, expect, it } from 'vitest'
 import { useAuthStore } from '@/stores/auth-store'
 import { api, authClient } from './api-client'
-import { ensureSession, safeRedirectPath } from './session'
+import {
+  ensureSession,
+  passwordChangeRedirect,
+  safeRedirectPath,
+} from './session'
 
 const originalApiAdapter = api.defaults.adapter
 const originalAuthAdapter = authClient.defaults.adapter
@@ -74,5 +78,29 @@ describe('safeRedirectPath', () => {
     ['bookings', '/'],
   ])('%s -> %s', (input, expected) => {
     expect(safeRedirectPath(input)).toBe(expected)
+  })
+})
+
+describe('passwordChangeRedirect', () => {
+  it('sends an account with a temporary password to the change page', () => {
+    expect(passwordChangeRedirect({ must_change_password: true }, '/')).toBe(
+      '/change-password'
+    )
+    expect(
+      passwordChangeRedirect({ must_change_password: true }, '/bookings')
+    ).toBe('/change-password')
+  })
+
+  it('lets it stay on the change page', () => {
+    expect(
+      passwordChangeRedirect({ must_change_password: true }, '/change-password')
+    ).toBeNull()
+  })
+
+  it('does not interfere with a normal account or no user', () => {
+    expect(
+      passwordChangeRedirect({ must_change_password: false }, '/')
+    ).toBeNull()
+    expect(passwordChangeRedirect(null, '/')).toBeNull()
   })
 })

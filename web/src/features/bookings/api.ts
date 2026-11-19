@@ -12,16 +12,19 @@ import { getApiError, getErrorMessage } from '@/lib/api-error'
 import {
   type Booking,
   type BookingEvent,
+  type BookingGroupResult,
   type BookingListQuery,
   type BookingListResponse,
   type CreateBookingRequest,
+  type EditBookingRequest,
 } from '@/lib/api-types'
 import { formatSlot } from '@/lib/datetime'
 import { queryKeys } from '@/lib/query-keys'
 
-export function useBookings(query: BookingListQuery) {
+export function useBookings(query: BookingListQuery, enabled = true) {
   return useQuery({
     queryKey: queryKeys.bookings.list(query),
+    enabled,
     queryFn: async () =>
       (await api.get<BookingListResponse>('/bookings', { params: query })).data,
     placeholderData: keepPreviousData,
@@ -56,20 +59,20 @@ function invalidateAfterStatusChange(queryClient: QueryClient) {
 type CreateBookingVars = { body: CreateBookingRequest; idempotencyKey: string }
 
 export function useCreateBooking(options: {
-  onSuccess?: (booking: Booking) => void
+  onSuccess?: (result: Booking | BookingGroupResult) => void
   onError?: (error: unknown) => void
 }) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({ body, idempotencyKey }: CreateBookingVars) =>
       (
-        await api.post<Booking>('/bookings', body, {
+        await api.post<Booking | BookingGroupResult>('/bookings', body, {
           headers: { 'Idempotency-Key': idempotencyKey },
         })
       ).data,
-    onSuccess: (booking) => {
+    onSuccess: (result) => {
       invalidateAfterStatusChange(queryClient)
-      options.onSuccess?.(booking)
+      options.onSuccess?.(result)
     },
     onError: options.onError,
   })
@@ -122,21 +125,54 @@ export function useRejectBooking() {
   })
 }
 
+export type CancelScope = 'OCCURRENCE' | 'GROUP'
+
 export function useCancelBooking() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, reason }: { id: string; reason?: string }) =>
+    mutationFn: async ({
+      id,
+      reason,
+      scope,
+    }: {
+      id: string
+      reason?: string
+      /** A multi-date request: just this date (default) or every date still cancellable (BR-27). */
+      scope?: CancelScope
+    }) =>
       (
-        await api.post<Booking>(
-          `/bookings/${id}/cancel`,
-          reason ? { reason } : {}
-        )
+        await api.post<Booking>(`/bookings/${id}/cancel`, {
+          ...(reason && { reason }),
+          ...(scope && { scope }),
+        })
       ).data,
     onSuccess: () => {
       invalidateAfterStatusChange(queryClient)
       toast.success('Peminjaman dibatalkan.')
     },
     onError: toastDecisionError,
+  })
+}
+
+/** The owner changes a waiting or approved booking (BR-26); only the fields sent are changed. */
+export function useEditBooking(options: {
+  onSuccess?: (booking: Booking) => void
+  onError?: (error: unknown) => void
+}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: {
+      id: string
+      body: EditBookingRequest
+    }) => (await api.patch<Booking>(`/bookings/${id}`, body)).data,
+    onSuccess: (booking) => {
+      invalidateAfterStatusChange(queryClient)
+      options.onSuccess?.(booking)
+    },
+    onError: options.onError,
   })
 }
 

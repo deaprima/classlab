@@ -83,9 +83,9 @@ func (e *env) bookingIn(status, owner string) string {
 	switch status {
 	case "MENUNGGU":
 	case "DISETUJUI":
-		mustStatus(e.t, e.action(e.adminToken(), id, "approve", nil), http.StatusOK)
+		mustStatus(e.t, e.action(e.tuToken(), id, "approve", nil), http.StatusOK)
 	case "DITOLAK":
-		mustStatus(e.t, e.action(e.adminToken(), id, "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
+		mustStatus(e.t, e.action(e.tuToken(), id, "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
 	case "DIBATALKAN":
 		mustStatus(e.t, e.action(student, id, "cancel", nil), http.StatusOK)
 	default:
@@ -156,8 +156,6 @@ func TestCreateBookingValidation(t *testing.T) {
 		{"end off the half hour", at(tue, "08:00"), at(tue, "09:10"), nil, "end_at"},
 		{"in the past", at(today, "08:00"), at(today, "09:00"), nil, "start_at"},
 		{"longer than 8 hours", at(tue, "07:00"), at(tue, "16:00"), nil, "end_at"},
-		{"before opening", at(tue, "06:00"), at(tue, "08:00"), nil, "start_at"},
-		{"after closing", at(tue, "20:00"), at(tue, "22:00"), nil, "end_at"},
 		{"more than 30 days ahead", at("2026-11-14", "08:00"), at("2026-11-14", "09:00"), nil, "start_at"},
 		{"blank purpose", at(tue, "08:00"), at(tue, "09:00"), map[string]any{"purpose": "  "}, "purpose"},
 		{"zero participants", at(tue, "08:00"), at(tue, "09:00"), map[string]any{"participants": 0}, "participants"},
@@ -167,6 +165,17 @@ func TestCreateBookingValidation(t *testing.T) {
 		res := e.postBooking(tok, room, tc.start, tc.end, tc.extra)
 		if res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)[tc.field] {
 			t.Errorf("%s: %d %s; want 422 naming %q", tc.name, res.Code, res.Body.String(), tc.field)
+		}
+	}
+
+	// Outside the room's operating hours has its own code (BR-29): the effective window comes back in details.
+	for name, w := range map[string][2]string{
+		"before opening": {at(tue, "06:00"), at(tue, "08:00")},
+		"after closing":  {at(tue, "20:00"), at(tue, "22:00")},
+	} {
+		res := e.postBooking(tok, room, w[0], w[1], nil)
+		if res.Code != http.StatusUnprocessableEntity || res.errorCode() != "OUTSIDE_OPERATING_HOURS" {
+			t.Errorf("%s: %d %s; want 422 OUTSIDE_OPERATING_HOURS", name, res.Code, res.errorCode())
 		}
 	}
 
@@ -270,7 +279,7 @@ func TestSlotIsReleasedByRejectionAndCancellation(t *testing.T) {
 		t.Fatalf("pending booking should hold the slot, got %d", res.Code)
 	}
 
-	mustStatus(t, e.action(e.adminToken(), idOf(first), "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
+	mustStatus(t, e.action(e.tuToken(), idOf(first), "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
 	second := e.postBooking(other, room, at(tue, "08:00"), at(tue, "10:00"), nil)
 	mustStatus(t, second, http.StatusCreated)
 
@@ -417,7 +426,7 @@ func TestConcurrentBookingsForSameSlot(t *testing.T) {
 func TestConcurrentApprovalsOfCompetingRequests(t *testing.T) {
 	e := newEnv(t)
 	room := e.freshRoom()
-	admin := e.adminToken()
+	tu := e.tuToken()
 
 	first := e.postBooking(e.login(mahasiswaA).accessToken, room, at(tue, "08:00"), at(tue, "10:00"), nil)
 	mustStatus(t, first, http.StatusCreated)
@@ -427,7 +436,7 @@ func TestConcurrentApprovalsOfCompetingRequests(t *testing.T) {
 	second := e.postBooking(e.login(mahasiswaB).accessToken, room, at(tue, "09:00"), at(tue, "11:00"), nil)
 	mustStatus(t, second, http.StatusCreated)
 
-	if res := e.action(admin, idOf(first), "approve", nil); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
+	if res := e.action(tu, idOf(first), "approve", nil); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
 		t.Errorf("approving a cancelled booking: %d %s; want 409 INVALID_STATE", res.Code, res.errorCode())
 	}
 
@@ -438,7 +447,7 @@ func TestConcurrentApprovalsOfCompetingRequests(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = e.action(admin, idOf(second), "approve", nil)
+			results[i] = e.action(tu, idOf(second), "approve", nil)
 		}()
 	}
 	wg.Wait()
@@ -465,7 +474,7 @@ func TestConcurrentApprovalsOfCompetingRequests(t *testing.T) {
 // Every transition of brief 4.1, valid and invalid, for the owner and for TU/Kalab.
 func TestBookingStateMachine(t *testing.T) {
 	e := newEnv(t)
-	admin := e.adminToken()
+	tu := e.tuToken()
 	owner := e.login(mahasiswaA).accessToken
 
 	type step struct {
@@ -473,14 +482,14 @@ func TestBookingStateMachine(t *testing.T) {
 		token   string
 		action  string
 		body    any
-		allowed string // the only status this action may start from
+		allowed []string // the statuses this action may start from
 		result  string
 	}
 	steps := []step{
-		{"approve", admin, "approve", nil, "MENUNGGU", "DISETUJUI"},
-		{"reject", admin, "reject", map[string]string{"reason": "Dipakai ujian"}, "MENUNGGU", "DITOLAK"},
-		{"owner cancels", owner, "cancel", nil, "MENUNGGU", "DIBATALKAN"},
-		{"TU cancels", admin, "cancel", map[string]string{"reason": "Ruang diperbaiki"}, "DISETUJUI", "DIBATALKAN"},
+		{"approve", tu, "approve", nil, []string{"MENUNGGU"}, "DISETUJUI"},
+		{"reject", tu, "reject", map[string]string{"reason": "Dipakai ujian"}, []string{"MENUNGGU"}, "DITOLAK"},
+		{"owner cancels (before the start)", owner, "cancel", nil, []string{"MENUNGGU", "DISETUJUI"}, "DIBATALKAN"},
+		{"TU cancels", tu, "cancel", map[string]string{"reason": "Ruang diperbaiki"}, []string{"DISETUJUI"}, "DIBATALKAN"},
 	}
 
 	for _, s := range steps {
@@ -489,7 +498,7 @@ func TestBookingStateMachine(t *testing.T) {
 			events := e.eventCount(id)
 			res := e.action(s.token, id, s.action, s.body)
 
-			if from == s.allowed {
+			if slices.Contains(s.allowed, from) {
 				mustStatus(t, res, http.StatusOK)
 				if statusOf(res) != s.result || e.bookingStatus(id) != s.result {
 					t.Errorf("%s from %s: status = %s/%s; want %s", s.name, from, statusOf(res), e.bookingStatus(id), s.result)
@@ -511,42 +520,42 @@ func TestBookingStateMachine(t *testing.T) {
 
 func TestDecisionFieldsAndReasons(t *testing.T) {
 	e := newEnv(t)
-	admin := e.adminToken()
-	tuID := e.userIDOf(tuKalabID)
+	tu := e.tuToken()
+	tuUserID := e.userIDOf(tuID)
 
 	approved := e.bookingIn("MENUNGGU", mahasiswaA)
-	res := e.action(admin, approved, "approve", nil)
+	res := e.action(tu, approved, "approve", nil)
 	mustStatus(t, res, http.StatusOK)
-	if res.json()["decided_by"] != tuID || res.json()["decided_at"] != "2026-10-14T10:00:00+07:00" || res.json()["decision_reason"] != nil {
+	if res.json()["decided_by"] != tuUserID || res.json()["decided_at"] != "2026-10-14T10:00:00+07:00" || res.json()["decision_reason"] != nil {
 		t.Errorf("approval fields: %v", res.json())
 	}
 
 	rejected := e.bookingIn("MENUNGGU", mahasiswaA)
 	for _, bad := range []any{nil, map[string]string{}, map[string]string{"reason": "    "}, map[string]string{"reason": "abcd"}, map[string]string{"reason": strings.Repeat("x", 501)}} {
-		if res := e.action(admin, rejected, "reject", bad); res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)["reason"] {
+		if res := e.action(tu, rejected, "reject", bad); res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)["reason"] {
 			t.Errorf("reject with %v: %d %s; want 422 naming reason", bad, res.Code, res.Body.String())
 		}
 	}
 	if e.bookingStatus(rejected) != "MENUNGGU" {
 		t.Fatal("a rejected request for a bad reason changed the booking")
 	}
-	res = e.action(admin, rejected, "reject", map[string]string{"reason": "  Dipakai ujian  "})
+	res = e.action(tu, rejected, "reject", map[string]string{"reason": "  Dipakai ujian  "})
 	mustStatus(t, res, http.StatusOK)
 	if res.json()["decision_reason"] != "Dipakai ujian" {
 		t.Errorf("reason = %v; want trimmed", res.json()["decision_reason"])
 	}
-	if res := e.action(admin, e.bookingIn("MENUNGGU", mahasiswaA), "reject", map[string]string{"reason": "abcde"}); res.Code != http.StatusOK {
+	if res := e.action(tu, e.bookingIn("MENUNGGU", mahasiswaA), "reject", map[string]string{"reason": "abcde"}); res.Code != http.StatusOK {
 		t.Errorf("a 5-character reason is the minimum and must pass: %d", res.Code)
 	}
 
 	// Cancelling an approved booking needs a reason; an owner cancelling their own pending one does not.
 	app2 := e.bookingIn("DISETUJUI", mahasiswaA)
 	for _, bad := range []any{nil, map[string]string{"reason": "oops"}} {
-		if res := e.action(admin, app2, "cancel", bad); res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)["reason"] {
+		if res := e.action(tu, app2, "cancel", bad); res.Code != http.StatusUnprocessableEntity || !fieldsOf(res)["reason"] {
 			t.Errorf("TU cancel with %v: %d; want 422 naming reason", bad, res.Code)
 		}
 	}
-	mustStatus(t, e.action(admin, app2, "cancel", map[string]string{"reason": "Ruang diperbaiki"}), http.StatusOK)
+	mustStatus(t, e.action(tu, app2, "cancel", map[string]string{"reason": "Ruang diperbaiki"}), http.StatusOK)
 
 	owner := e.login(mahasiswaA).accessToken
 	pending := e.bookingIn("MENUNGGU", mahasiswaA)
@@ -563,8 +572,9 @@ func TestBookingAuthorization(t *testing.T) {
 	owner := e.login(mahasiswaA).accessToken
 	stranger := e.login(mahasiswaB).accessToken
 	ob := e.login(obID).accessToken
-	kaprodi := e.login(kaprodiID).accessToken
-	tu := e.adminToken()
+	admin := e.adminToken()
+	tu := e.tuToken()
+	kalab := e.kalabToken() // approves LAB, not the KELAS room used here
 
 	// Another student's booking is indistinguishable from a missing one.
 	missing := "00000000-0000-4000-8000-0000000000aa"
@@ -578,10 +588,14 @@ func TestBookingAuthorization(t *testing.T) {
 		if res := e.do("GET", "/api/v1/bookings/"+id+p, nil, bearer(ob)); res.Code != http.StatusForbidden {
 			t.Errorf("OB GET %s: %d; want 403", p, res.Code)
 		}
-		for name, tok := range map[string]string{"owner": owner, "TU_KALAB": tu, "KAPRODI": kaprodi} {
+		for name, tok := range map[string]string{"owner": owner, "TU": tu, "ADMIN": admin} {
 			if res := e.do("GET", "/api/v1/bookings/"+id+p, nil, bearer(tok)); res.Code != http.StatusOK {
 				t.Errorf("%s GET %s: %d; want 200", name, p, res.Code)
 			}
+		}
+		// A KALAB does not approve KELAS rooms, so this booking is outside their reach (BR-10): 404, not 403.
+		if res := e.do("GET", "/api/v1/bookings/"+id+p, nil, bearer(kalab)); res.Code != http.StatusNotFound {
+			t.Errorf("KALAB GET %s of a KELAS booking: %d; want 404", p, res.Code)
 		}
 	}
 	if res := e.do("GET", "/api/v1/bookings/not-a-uuid", nil, bearer(owner)); res.Code != http.StatusNotFound {
@@ -594,19 +608,20 @@ func TestBookingAuthorization(t *testing.T) {
 	if e.bookingStatus(id) != "MENUNGGU" {
 		t.Fatal("a stranger changed the booking")
 	}
-	for name, tok := range map[string]string{"student": owner, "KAPRODI": kaprodi, "OB": ob} {
+	for name, tok := range map[string]string{"student": owner, "ADMIN": admin, "KALAB": kalab, "OB": ob} {
 		for _, a := range []string{"approve", "reject"} {
 			if res := e.action(tok, id, a, map[string]string{"reason": "alasan"}); res.Code != http.StatusForbidden {
 				t.Errorf("%s %s: %d; want 403", name, a, res.Code)
 			}
 		}
 	}
-	for name, tok := range map[string]string{"KAPRODI": kaprodi, "OB": ob} {
-		if res := e.action(tok, id, "cancel", nil); res.Code != http.StatusForbidden {
+	// Managers must give a reason, so one is sent: the 403 comes from the room type, not from validation.
+	for name, tok := range map[string]string{"ADMIN": admin, "KALAB": kalab, "OB": ob} {
+		if res := e.action(tok, id, "cancel", map[string]string{"reason": "Ruang diperbaiki"}); res.Code != http.StatusForbidden {
 			t.Errorf("%s cancel: %d; want 403", name, res.Code)
 		}
 	}
-	for name, tok := range map[string]string{"TU_KALAB": tu, "KAPRODI": kaprodi, "OB": ob} {
+	for name, tok := range map[string]string{"TU": tu, "KALAB": kalab, "ADMIN": admin, "OB": ob} {
 		if res := e.postBooking(tok, e.freshRoom(), at(tue, "08:00"), at(tue, "09:00"), nil); res.Code != http.StatusForbidden {
 			t.Errorf("%s create: %d; want 403", name, res.Code)
 		}
@@ -620,7 +635,7 @@ func TestListBookings(t *testing.T) {
 	e := newEnv(t)
 	roomA, roomB := e.freshRoom(), e.freshRoom()
 	a, b := e.login(mahasiswaA).accessToken, e.login(mahasiswaB).accessToken
-	tu, kaprodi := e.adminToken(), e.login(kaprodiID).accessToken
+	tu, admin := e.tuToken(), e.login(adminID).accessToken
 
 	a1 := idOf(e.postBooking(a, roomA, at(tue, "08:00"), at(tue, "09:00"), nil))
 	// The clock is frozen, so step it to give each booking a distinct created_at to sort by.
@@ -654,12 +669,12 @@ func TestListBookings(t *testing.T) {
 	got, _, _ = list(a, "?mine=false")
 	sameSet("student A mine=false is still only their own", got, a1, a2)
 	got, total, _ := list(tu, "")
-	sameSet("TU_KALAB", got, a1, a2, b1)
+	sameSet("TU", got, a1, a2, b1)
 	if total != 3 {
 		t.Errorf("total = %v; want 3", total)
 	}
-	got, _, _ = list(kaprodi, "")
-	sameSet("KAPRODI", got, a1, a2, b1)
+	got, _, _ = list(admin, "")
+	sameSet("ADMIN", got, a1, a2, b1)
 	got, _, _ = list(tu, "?status=DISETUJUI")
 	sameSet("status filter", got, b1)
 	got, _, _ = list(tu, "?room_id="+roomB)
@@ -708,13 +723,13 @@ func TestBookingEventsTrail(t *testing.T) {
 	e := newEnv(t)
 	room := e.freshRoom()
 	owner := e.login(mahasiswaA)
-	tuID := e.userIDOf(tuKalabID)
-	admin := e.adminToken()
+	tuUserID := e.userIDOf(tuID)
+	tu := e.tuToken()
 
 	id := idOf(e.postBooking(owner.accessToken, room, at(tue, "08:00"), at(tue, "10:00"), nil))
-	mustStatus(t, e.action(admin, id, "approve", nil), http.StatusOK)
+	mustStatus(t, e.action(tu, id, "approve", nil), http.StatusOK)
 	e.clock.Add(time.Minute)
-	mustStatus(t, e.action(admin, id, "cancel", map[string]string{"reason": "Ruang diperbaiki"}), http.StatusOK)
+	mustStatus(t, e.action(tu, id, "cancel", map[string]string{"reason": "Ruang diperbaiki"}), http.StatusOK)
 
 	res := e.do("GET", "/api/v1/bookings/"+id+"/events", nil, bearer(owner.accessToken))
 	mustStatus(t, res, http.StatusOK)
@@ -722,8 +737,8 @@ func TestBookingEventsTrail(t *testing.T) {
 	type ev struct{ from, to, actor, reason string }
 	want := []ev{
 		{"", "MENUNGGU", owner.userID, ""},
-		{"MENUNGGU", "DISETUJUI", tuID, ""},
-		{"DISETUJUI", "DIBATALKAN", tuID, "Ruang diperbaiki"},
+		{"MENUNGGU", "DISETUJUI", tuUserID, ""},
+		{"DISETUJUI", "DIBATALKAN", tuUserID, "Ruang diperbaiki"},
 	}
 	if len(events) != len(want) {
 		t.Fatalf("events = %d; want %d: %s", len(events), len(want), res.Body.String())
@@ -770,7 +785,8 @@ func TestBookingsNoOverlapConstraint(t *testing.T) {
 	room := e.freshRoom()
 	insert := func(status, start, end string) error {
 		_, err := e.pool.Exec(t.Context(),
-			`INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, status) VALUES ($1, $2, $3, $4, 'x', $5)`,
+			`INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, status, approval_mode, manual_reason)
+			 VALUES ($1, $2, $3, $4, 'x', $5, 'MANUAL', 'ROOM_POLICY')`,
 			room, e.userIDOf(mahasiswaA), start, end, status)
 		return err
 	}
@@ -801,10 +817,10 @@ func TestApproveRechecksTheSlot(t *testing.T) {
 	room := e.freshRoom()
 	id := idOf(e.postBooking(e.login(mahasiswaA).accessToken, room, at(tue, "08:00"), at(tue, "10:00"), nil))
 
-	// A schedule that appeared after the request (the exclusion constraints cannot see across tables).
-	e.insertSchedule(room, "Kuliah Pengganti", at(tue, "09:00"), at(tue, "11:00"))
+	// A schedule that sits on the request anyway, as data from before the guard trigger of migration 000009 can.
+	e.insertScheduleUnguarded(room, "Kuliah Pengganti", at(tue, "09:00"), at(tue, "11:00"))
 
-	res := e.action(e.adminToken(), id, "approve", nil)
+	res := e.action(e.tuToken(), id, "approve", nil)
 	if res.Code != http.StatusConflict || res.errorCode() != "BOOKING_CONFLICT" || !slices.Equal(conflictKinds(res), []string{"SCHEDULE"}) {
 		t.Errorf("approve: %d %s; want 409 BOOKING_CONFLICT naming the schedule", res.Code, res.Body.String())
 	}
@@ -812,12 +828,12 @@ func TestApproveRechecksTheSlot(t *testing.T) {
 		t.Error("a refused approval changed the booking")
 	}
 	// The request can still be rejected.
-	mustStatus(t, e.action(e.adminToken(), id, "reject", map[string]string{"reason": "Bentrok kuliah"}), http.StatusOK)
+	mustStatus(t, e.action(e.tuToken(), id, "reject", map[string]string{"reason": "Bentrok kuliah"}), http.StatusOK)
 }
 
 func TestApproveRefusalsOnRoomAndTime(t *testing.T) {
 	e := newEnv(t)
-	admin := e.adminToken()
+	tu := e.tuToken()
 
 	// Room deactivated while the request was pending.
 	room := e.freshRoom()
@@ -825,71 +841,90 @@ func TestApproveRefusalsOnRoomAndTime(t *testing.T) {
 	if _, err := e.pool.Exec(t.Context(), "UPDATE rooms SET is_active = false WHERE id = $1", room); err != nil {
 		t.Fatal(err)
 	}
-	if res := e.action(admin, id, "approve", nil); res.Code != http.StatusConflict || res.errorCode() != "ROOM_INACTIVE" {
+	if res := e.action(tu, id, "approve", nil); res.Code != http.StatusConflict || res.errorCode() != "ROOM_INACTIVE" {
 		t.Errorf("inactive room: %d %s; want 409 ROOM_INACTIVE", res.Code, res.errorCode())
 	}
 
 	// A request whose time has already passed.
 	late := e.bookingIn("MENUNGGU", mahasiswaB)
 	e.clock.Set(time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)) // 19:00 WIB on the day, after the 10:00 end
-	admin = e.adminToken()                                      // the earlier token expired with the clock jump
-	if res := e.action(admin, late, "approve", nil); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
+	tu = e.tuToken()                                            // the earlier token expired with the clock jump
+	if res := e.action(tu, late, "approve", nil); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
 		t.Errorf("past booking: %d %s; want 409 INVALID_STATE", res.Code, res.errorCode())
 	}
-	mustStatus(t, e.action(admin, late, "reject", map[string]string{"reason": "Sudah lewat"}), http.StatusOK)
+	// Past expires_at (BR-22) a decision of either kind is refused, and so is the owner cancelling a booking that has started.
+	if res := e.action(tu, late, "reject", map[string]string{"reason": "Sudah lewat"}); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
+		t.Errorf("rejecting an expired booking: %d %s; want 409 INVALID_STATE", res.Code, res.errorCode())
+	}
+	if res := e.action(e.login(mahasiswaB).accessToken, late, "cancel", nil); res.Code != http.StatusConflict || res.errorCode() != "INVALID_STATE" {
+		t.Errorf("owner cancelling after the start: %d %s; want 409 INVALID_STATE", res.Code, res.errorCode())
+	}
 }
 
 func TestBookingNotifications(t *testing.T) {
 	e := newEnv(t)
-	kaprodi := e.login(kaprodiID)
+	admin := e.login(adminID)
 
 	// A second approver, plus one that has been deactivated.
 	second := e.newUserBody("198505052010012004")
-	second["role"] = "TU_KALAB"
-	res := e.do("POST", "/api/v1/users", second, bearer(kaprodi.accessToken))
+	second["role"] = "TU"
+	res := e.do("POST", "/api/v1/users", second, bearer(admin.accessToken))
 	mustStatus(t, res, http.StatusCreated)
 	secondID := res.json()["id"].(string)
 	gone := e.newUserBody("198505052010012005")
-	gone["role"] = "TU_KALAB"
-	res = e.do("POST", "/api/v1/users", gone, bearer(kaprodi.accessToken))
+	gone["role"] = "TU"
+	res = e.do("POST", "/api/v1/users", gone, bearer(admin.accessToken))
 	mustStatus(t, res, http.StatusCreated)
 	goneID := res.json()["id"].(string)
-	mustStatus(t, e.do("PATCH", "/api/v1/users/"+goneID, map[string]any{"is_active": false}, bearer(kaprodi.accessToken)), http.StatusOK)
+	mustStatus(t, e.do("PATCH", "/api/v1/users/"+goneID, map[string]any{"is_active": false}, bearer(admin.accessToken)), http.StatusOK)
 
-	tuID, studentID := e.userIDOf(tuKalabID), e.userIDOf(mahasiswaA)
+	tuUserID, studentID := e.userIDOf(tuID), e.userIDOf(mahasiswaA)
 	student := e.login(mahasiswaA).accessToken
-	admin := e.adminToken()
+	tu := e.tuToken()
 
 	id := idOf(e.postBooking(student, e.freshRoom(), at(tue, "08:00"), at(tue, "10:00"), nil))
-	for _, who := range []string{tuID, secondID} {
+	for _, who := range []string{tuUserID, secondID} {
 		if n := e.notificationCount(who, "BOOKING_CREATED"); n != 1 {
 			t.Errorf("approver %s got %d BOOKING_CREATED; want 1", who, n)
 		}
 	}
-	for name, who := range map[string]string{"deactivated TU": goneID, "KAPRODI": kaprodi.userID, "requester": studentID, "OB": e.userIDOf(obID)} {
+	for name, who := range map[string]string{"deactivated TU": goneID, "ADMIN": admin.userID, "KALAB": e.userIDOf(kalabID), "requester": studentID, "OB": e.userIDOf(obID)} {
 		if n := e.notificationCount(who, "BOOKING_CREATED"); n != 0 {
 			t.Errorf("%s got %d BOOKING_CREATED; want 0", name, n)
 		}
 	}
 	var refType, refID, title, body string
-	if err := e.pool.QueryRow(t.Context(), "SELECT ref_type, ref_id::text, title, body FROM notifications WHERE user_id = $1", tuID).Scan(&refType, &refID, &title, &body); err != nil {
+	if err := e.pool.QueryRow(t.Context(), "SELECT ref_type, ref_id::text, title, body FROM notifications WHERE user_id = $1", tuUserID).Scan(&refType, &refID, &title, &body); err != nil {
 		t.Fatal(err)
 	}
 	if refType != "BOOKING" || refID != id || !strings.Contains(body, "20/10/2026 08:00-10:00 WIB") {
 		t.Errorf("notification = %s %s %q %q", refType, refID, title, body)
 	}
 
-	mustStatus(t, e.action(admin, id, "approve", nil), http.StatusOK)
+	// A LAB booking goes to the KALAB (the approver of that type) and to nobody else.
+	lab := e.insertRoom("BKN-LAB", "LAB", 30)
+	labBooking := idOf(e.postBooking(student, lab, at(tue, "08:00"), at(tue, "10:00"), nil))
+	kalabUserID := e.userIDOf(kalabID)
+	for name, who := range map[string]string{"TU": tuUserID, "second TU": secondID, "ADMIN": admin.userID, "OB": e.userIDOf(obID)} {
+		if n := e.countRows("SELECT count(*) FROM notifications WHERE user_id = $1 AND ref_id = $2", who, labBooking); n != 0 {
+			t.Errorf("%s was notified of a LAB booking they do not approve (%d)", name, n)
+		}
+	}
+	if n := e.countRows("SELECT count(*) FROM notifications WHERE user_id = $1 AND type = 'BOOKING_CREATED' AND ref_id = $2", kalabUserID, labBooking); n != 1 {
+		t.Errorf("KALAB got %d BOOKING_CREATED for the LAB booking; want 1", n)
+	}
+
+	mustStatus(t, e.action(tu, id, "approve", nil), http.StatusOK)
 	if n := e.notificationCount(studentID, "BOOKING_APPROVED"); n != 1 {
 		t.Errorf("BOOKING_APPROVED = %d; want 1", n)
 	}
-	mustStatus(t, e.action(admin, id, "cancel", map[string]string{"reason": "Ruang diperbaiki"}), http.StatusOK)
+	mustStatus(t, e.action(tu, id, "cancel", map[string]string{"reason": "Ruang diperbaiki"}), http.StatusOK)
 	if n := e.notificationCount(studentID, "BOOKING_CANCELLED"); n != 1 {
 		t.Errorf("BOOKING_CANCELLED = %d; want 1", n)
 	}
 
 	rejected := idOf(e.postBooking(student, e.freshRoom(), at(tue, "08:00"), at(tue, "10:00"), nil))
-	mustStatus(t, e.action(admin, rejected, "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
+	mustStatus(t, e.action(tu, rejected, "reject", map[string]string{"reason": "Dipakai ujian"}), http.StatusOK)
 	if err := e.pool.QueryRow(t.Context(), "SELECT body FROM notifications WHERE user_id = $1 AND type = 'BOOKING_REJECTED'", studentID).Scan(&body); err != nil || !strings.Contains(body, "Dipakai ujian") {
 		t.Errorf("rejection notification = %q (%v); want it to carry the reason", body, err)
 	}
@@ -907,7 +942,7 @@ func TestBookingNotifications(t *testing.T) {
 func TestBookingWritesAreAtomic(t *testing.T) {
 	e := newEnv(t)
 	student := e.login(mahasiswaA).accessToken
-	admin := e.adminToken()
+	tu := e.tuToken()
 
 	breakTable := func(table string) {
 		t.Helper()
@@ -942,7 +977,7 @@ func TestBookingWritesAreAtomic(t *testing.T) {
 	id := e.bookingIn("MENUNGGU", mahasiswaA)
 	events, notes := e.eventCount(id), e.countRows("SELECT count(*) FROM notifications")
 	breakTable("notifications")
-	res = e.doUnchecked("POST", "/api/v1/bookings/"+id+"/approve", nil, bearer(admin))
+	res = e.doUnchecked("POST", "/api/v1/bookings/"+id+"/approve", nil, bearer(tu))
 	if res.Code != http.StatusInternalServerError {
 		t.Fatalf("approve with failing notification: %d; want 500", res.Code)
 	}
@@ -953,7 +988,7 @@ func TestBookingWritesAreAtomic(t *testing.T) {
 
 	// And the other way round: a failing event insert must leave no notification.
 	breakTable("booking_events")
-	res = e.doUnchecked("POST", "/api/v1/bookings/"+id+"/approve", nil, bearer(admin))
+	res = e.doUnchecked("POST", "/api/v1/bookings/"+id+"/approve", nil, bearer(tu))
 	if res.Code != http.StatusInternalServerError {
 		t.Fatalf("approve with failing event: %d; want 500", res.Code)
 	}
@@ -962,7 +997,7 @@ func TestBookingWritesAreAtomic(t *testing.T) {
 	}
 	repair("booking_events")
 
-	mustStatus(t, e.action(admin, id, "approve", nil), http.StatusOK)
+	mustStatus(t, e.action(tu, id, "approve", nil), http.StatusOK)
 }
 
 func TestBookingEndpointsRejectUnauthenticated(t *testing.T) {

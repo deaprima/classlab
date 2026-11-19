@@ -25,7 +25,7 @@ func TestCreateSchedule(t *testing.T) {
 	if s["start_at"] != at(tue, "08:00") || s["end_at"] != at(tue, "10:00") {
 		t.Errorf("times should be echoed in WIB: %v - %v", s["start_at"], s["end_at"])
 	}
-	if s["created_by"] != e.userIDOf(tuKalabID) {
+	if s["created_by"] != e.userIDOf(adminID) {
 		t.Errorf("created_by = %v; want the caller", s["created_by"])
 	}
 
@@ -267,7 +267,7 @@ func TestExclusionConstraintBacksUpTheApplicationCheck(t *testing.T) {
 
 	_, err := e.pool.Exec(t.Context(),
 		`INSERT INTO room_schedules (room_id, title, start_at, end_at, created_by) VALUES ($1, 'Kedua', $2, $3, $4)`,
-		room, at(tue, "09:00"), at(tue, "11:00"), e.userIDOf(tuKalabID))
+		room, at(tue, "09:00"), at(tue, "11:00"), e.userIDOf(tuID))
 	if err == nil {
 		t.Fatal("database accepted two overlapping schedules for one room")
 	}
@@ -362,4 +362,50 @@ func TestDeleteSchedule(t *testing.T) {
 	}
 	// The slot is usable again.
 	mustStatus(t, e.postSchedule(e.adminToken(), room, "Pengganti", at(tue, "08:00"), at(tue, "10:00"), nil), http.StatusCreated)
+}
+
+// Manual schedules follow the same authority as rooms (BR-10): the approvers of the room's type and
+// ADMIN write them; everyone else is refused, and a refused request leaves the schedule untouched.
+func TestScheduleWritesFollowRoomTypeAuthority(t *testing.T) {
+	e := newEnv(t)
+	tokens := map[string]string{
+		"TU": e.tuToken(), "KALAB": e.kalabToken(), "ADMIN": e.adminToken(),
+		"OB": e.obToken(), "MAHASISWA": e.login(mahasiswaA).accessToken, "ORGANISASI": e.orgToken(),
+	}
+	allowed := map[string][]string{
+		"KELAS": {"TU", "ADMIN"}, "LAB": {"KALAB", "ADMIN"},
+		"AUDITORIUM": {"TU", "ADMIN"}, "RUANG_UJIAN": {"TU", "ADMIN"}, "RUANG_SIDANG": {"TU", "ADMIN"},
+	}
+
+	n := 0
+	for typ, who := range allowed {
+		for role, tok := range tokens {
+			n++
+			may := slices.Contains(who, role)
+			wantCreate, wantChange, wantDelete := http.StatusForbidden, http.StatusForbidden, http.StatusForbidden
+			if may {
+				wantCreate, wantChange, wantDelete = http.StatusCreated, http.StatusOK, http.StatusNoContent
+			}
+
+			room := e.insertRoom("SA-"+typ[:3]+string(rune('A'+n%26))+string(rune('A'+n/26)), typ, 20)
+			if res := e.postSchedule(tok, room, "Kuliah", at(tue, "08:00"), at(tue, "09:00"), nil); res.Code != wantCreate {
+				t.Errorf("%s creating a schedule in a %s room: %d; want %d (%s)", role, typ, res.Code, wantCreate, res.Body.String())
+			}
+			if may {
+				if got := e.countRows("SELECT count(*) FROM room_schedules WHERE room_id = $1", room); got != 1 {
+					t.Errorf("%s in %s: %d schedules written; want 1", role, typ, got)
+				}
+			} else if got := e.countRows("SELECT count(*) FROM room_schedules WHERE room_id = $1", room); got != 0 {
+				t.Errorf("%s in %s: refused request still wrote %d schedule(s)", role, typ, got)
+			}
+
+			existing := e.insertSchedule(room, "Awal", at(tue, "13:00"), at(tue, "14:00"))
+			if res := e.do("PATCH", "/api/v1/schedules/"+existing, map[string]any{"title": "Diubah"}, bearer(tok)); res.Code != wantChange {
+				t.Errorf("%s updating a schedule in a %s room: %d; want %d (%s)", role, typ, res.Code, wantChange, res.Body.String())
+			}
+			if res := e.do("DELETE", "/api/v1/schedules/"+existing, nil, bearer(tok)); res.Code != wantDelete {
+				t.Errorf("%s deleting a schedule in a %s room: %d; want %d (%s)", role, typ, res.Code, wantDelete, res.Body.String())
+			}
+		}
+	}
 }

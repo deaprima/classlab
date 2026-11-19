@@ -1,73 +1,172 @@
+/*
+ * Design tokens from docs/DESIGN.md section 2 (Figma collections Color, Spacing, Radius).
+ * Components bind to the semantic names below, never to raw hex. The shadcn variables
+ * (--background, --primary, ...) are aliases of the same tokens so components/ui follow the theme.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* Color/bg */
+  --bg-canvas: #ededec;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f6f6f5;
+  --bg-muted: #ededec;
+  --bg-inverse: #0a0a0a;
+  --bg-disabled: #ededec;
+  --bg-accent-subtle: #fff3ea;
+  --bg-error-subtle: #fef2f2;
+  --bg-success-subtle: #ecfdf3;
+  --bg-warning-subtle: #fefce8;
+  --text-success: #15803d;
+  --text-warning: #a16207;
+  /* Color/text */
+  --text-primary: #0a0a0a;
+  --text-secondary: #737373;
+  --text-tertiary: #a3a3a3;
+  --text-inverse: #ffffff;
+  --text-accent: #c2410c;
+  --text-on-accent: #ffffff;
+  --text-error: #b91c1c;
+  /* Color/border */
+  --border-default: #e7e7e5;
+  --border-strong: #d4d4d2;
+  --border-hover: #0a0a0a;
+  --border-accent: #ea580c;
+  --border-accent-subtle: #fdba74;
+  --border-error: #b91c1c;
+  /* Color/action, indicator, focus */
+  --action-primary-bg: #0a0a0a;
+  --action-primary-bg-hover: #2b2b2b;
+  --action-primary-text: #ffffff;
+  --action-accent-bg: #ea580c;
+  --action-accent-bg-hover: #f97316;
+  --action-accent-bg-pressed: #c2410c;
+  --action-accent-text: #ffffff;
+  --indicator-accent: #ea580c;
+  --focus-ring: #ea580c;
 
-  --sidebar: var(--background);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--accent);
-  --sidebar-accent-foreground: var(--accent-foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
+  /* Spacing (same values as Tailwind's 4 px scale: 2xs = 0.5, xs = 1, sm = 2, md = 3, lg = 4, xl = 5, 2xl = 6, 3xl = 8, 4xl = 10, 5xl = 12) */
+  --space-0: 0;
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 40px;
+  --space-5xl: 48px;
+
+  /* shadcn aliases */
+  --background: var(--bg-canvas);
+  --foreground: var(--text-primary);
+  --card: var(--bg-surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--action-primary-bg);
+  --primary-foreground: var(--action-primary-text);
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--bg-subtle);
+  --accent-foreground: var(--text-primary);
+  /* DESIGN.md section 9: no red buttons. Red is only the error text/border colour. */
+  --destructive: var(--text-error);
+  --border: var(--border-default);
+  --input: var(--border-strong);
+  --ring: var(--focus-ring);
+  --chart-1: var(--action-accent-bg);
+  --chart-2: var(--text-primary);
+  --chart-3: var(--text-secondary);
+  --chart-4: var(--text-tertiary);
+  --chart-5: var(--border-strong);
+
+  --sidebar: var(--bg-subtle);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--action-primary-bg);
+  --sidebar-primary-foreground: var(--action-primary-text);
+  --sidebar-accent: var(--bg-muted);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-default);
+  --sidebar-ring: var(--focus-ring);
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.14 0.04 259.21);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --bg-canvas: #0a0a0a;
+  --bg-surface: #171717;
+  --bg-subtle: #202020;
+  --bg-muted: #2b2b2b;
+  --bg-inverse: #ffffff;
+  --bg-disabled: #202020;
+  --bg-accent-subtle: #3a1a0a;
+  --bg-error-subtle: #450a0a;
+  --bg-success-subtle: #052e16;
+  --bg-warning-subtle: #422006;
+  --text-success: #4ade80;
+  --text-warning: #facc15;
+  --text-primary: #ffffff;
+  --text-secondary: #a3a3a3;
+  --text-tertiary: #737373;
+  --text-inverse: #0a0a0a;
+  --text-accent: #f97316;
+  --text-error: #f87171;
+  --border-default: #2b2b2b;
+  --border-strong: #525252;
+  --border-hover: #ffffff;
+  --border-accent-subtle: #c2410c;
+  --border-error: #f87171;
+  --action-primary-bg: #ffffff;
+  --action-primary-bg-hover: #e7e7e5;
+  --action-primary-text: #0a0a0a;
 }
 
 @theme inline {
-  --font-inter: 'Inter', 'sans-serif';
-  --font-manrope: 'Manrope', 'sans-serif';
+  --font-sans: 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif;
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Radius/*. `full` is Tailwind's rounded-full. */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-3xl: 32px;
+
+  /* Semantic surfaces: bg-canvas, bg-surface, bg-subtle, bg-inverse, ... */
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-subtle: var(--bg-subtle);
+  --color-inverse: var(--bg-inverse);
+  --color-disabled: var(--bg-disabled);
+  --color-accent-subtle: var(--bg-accent-subtle);
+  --color-error-subtle: var(--bg-error-subtle);
+  --color-success-subtle: var(--bg-success-subtle);
+  --color-warning-subtle: var(--bg-warning-subtle);
+  /* Text: text-fg, text-fg-secondary, ... (the name `text-text-*` would be unreadable). */
+  --color-fg: var(--text-primary);
+  --color-fg-secondary: var(--text-secondary);
+  --color-fg-tertiary: var(--text-tertiary);
+  --color-fg-inverse: var(--text-inverse);
+  --color-fg-accent: var(--text-accent);
+  --color-fg-error: var(--text-error);
+  --color-fg-success: var(--text-success);
+  --color-fg-warning: var(--text-warning);
+  /* Borders: border-line, border-line-strong, ... */
+  --color-line: var(--border-default);
+  --color-line-strong: var(--border-strong);
+  --color-line-hover: var(--border-hover);
+  --color-line-accent: var(--border-accent);
+  --color-line-accent-subtle: var(--border-accent-subtle);
+  --color-line-error: var(--border-error);
+  /* The single orange accent: bg-brand (button), text-on-brand, bg-indicator (dot). */
+  --color-brand: var(--action-accent-bg);
+  --color-brand-hover: var(--action-accent-bg-hover);
+  --color-brand-pressed: var(--action-accent-bg-pressed);
+  --color-on-brand: var(--action-accent-text);
+  --color-indicator: var(--indicator-accent);
+  --color-primary-hover: var(--action-primary-bg-hover);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

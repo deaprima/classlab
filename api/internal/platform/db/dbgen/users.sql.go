@@ -13,12 +13,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveKaprodi = `-- name: CountActiveKaprodi :one
-SELECT count(*) FROM users WHERE role = 'KAPRODI' AND is_active
+const countActiveAdmins = `-- name: CountActiveAdmins :one
+SELECT count(*) FROM users WHERE role = 'ADMIN' AND is_active
 `
 
-func (q *Queries) CountActiveKaprodi(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveKaprodi)
+func (q *Queries) CountActiveAdmins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveAdmins)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -62,31 +62,39 @@ func (q *Queries) CountUsers(ctx context.Context, arg CountUsersParams) (int64, 
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (org_unit_id, identifier, name, email, password_hash, role, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-RETURNING id, org_unit_id, identifier, name, email, role, is_active, created_at, updated_at
+INSERT INTO users (org_unit_id, identifier, name, email, password_hash, role, pic_name, pic_phone, must_change_password, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+RETURNING id, org_unit_id, identifier, name, email, role, is_active, booking_blocked_until,
+          pic_name, pic_phone, must_change_password, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	OrgUnitID    uuid.UUID `json:"org_unit_id"`
-	Identifier   string    `json:"identifier"`
-	Name         string    `json:"name"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash"`
-	Role         UserRole  `json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
+	OrgUnitID          uuid.UUID   `json:"org_unit_id"`
+	Identifier         string      `json:"identifier"`
+	Name               string      `json:"name"`
+	Email              pgtype.Text `json:"email"`
+	PasswordHash       string      `json:"password_hash"`
+	Role               UserRole    `json:"role"`
+	PicName            pgtype.Text `json:"pic_name"`
+	PicPhone           pgtype.Text `json:"pic_phone"`
+	MustChangePassword bool        `json:"must_change_password"`
+	CreatedAt          time.Time   `json:"created_at"`
 }
 
 type CreateUserRow struct {
-	ID         uuid.UUID `json:"id"`
-	OrgUnitID  uuid.UUID `json:"org_unit_id"`
-	Identifier string    `json:"identifier"`
-	Name       string    `json:"name"`
-	Email      string    `json:"email"`
-	Role       UserRole  `json:"role"`
-	IsActive   bool      `json:"is_active"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgUnitID           uuid.UUID          `json:"org_unit_id"`
+	Identifier          string             `json:"identifier"`
+	Name                string             `json:"name"`
+	Email               pgtype.Text        `json:"email"`
+	Role                UserRole           `json:"role"`
+	IsActive            bool               `json:"is_active"`
+	BookingBlockedUntil pgtype.Timestamptz `json:"booking_blocked_until"`
+	PicName             pgtype.Text        `json:"pic_name"`
+	PicPhone            pgtype.Text        `json:"pic_phone"`
+	MustChangePassword  bool               `json:"must_change_password"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
@@ -97,6 +105,9 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		arg.Email,
 		arg.PasswordHash,
 		arg.Role,
+		arg.PicName,
+		arg.PicPhone,
+		arg.MustChangePassword,
 		arg.CreatedAt,
 	)
 	var i CreateUserRow
@@ -108,28 +119,49 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		&i.Email,
 		&i.Role,
 		&i.IsActive,
+		&i.BookingBlockedUntil,
+		&i.PicName,
+		&i.PicPhone,
+		&i.MustChangePassword,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const getPasswordHash = `-- name: GetPasswordHash :one
+SELECT password_hash FROM users WHERE id = $1
+`
+
+// The current password is checked against this hash when a user changes it.
+func (q *Queries) GetPasswordHash(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getPasswordHash, id)
+	var password_hash string
+	err := row.Scan(&password_hash)
+	return password_hash, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, org_unit_id, identifier, name, email, role, is_active, created_at, updated_at
+SELECT id, org_unit_id, identifier, name, email, role, is_active, booking_blocked_until,
+       pic_name, pic_phone, must_change_password, created_at, updated_at
 FROM users
 WHERE id = $1
 `
 
 type GetUserByIDRow struct {
-	ID         uuid.UUID `json:"id"`
-	OrgUnitID  uuid.UUID `json:"org_unit_id"`
-	Identifier string    `json:"identifier"`
-	Name       string    `json:"name"`
-	Email      string    `json:"email"`
-	Role       UserRole  `json:"role"`
-	IsActive   bool      `json:"is_active"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgUnitID           uuid.UUID          `json:"org_unit_id"`
+	Identifier          string             `json:"identifier"`
+	Name                string             `json:"name"`
+	Email               pgtype.Text        `json:"email"`
+	Role                UserRole           `json:"role"`
+	IsActive            bool               `json:"is_active"`
+	BookingBlockedUntil pgtype.Timestamptz `json:"booking_blocked_until"`
+	PicName             pgtype.Text        `json:"pic_name"`
+	PicPhone            pgtype.Text        `json:"pic_phone"`
+	MustChangePassword  bool               `json:"must_change_password"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error) {
@@ -143,6 +175,10 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 		&i.Email,
 		&i.Role,
 		&i.IsActive,
+		&i.BookingBlockedUntil,
+		&i.PicName,
+		&i.PicPhone,
+		&i.MustChangePassword,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -150,15 +186,33 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 }
 
 const getUserForLogin = `-- name: GetUserForLogin :one
-SELECT id, org_unit_id, identifier, name, email, password_hash, role, is_active, created_at, updated_at
+SELECT id, org_unit_id, identifier, name, email, password_hash, role, is_active, booking_blocked_until,
+       pic_name, pic_phone, must_change_password, created_at, updated_at
 FROM users
 WHERE identifier = $1
 `
 
+type GetUserForLoginRow struct {
+	ID                  uuid.UUID          `json:"id"`
+	OrgUnitID           uuid.UUID          `json:"org_unit_id"`
+	Identifier          string             `json:"identifier"`
+	Name                string             `json:"name"`
+	Email               pgtype.Text        `json:"email"`
+	PasswordHash        string             `json:"password_hash"`
+	Role                UserRole           `json:"role"`
+	IsActive            bool               `json:"is_active"`
+	BookingBlockedUntil pgtype.Timestamptz `json:"booking_blocked_until"`
+	PicName             pgtype.Text        `json:"pic_name"`
+	PicPhone            pgtype.Text        `json:"pic_phone"`
+	MustChangePassword  bool               `json:"must_change_password"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+}
+
 // Credentials lookup is the only query that returns password_hash.
-func (q *Queries) GetUserForLogin(ctx context.Context, identifier string) (User, error) {
+func (q *Queries) GetUserForLogin(ctx context.Context, identifier string) (GetUserForLoginRow, error) {
 	row := q.db.QueryRow(ctx, getUserForLogin, identifier)
-	var i User
+	var i GetUserForLoginRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgUnitID,
@@ -168,6 +222,10 @@ func (q *Queries) GetUserForLogin(ctx context.Context, identifier string) (User,
 		&i.PasswordHash,
 		&i.Role,
 		&i.IsActive,
+		&i.BookingBlockedUntil,
+		&i.PicName,
+		&i.PicPhone,
+		&i.MustChangePassword,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -175,7 +233,8 @@ func (q *Queries) GetUserForLogin(ctx context.Context, identifier string) (User,
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, org_unit_id, identifier, name, email, role, is_active, created_at, updated_at
+SELECT id, org_unit_id, identifier, name, email, role, is_active, booking_blocked_until,
+       pic_name, pic_phone, must_change_password, created_at, updated_at
 FROM users
 WHERE ($1::user_role IS NULL OR role = $1::user_role)
   AND ($2::boolean IS NULL OR is_active = $2::boolean)
@@ -198,15 +257,19 @@ type ListUsersParams struct {
 }
 
 type ListUsersRow struct {
-	ID         uuid.UUID `json:"id"`
-	OrgUnitID  uuid.UUID `json:"org_unit_id"`
-	Identifier string    `json:"identifier"`
-	Name       string    `json:"name"`
-	Email      string    `json:"email"`
-	Role       UserRole  `json:"role"`
-	IsActive   bool      `json:"is_active"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgUnitID           uuid.UUID          `json:"org_unit_id"`
+	Identifier          string             `json:"identifier"`
+	Name                string             `json:"name"`
+	Email               pgtype.Text        `json:"email"`
+	Role                UserRole           `json:"role"`
+	IsActive            bool               `json:"is_active"`
+	BookingBlockedUntil pgtype.Timestamptz `json:"booking_blocked_until"`
+	PicName             pgtype.Text        `json:"pic_name"`
+	PicPhone            pgtype.Text        `json:"pic_phone"`
+	MustChangePassword  bool               `json:"must_change_password"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
 func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error) {
@@ -232,6 +295,10 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 			&i.Email,
 			&i.Role,
 			&i.IsActive,
+			&i.BookingBlockedUntil,
+			&i.PicName,
+			&i.PicPhone,
+			&i.MustChangePassword,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -245,31 +312,79 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 	return items, nil
 }
 
-const lockKaprodiGuard = `-- name: LockKaprodiGuard :exec
-SELECT pg_advisory_xact_lock(hashtextextended('kaprodi-guard', 0))
+const lockAdminGuard = `-- name: LockAdminGuard :exec
+SELECT pg_advisory_xact_lock(hashtextextended('admin-guard', 0))
 `
 
-// Taken before an account change that could remove the last Kaprodi, so two such changes made at
-// the same moment cannot each see "the other one is still there".
-func (q *Queries) LockKaprodiGuard(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockKaprodiGuard)
+// Taken before an account change that could remove the last administrator, so two such changes made
+// at the same moment cannot each see "the other one is still there".
+func (q *Queries) LockAdminGuard(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockAdminGuard)
 	return err
 }
 
+const lockUser = `-- name: LockUser :one
+SELECT id, org_unit_id, identifier, name, email, role, is_active, booking_blocked_until,
+       pic_name, pic_phone, must_change_password, created_at, updated_at
+FROM users
+WHERE id = $1
+FOR UPDATE
+`
+
+type LockUserRow struct {
+	ID                  uuid.UUID          `json:"id"`
+	OrgUnitID           uuid.UUID          `json:"org_unit_id"`
+	Identifier          string             `json:"identifier"`
+	Name                string             `json:"name"`
+	Email               pgtype.Text        `json:"email"`
+	Role                UserRole           `json:"role"`
+	IsActive            bool               `json:"is_active"`
+	BookingBlockedUntil pgtype.Timestamptz `json:"booking_blocked_until"`
+	PicName             pgtype.Text        `json:"pic_name"`
+	PicPhone            pgtype.Text        `json:"pic_phone"`
+	MustChangePassword  bool               `json:"must_change_password"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+}
+
+// Row lock for changes that read the account first (before-state for the audit log, last-admin check).
+func (q *Queries) LockUser(ctx context.Context, id uuid.UUID) (LockUserRow, error) {
+	row := q.db.QueryRow(ctx, lockUser, id)
+	var i LockUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgUnitID,
+		&i.Identifier,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.IsActive,
+		&i.BookingBlockedUntil,
+		&i.PicName,
+		&i.PicPhone,
+		&i.MustChangePassword,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const seedUser = `-- name: SeedUser :execrows
-INSERT INTO users (org_unit_id, identifier, name, email, password_hash, role, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO users (org_unit_id, identifier, name, email, password_hash, role, pic_name, pic_phone, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 ON CONFLICT (identifier) DO NOTHING
 `
 
 type SeedUserParams struct {
-	OrgUnitID    uuid.UUID `json:"org_unit_id"`
-	Identifier   string    `json:"identifier"`
-	Name         string    `json:"name"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash"`
-	Role         UserRole  `json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
+	OrgUnitID    uuid.UUID   `json:"org_unit_id"`
+	Identifier   string      `json:"identifier"`
+	Name         string      `json:"name"`
+	Email        pgtype.Text `json:"email"`
+	PasswordHash string      `json:"password_hash"`
+	Role         UserRole    `json:"role"`
+	PicName      pgtype.Text `json:"pic_name"`
+	PicPhone     pgtype.Text `json:"pic_phone"`
+	CreatedAt    time.Time   `json:"created_at"`
 }
 
 func (q *Queries) SeedUser(ctx context.Context, arg SeedUserParams) (int64, error) {
@@ -280,6 +395,8 @@ func (q *Queries) SeedUser(ctx context.Context, arg SeedUserParams) (int64, erro
 		arg.Email,
 		arg.PasswordHash,
 		arg.Role,
+		arg.PicName,
+		arg.PicPhone,
 		arg.CreatedAt,
 	)
 	if err != nil {
@@ -288,47 +405,81 @@ func (q *Queries) SeedUser(ctx context.Context, arg SeedUserParams) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const setUserPassword = `-- name: SetUserPassword :exec
+UPDATE users SET password_hash = $2, must_change_password = $3, updated_at = $4 WHERE id = $1
+`
+
+type SetUserPasswordParams struct {
+	ID                 uuid.UUID `json:"id"`
+	PasswordHash       string    `json:"password_hash"`
+	MustChangePassword bool      `json:"must_change_password"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// Used by change-password and reset-password; must_change_password says who chose the new password.
+func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, setUserPassword,
+		arg.ID,
+		arg.PasswordHash,
+		arg.MustChangePassword,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const updateUser = `-- name: UpdateUser :one
 UPDATE users SET
-  name          = COALESCE($1, name),
-  email         = COALESCE($2, email),
-  role          = COALESCE($3::user_role, role),
-  is_active     = COALESCE($4, is_active),
-  password_hash = COALESCE($5, password_hash),
-  updated_at    = $6
-WHERE id = $7
-RETURNING id, org_unit_id, identifier, name, email, role, is_active, created_at, updated_at
+  name           = COALESCE($1, name),
+  email          = COALESCE($2, email),
+  role           = COALESCE($3::user_role, role),
+  is_active      = COALESCE($4, is_active),
+  pic_name       = COALESCE($5, pic_name),
+  pic_phone      = COALESCE($6, pic_phone),
+  booking_blocked_until = CASE WHEN $7::boolean THEN NULL ELSE booking_blocked_until END,
+  updated_at     = $8
+WHERE id = $9
+RETURNING id, org_unit_id, identifier, name, email, role, is_active, booking_blocked_until,
+          pic_name, pic_phone, must_change_password, created_at, updated_at
 `
 
 type UpdateUserParams struct {
-	Name         pgtype.Text  `json:"name"`
-	Email        pgtype.Text  `json:"email"`
-	Role         NullUserRole `json:"role"`
-	IsActive     pgtype.Bool  `json:"is_active"`
-	PasswordHash pgtype.Text  `json:"password_hash"`
-	UpdatedAt    time.Time    `json:"updated_at"`
-	ID           uuid.UUID    `json:"id"`
+	Name              pgtype.Text  `json:"name"`
+	Email             pgtype.Text  `json:"email"`
+	Role              NullUserRole `json:"role"`
+	IsActive          pgtype.Bool  `json:"is_active"`
+	PicName           pgtype.Text  `json:"pic_name"`
+	PicPhone          pgtype.Text  `json:"pic_phone"`
+	ClearBookingBlock bool         `json:"clear_booking_block"`
+	UpdatedAt         time.Time    `json:"updated_at"`
+	ID                uuid.UUID    `json:"id"`
 }
 
 type UpdateUserRow struct {
-	ID         uuid.UUID `json:"id"`
-	OrgUnitID  uuid.UUID `json:"org_unit_id"`
-	Identifier string    `json:"identifier"`
-	Name       string    `json:"name"`
-	Email      string    `json:"email"`
-	Role       UserRole  `json:"role"`
-	IsActive   bool      `json:"is_active"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgUnitID           uuid.UUID          `json:"org_unit_id"`
+	Identifier          string             `json:"identifier"`
+	Name                string             `json:"name"`
+	Email               pgtype.Text        `json:"email"`
+	Role                UserRole           `json:"role"`
+	IsActive            bool               `json:"is_active"`
+	BookingBlockedUntil pgtype.Timestamptz `json:"booking_blocked_until"`
+	PicName             pgtype.Text        `json:"pic_name"`
+	PicPhone            pgtype.Text        `json:"pic_phone"`
+	MustChangePassword  bool               `json:"must_change_password"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
+// clear_booking_block is a flag because "leave unchanged" and "set to NULL" cannot both be NULL.
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
 	row := q.db.QueryRow(ctx, updateUser,
 		arg.Name,
 		arg.Email,
 		arg.Role,
 		arg.IsActive,
-		arg.PasswordHash,
+		arg.PicName,
+		arg.PicPhone,
+		arg.ClearBookingBlock,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -341,6 +492,10 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateU
 		&i.Email,
 		&i.Role,
 		&i.IsActive,
+		&i.BookingBlockedUntil,
+		&i.PicName,
+		&i.PicPhone,
+		&i.MustChangePassword,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

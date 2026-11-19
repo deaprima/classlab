@@ -19,7 +19,7 @@ const originalAdapter = api.defaults.adapter
 const TU = {
   ...sampleUser,
   id: 'tu-id',
-  role: 'TU_KALAB' as const,
+  role: 'TU' as const,
   name: 'Siti',
 }
 
@@ -34,6 +34,8 @@ const booking: Booking = {
     type: 'LAB',
     capacity: 40,
     facilities: [],
+    open_time: '07:00',
+    close_time: '21:00',
     is_active: true,
   },
   requester_id: sampleUser.id,
@@ -41,7 +43,16 @@ const booking: Booking = {
   start_at: '2099-10-21T13:00:00+07:00',
   end_at: '2099-10-21T14:30:00+07:00',
   purpose: 'Latihan kelompok',
+  details: {},
   status: 'MENUNGGU',
+  approval_mode: 'MANUAL',
+  manual_reason: 'ROOM_POLICY',
+  group_id: null,
+  occurrence_no: null,
+  occurrence_count: 1,
+  expires_at: null,
+  edited_at: null,
+  letter: null,
   created_at: '2026-10-14T09:00:00+07:00',
 }
 
@@ -110,7 +121,7 @@ describe('BookingActions', () => {
 
     await vi.waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('Ruang sudah terpakai.', {
-        description: expect.stringContaining('13:00–15:00'),
+        description: expect.stringContaining('13:00 – 15:00'),
       })
     )
   })
@@ -141,10 +152,10 @@ describe('BookingActions', () => {
     )
   })
 
-  it('renders nothing for Kaprodi', async () => {
+  it('renders nothing for a role that neither owns nor approves', async () => {
     useAuthStore
       .getState()
-      .auth.setSession('t', { ...sampleUser, id: 'k', role: 'KAPRODI' })
+      .auth.setSession('t', { ...sampleUser, id: 'k', role: 'OB' })
     const screen = await renderActions()
 
     expect(screen.container.querySelectorAll('button')).toHaveLength(0)

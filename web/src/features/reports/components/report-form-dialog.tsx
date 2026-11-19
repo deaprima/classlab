@@ -89,7 +89,7 @@ function ReportFormContent({
   const create = useCreateReport({
     onSuccess: (report) => {
       toast.success(
-        `Laporan untuk ${report.room.code} terkirim ke TU/Kepala Lab.`
+        `Laporan untuk ${report.room.code} terkirim ke TU/Pengurus Lab.`
       )
       onCreated(report)
     },
@@ -122,8 +122,8 @@ function ReportFormContent({
         <DialogHeader>
           <DialogTitle>Laporkan kerusakan</DialogTitle>
           <DialogDescription>
-            Laporan dikirim ke TU/Kepala Lab. Anda akan diberi tahu setiap kali
-            statusnya berubah.
+            Laporan dikirim ke TU/Pengurus Lab. Anda akan diberi tahu setiap
+            kali statusnya berubah.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

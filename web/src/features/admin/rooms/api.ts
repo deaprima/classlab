@@ -8,6 +8,7 @@ import { api } from '@/lib/api-client'
 import {
   type CreateRoomRequest,
   type Room,
+  type RoomQR,
   type UpdateRoomRequest,
 } from '@/lib/api-types'
 import { queryKeys } from '@/lib/query-keys'
@@ -64,6 +65,21 @@ export function useDeleteRoom(options: MutationOptions = {}) {
     onSuccess: (room) => {
       invalidateRooms(queryClient)
       toast.success(`Ruang ${room.code} dihapus.`)
+      options.onSuccess?.()
+    },
+    ...(options.onError && { onError: options.onError }),
+  })
+}
+
+/** Issues a new token; the old one stops working at once (check-in with it answers QR_INVALID). */
+export function useRotateRoomQr(options: MutationOptions = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (room: Room) =>
+      (await api.post<RoomQR>(`/rooms/${room.id}/qr/rotate`)).data,
+    onSuccess: (qr, room) => {
+      queryClient.setQueryData(queryKeys.rooms.qr(room.id), qr)
+      toast.success(`Token QR ${room.code} diganti.`)
       options.onSuccess?.()
     },
     ...(options.onError && { onError: options.onError }),

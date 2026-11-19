@@ -6,9 +6,9 @@ import {
 } from 'react-hook-form'
 import { type ErrorBody } from './api-types'
 
-export type ApiErrorDetail = ErrorBody['error']['details'][number]
+type ApiErrorDetail = ErrorBody['error']['details'][number]
 
-export type ApiError = {
+type ApiError = {
   status: number
   code: string
   message: string

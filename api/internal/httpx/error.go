@@ -32,6 +32,11 @@ type ErrorDetail struct {
 	Status  string `json:"status,omitempty"`
 	StartAt string `json:"start_at,omitempty"`
 	EndAt   string `json:"end_at,omitempty"`
+	// Line and Column locate a problem in an uploaded CSV file (BR-23, BR-24); line 1 is the header.
+	Line   int    `json:"line,omitempty"`
+	Column string `json:"column,omitempty"`
+	// OccurrenceNo says which date of a multi-date request a problem belongs to, counting from 1 (BR-27).
+	OccurrenceNo int `json:"occurrence_no,omitempty"`
 }
 
 type ErrorBody struct {
@@ -211,6 +216,16 @@ func MapError(err error, requestID string) (int, ErrorEnvelope) {
 		},
 	}
 }
+
+// ErrPasswordChangeRequired is returned for every route except the three a user with a temporary password
+// may use to change it (BR-24).
+var ErrPasswordChangeRequired = NewCustomError(http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED",
+	"Anda harus mengganti password sementara sebelum melanjutkan.", nil, ErrForbidden)
+
+// ErrRoomTypeNotAllowed is returned when the requester's role is not among the room type's
+// requester_roles (BR-17, BR-20).
+var ErrRoomTypeNotAllowed = NewCustomError(http.StatusForbidden, "ROOM_TYPE_NOT_ALLOWED",
+	"Peran Anda tidak dapat mengajukan booking untuk tipe ruang ini.", nil, ErrForbidden)
 
 // ValidationError builds a 422 VALIDATION_ERROR carrying per-field details.
 func ValidationError(details ...ErrorDetail) *CustomDomainError {

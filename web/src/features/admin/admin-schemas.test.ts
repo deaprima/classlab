@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseFacilities, roomFormSchema } from './rooms/room-schema'
 import { scheduleFormSchema, sessionCount } from './schedules/schedule-schema'
-import { createUserSchema, resetPasswordSchema } from './users/user-schema'
+import { createUserSchema, editUserSchema } from './users/user-schema'
 
 describe('room form', () => {
   const base = {
@@ -42,6 +42,18 @@ describe('room form', () => {
     expect(
       roomFormSchema.safeParse({ ...base, facilities: many }).success
     ).toBe(false)
+  })
+
+  it('takes opening hours as a pair on 30-minute steps (BR-29)', () => {
+    const hours = (open_time: string, close_time: string) =>
+      roomFormSchema.safeParse({ ...base, open_time, close_time }).success
+    expect(hours('', '')).toBe(true)
+    expect(hours('07:00', '22:00')).toBe(true)
+    expect(hours('07:00', '')).toBe(false)
+    expect(hours('', '22:00')).toBe(false)
+    expect(hours('07:15', '22:00')).toBe(false)
+    expect(hours('22:00', '07:00')).toBe(false)
+    expect(hours('08:00', '08:00')).toBe(false)
   })
 })
 
@@ -103,6 +115,8 @@ describe('user forms', () => {
       email: 'fajar@classlab.test',
       role: 'MAHASISWA' as const,
       password: 'rahasia-123',
+      pic_name: '',
+      pic_phone: '',
     }
     expect(createUserSchema.safeParse(base).success).toBe(true)
     expect(
@@ -116,11 +130,43 @@ describe('user forms', () => {
     ).toBe(false)
   })
 
-  it('requires the password confirmation to match', () => {
-    const r = resetPasswordSchema.safeParse({
+  it('treats email as optional', () => {
+    const r = createUserSchema.safeParse({
+      identifier: '2021101006',
+      name: 'Fajar',
+      email: '',
+      role: 'MAHASISWA',
       password: 'rahasia-123',
-      confirm: 'lain-123',
+      pic_name: '',
+      pic_phone: '',
     })
-    expect(r.error?.issues[0].message).toBe('Konfirmasi kata sandi tidak sama.')
+    expect(r.success).toBe(true)
+  })
+
+  it('requires the person in charge only for ORGANISASI', () => {
+    const base = {
+      identifier: 'himpunan01',
+      name: 'Himpunan Informatika',
+      email: '',
+      role: 'ORGANISASI' as const,
+      password: 'rahasia-123',
+      pic_name: '',
+      pic_phone: '',
+    }
+    const missing = createUserSchema.safeParse(base)
+    expect(missing.error?.issues.map((i) => i.path[0])).toEqual([
+      'pic_name',
+      'pic_phone',
+    ])
+    expect(
+      createUserSchema.safeParse({
+        ...base,
+        pic_name: 'Rina',
+        pic_phone: '081234567890',
+      }).success
+    ).toBe(true)
+    expect(editUserSchema.safeParse({ ...base, is_active: true }).success).toBe(
+      false
+    )
   })
 })

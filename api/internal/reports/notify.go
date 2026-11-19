@@ -6,43 +6,28 @@ import (
 	"time"
 
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/db/dbgen"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const (
-	typeCreated       = "REPORT_CREATED"
-	typeStatusChanged = "REPORT_STATUS_CHANGED"
-	refTypeReport     = "REPORT"
-
-	excerptRunes = 80
-)
+const excerptRunes = 80
 
 // The notify helpers take the transaction's *dbgen.Queries on purpose: a notification must commit or
 // roll back together with the change that caused it (brief section 5, "Tipe notifikasi").
 
-// notifyCreated tells every active TU/Kalab about a new report, except the reporter if they are one.
-func notifyCreated(ctx context.Context, q *dbgen.Queries, r Report, now time.Time) error {
-	err := q.CreateNotificationForRole(ctx, dbgen.CreateNotificationForRoleParams{
-		Role:          dbgen.UserRoleTUKALAB,
-		Type:          typeCreated,
-		Title:         "Laporan kerusakan baru",
-		Body:          fmt.Sprintf("%s melaporkan kerusakan di %s: %s", r.Reporter.Name, r.Room.Code, excerpt(r.Description)),
-		RefType:       pgtype.Text{String: refTypeReport, Valid: true},
-		RefID:         pgtype.UUID{Bytes: r.ID, Valid: true},
-		CreatedAt:     now,
-		ExcludeUserID: pgtype.UUID{Bytes: r.ReporterID, Valid: true},
-	})
-	if err != nil {
-		return fmt.Errorf("notifying handlers: %w", err)
-	}
-	return nil
+// notifyCreated tells every active approver of the room's type about a new report, except the reporter if they are one.
+func (s *Service) notifyCreated(ctx context.Context, q *dbgen.Queries, r Report, now time.Time) error {
+	return s.notifier.ToApprovers(ctx, q, r.Room.Type, notifications.Message{
+		Type:    notifications.TypeReportCreated,
+		Title:   "Laporan kerusakan baru",
+		Body:    fmt.Sprintf("%s melaporkan kerusakan di %s: %s", r.Reporter.Name, r.Room.Code, excerpt(r.Description)),
+		RefType: notifications.RefReport, RefID: r.ID,
+	}, r.ReporterID, now)
 }
 
 // notifyStatusChanged tells the reporter about progress. A reporter who changed the status
 // themselves (a TU/Kalab handling their own report) is not told about their own action.
-func notifyStatusChanged(ctx context.Context, q *dbgen.Queries, r Report, actor httpx.Principal, note string, now time.Time) error {
+func (s *Service) notifyStatusChanged(ctx context.Context, q *dbgen.Queries, r Report, actor httpx.Principal, note string, now time.Time) error {
 	if actor.UserID == r.ReporterID {
 		return nil
 	}
@@ -50,16 +35,10 @@ func notifyStatusChanged(ctx context.Context, q *dbgen.Queries, r Report, actor 
 	if note != "" {
 		body += " Catatan: " + note
 	}
-	err := q.CreateNotification(ctx, dbgen.CreateNotificationParams{
-		UserID: r.ReporterID, Type: typeStatusChanged, Title: "Status laporan diperbarui", Body: body,
-		RefType:   pgtype.Text{String: refTypeReport, Valid: true},
-		RefID:     pgtype.UUID{Bytes: r.ID, Valid: true},
-		CreatedAt: now,
-	})
-	if err != nil {
-		return fmt.Errorf("notifying reporter: %w", err)
-	}
-	return nil
+	return s.notifier.ToUser(ctx, q, r.ReporterID, notifications.Message{
+		Type: notifications.TypeReportStatusChanged, Title: "Status laporan diperbarui", Body: body,
+		RefType: notifications.RefReport, RefID: r.ID,
+	}, now)
 }
 
 // excerpt shortens a description for a notification, cutting on a character boundary.

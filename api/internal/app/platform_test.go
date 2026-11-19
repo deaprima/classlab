@@ -60,24 +60,26 @@ func TestSeedIsIdempotentAndGuardsProduction(t *testing.T) {
 	if err := e.pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM org_units)").Scan(&users, &units); err != nil {
 		t.Fatal(err)
 	}
-	if users != 8 || units != 1 {
-		t.Errorf("after two runs: %d users, %d org units; want 8 and 1", users, units)
+	if users != 10 || units != 1 {
+		t.Errorf("after two runs: %d users, %d org units; want 10 and 1", users, units)
 	}
 
-	// Six rooms (3 KELAS, 3 LAB) and a 12-class weekly timetable over 16 weeks, owned by TU/Kalab.
-	var kelas, lab, schedules, byOthers int
+	// Ten rooms (3 KELAS, 3 LAB, 1 AUDITORIUM, 2 RUANG_UJIAN, 1 RUANG_SIDANG) and a 12-class weekly timetable over
+	// 16 weeks for the original six, owned by TU.
+	var kelas, lab, rooms, schedules, byOthers int
 	if err := e.pool.QueryRow(t.Context(), `SELECT
 		(SELECT count(*) FROM rooms WHERE type = 'KELAS'),
 		(SELECT count(*) FROM rooms WHERE type = 'LAB'),
+		(SELECT count(*) FROM rooms),
 		(SELECT count(*) FROM room_schedules WHERE source = 'AKADEMIK'),
-		(SELECT count(*) FROM room_schedules WHERE created_by <> $1)`, e.userIDOf(tuKalabID)).Scan(&kelas, &lab, &schedules, &byOthers); err != nil {
+		(SELECT count(*) FROM room_schedules WHERE created_by <> $1)`, e.userIDOf(tuID)).Scan(&kelas, &lab, &rooms, &schedules, &byOthers); err != nil {
 		t.Fatal(err)
 	}
-	if kelas != 3 || lab != 3 || schedules != 12*16 || byOthers != 0 {
-		t.Errorf("rooms: %d KELAS, %d LAB; schedules: %d (others' %d); want 3, 3, 192, 0", kelas, lab, schedules, byOthers)
+	if kelas != 3 || lab != 3 || rooms != 10 || schedules != 12*16 || byOthers != 0 {
+		t.Errorf("rooms: %d KELAS, %d LAB, %d in total; schedules: %d (others' %d); want 3, 3, 10, 192, 0", kelas, lab, rooms, schedules, byOthers)
 	}
 
-	// One account per role plus five students, as specified.
+	// One account per role, the organisation among them, plus five students.
 	rows, err := e.pool.Query(t.Context(), "SELECT role, count(*) FROM users GROUP BY role")
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +94,12 @@ func TestSeedIsIdempotentAndGuardsProduction(t *testing.T) {
 		}
 		perRole[role] = n
 	}
-	if perRole["KAPRODI"] != 1 || perRole["TU_KALAB"] != 1 || perRole["OB"] != 1 || perRole["MAHASISWA"] != 5 {
+	for _, role := range []string{"ADMIN", "TU", "KALAB", "OB", "ORGANISASI"} {
+		if perRole[role] != 1 {
+			t.Errorf("role %s: %d accounts; want 1 (distribution %v)", role, perRole[role], perRole)
+		}
+	}
+	if perRole["MAHASISWA"] != 5 {
 		t.Errorf("role distribution = %v", perRole)
 	}
 

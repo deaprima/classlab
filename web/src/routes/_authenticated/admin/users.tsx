@@ -8,7 +8,7 @@ const searchSchema = z.object({
   page: positiveIntParam,
   q: z.string().optional().catch(undefined),
   role: z
-    .enum(['MAHASISWA', 'TU_KALAB', 'OB', 'KAPRODI'])
+    .enum(['MAHASISWA', 'ORGANISASI', 'TU', 'KALAB', 'OB', 'ADMIN'])
     .optional()
     .catch(undefined),
   status: z.enum(['active', 'inactive']).optional().catch(undefined),

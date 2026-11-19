@@ -9,7 +9,7 @@ describe('notificationTarget', () => {
     expect(
       notificationTarget(
         { type: 'BOOKING_CREATED', ref_type: 'BOOKING', ref_id: id },
-        'TU_KALAB'
+        'TU'
       )
     ).toEqual({ to: '/approvals', search: { booking: id } })
   })
@@ -35,7 +35,7 @@ describe('notificationTarget', () => {
   it('has no target without a reference or a page the role can open', () => {
     expect(
       notificationTarget(
-        { type: 'X', ref_type: undefined, ref_id: undefined },
+        { type: 'BOOKING_APPROVED', ref_type: undefined, ref_id: undefined },
         'OB'
       )
     ).toBeNull()

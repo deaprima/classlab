@@ -60,7 +60,7 @@ export interface paths {
         put?: never;
         /**
          * Login pengguna
-         * @description Refresh token dikirim hanya lewat cookie `refresh_token` (httpOnly, SameSite=Strict, Path=/api/v1/auth), tidak pernah di body. Maksimal 5 percobaan per 15 menit per (identifier + IP).
+         * @description Refresh token dikirim hanya lewat cookie `refresh_token` (httpOnly, SameSite=Strict, Path=/api/v1/auth), tidak pernah di body. Maksimal 5 percobaan per 15 menit per (identifier + IP). Bila `must_change_password` bernilai `true`, klien harus mengarahkan pengguna ke `POST /auth/change-password` sebelum memakai endpoint lain.
          */
         post: {
             parameters: {
@@ -92,6 +92,8 @@ export interface paths {
                             /** @example 900 */
                             expires_in: number;
                             user: components["schemas"]["User"];
+                            /** @description Sama dengan `user.must_change_password`; `true` bila akun masih memakai password sementara. */
+                            must_change_password: boolean;
                         };
                     };
                 };
@@ -172,7 +174,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout dan cabut refresh token */
+        /**
+         * Logout dan cabut refresh token
+         * @description Tetap dapat dipakai saat `must_change_password` bernilai `true`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -205,7 +210,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Dapatkan profil pengguna saat ini */
+        /**
+         * Dapatkan profil pengguna saat ini
+         * @description Tetap dapat dipakai saat `must_change_password` bernilai `true`. Untuk MAHASISWA dan ORGANISASI, respons memuat `active_points` (poin pelanggaran aktif).
+         */
         get: {
             parameters: {
                 query?: never;
@@ -235,6 +243,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ganti password sendiri
+         * @description Mengganti password setelah memverifikasi password saat ini; `must_change_password` menjadi `false`. Seluruh sesi lain pengguna dicabut, sesi yang dipakai (refresh token pada cookie) tetap hidup. Password saat ini yang salah dijawab 422 pada field `current_password` (bukan 401). Tetap dapat dipakai saat `must_change_password` bernilai `true`. Percobaan dibatasi per pengguna; melebihi batas dijawab 429 dengan `Retry-After`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        current_password: string;
+                        /** @description Panjang minimal sesuai konfigurasi (`MIN_PASSWORD_LENGTH`, default 10) dan harus berbeda dari password saat ini. */
+                        new_password: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Password berhasil diganti (tanpa body) */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+                429: components["responses"]["RateLimitedResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -242,7 +299,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Daftar pengguna (Kaprodi) */
+        /**
+         * Daftar pengguna (ADMIN, TU)
+         * @description ADMIN melihat semua akun. TU hanya melihat akun MAHASISWA: memfilter `role` selain MAHASISWA dijawab 403.
+         */
         get: {
             parameters: {
                 query?: {
@@ -272,12 +332,15 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
-        /** Buat pengguna baru (Kaprodi) */
+        /**
+         * Buat pengguna baru (ADMIN)
+         * @description Hanya ADMIN. Password yang diberikan bersifat sementara: akun dibuat dengan `must_change_password: true`. `pic_name` dan `pic_phone` wajib untuk role ORGANISASI dan ditolak (422) untuk role lain.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -292,10 +355,18 @@ export interface paths {
                         org_unit_id: string;
                         identifier: string;
                         name: string;
-                        /** Format: email */
-                        email: string;
+                        /**
+                         * Format: email
+                         * @description Opsional
+                         */
+                        email?: string;
+                        /** @description Password sementara; panjang minimal sesuai konfigurasi (`MIN_PASSWORD_LENGTH`, default 10). */
                         password: string;
                         role: components["schemas"]["UserRole"];
+                        /** @description Nama penanggung jawab; wajib untuk ORGANISASI */
+                        pic_name?: string;
+                        /** @description Telepon penanggung jawab; wajib untuk ORGANISASI */
+                        pic_phone?: string;
                     };
                 };
             };
@@ -311,7 +382,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
@@ -335,8 +406,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Perbarui data/peran/status/password pengguna (Kaprodi)
-         * @description Menonaktifkan pengguna atau mereset password mencabut semua sesi refresh miliknya. Kaprodi tidak dapat menonaktifkan atau mengubah peran akunnya sendiri.
+         * Perbarui data/peran/status pengguna (ADMIN, TU)
+         * @description Menonaktifkan pengguna mencabut semua sesi refresh miliknya. ADMIN tidak dapat menonaktifkan atau mengubah peran akunnya sendiri, dan harus tersisa minimal satu ADMIN aktif. TU hanya boleh mengubah akun MAHASISWA (selain itu 403) dan hanya field `name`, `email`, `is_active`; mengirim `role`, `pic_name`, `pic_phone`, atau `clear_booking_block` dijawab 403. Mengganti password dilakukan lewat `POST /users/{id}/reset-password`.
          */
         patch: {
             parameters: {
@@ -355,7 +426,10 @@ export interface paths {
                         email?: string;
                         role?: components["schemas"]["UserRole"];
                         is_active?: boolean;
-                        password?: string;
+                        pic_name?: string;
+                        pic_phone?: string;
+                        /** @description `true` menghapus blokir booking (`booking_blocked_until` menjadi null) */
+                        clear_booking_block?: boolean;
                     };
                 };
             };
@@ -371,7 +445,166 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        trace?: never;
+    };
+    "/users/{id}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset password pengguna (ADMIN, TU)
+         * @description Mengganti password akun dengan password sementara acak dan mengembalikannya satu kali; semua sesi refresh akun dicabut dan `must_change_password` menjadi `true`. TU hanya boleh untuk akun MAHASISWA (selain itu 403). Respons membawa `Cache-Control: no-store`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Password sementara baru (hanya tampil sekali) */
+                200: {
+                    headers: {
+                        /** @description Selalu `no-store` */
+                        "Cache-Control"?: "no-store";
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            temporary_password: string;
+                        };
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/room-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daftar tipe ruang beserta kebijakannya (semua peran terautentikasi)
+         * @description Mengembalikan kebijakan tiap tipe ruang (BR-20): siapa approver dan peminta, kebijakan persetujuan, jam operasional bawaan, serta batas durasi dan hari ke depan. Dipakai klien untuk menentukan menu dan formulir; server tetap menjadi penentu pada setiap aksi. Respons tidak dipaginasi.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["RoomTypePolicy"][];
+                        };
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/room-types/{type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Ubah kebijakan tipe ruang (ADMIN)
+         * @description Hanya ADMIN (peran lain 403). Semua field opsional, tetapi minimal satu field harus dikirim (body kosong dijawab 422). `approver_roles` dan `requester_roles` tidak boleh kosong dan tidak boleh memuat peran di luar himpunan yang diizinkan. Aturan lintas-field dinilai terhadap hasil akhir: jam buka harus sebelum jam tutup dan keduanya berkelipatan 30 menit (galat pada field `open_time`), durasi minimal tidak boleh melebihi durasi maksimal dan keduanya berkelipatan 30 menit (galat pada field `min_duration_min`). Perubahan berlaku mulai permintaan berikutnya; booking yang sudah dibuat tidak berubah keputusannya. Perubahan dicatat di audit log.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Tipe ruang (KELAS, LAB, AUDITORIUM, RUANG_UJIAN, RUANG_SIDANG); tipe yang tidak dikenal dijawab 404. */
+                    type: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Peran yang boleh menyetujui booking tipe ini; tidak boleh kosong. */
+                        approver_roles?: ("TU" | "KALAB" | "ADMIN")[];
+                        /** @description Peran yang boleh mengajukan booking tipe ini; tidak boleh kosong. */
+                        requester_roles?: ("MAHASISWA" | "ORGANISASI")[];
+                        approval_policy?: components["schemas"]["ApprovalPolicy"];
+                        letter_required?: boolean;
+                        /** @description Jam buka bawaan tipe (HH:MM, WIB) */
+                        open_time?: components["schemas"]["ClockTime"];
+                        /** @description Jam tutup bawaan tipe (HH:MM, WIB; `24:00` berarti tengah malam) */
+                        close_time?: components["schemas"]["ClockTime"];
+                        /** @description Durasi booking minimal dalam menit; kelipatan 30 */
+                        min_duration_min?: number;
+                        /** @description Durasi booking maksimal dalam menit; kelipatan 30 */
+                        max_duration_min?: number;
+                        /** @description Batas hari ke depan booking boleh diajukan */
+                        max_advance_days?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Kebijakan diperbarui */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RoomTypePolicy"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
@@ -419,13 +652,14 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
         /**
-         * Tambah ruang baru (TU_KALAB, KAPRODI)
-         * @description Kode disimpan dalam huruf besar dan harus unik di antara ruang yang belum dihapus dalam satu unit.
+         * Tambah ruang baru (TU, KALAB, ADMIN)
+         * @description Kode disimpan dalam huruf besar dan harus unik di antara ruang yang belum dihapus dalam satu unit. Peran harus TU, KALAB, atau ADMIN pada route, dan memegang kewenangan atas tipe ruang tersebut (approver tipe itu, atau ADMIN); selain itu 403. Jam operasional khusus ruang (`open_time` dan `close_time`, BR-29) opsional dan harus dikirim bersamaan; tanpa keduanya ruang mengikuti jam bawaan tipenya. Jam khusus harus berkelipatan 30 menit dan jam buka sebelum jam tutup; tidak dibatasi oleh jam bawaan tipe.
          */
         post: {
             parameters: {
@@ -444,6 +678,10 @@ export interface paths {
                         type: components["schemas"]["RoomType"];
                         capacity: number;
                         facilities?: string[];
+                        /** @description Jam buka khusus ruang (HH:MM, WIB); bersamaan dengan `close_time` */
+                        open_time?: components["schemas"]["ClockTime"];
+                        /** @description Jam tutup khusus ruang (HH:MM, WIB); bersamaan dengan `open_time` */
+                        close_time?: components["schemas"]["ClockTime"];
                     };
                 };
             };
@@ -459,7 +697,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
@@ -498,14 +736,15 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
         post?: never;
         /**
-         * Soft delete ruang (TU_KALAB, KAPRODI)
-         * @description Ditolak dengan `ROOM_HAS_ACTIVE_BOOKINGS` bila masih ada booking MENUNGGU/DISETUJUI yang belum berakhir (BR-07). Jadwal dan riwayat booking tetap tersimpan.
+         * Soft delete ruang (TU, KALAB, ADMIN)
+         * @description Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang (selain itu 403). Ditolak dengan `ROOM_HAS_ACTIVE_BOOKINGS` bila masih ada booking MENUNGGU/DISETUJUI yang belum berakhir (BR-07). Jadwal dan riwayat booking tetap tersimpan.
          */
         delete: {
             parameters: {
@@ -526,7 +765,7 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
             };
@@ -534,8 +773,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Ubah data ruang (TU_KALAB, KAPRODI)
-         * @description Kode ruang tidak dapat diubah. Mengirim `facilities` menggantikan seluruh daftar (`[]` mengosongkan).
+         * Ubah data ruang (TU, KALAB, ADMIN)
+         * @description Kode ruang tidak dapat diubah. Mengirim `facilities` menggantikan seluruh daftar (`[]` mengosongkan). Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang (juga tipe tujuan bila `type` diubah); selain itu 403. Jam operasional khusus ruang (BR-29): `open_time` dan `close_time` dinilai terhadap hasil akhir, jadi cukup mengirim satu bila ruang sudah punya yang lain, tetapi keduanya harus terisi atau keduanya kosong. `clear_operating_hours: true` mengembalikan ruang ke jam bawaan tipenya dan tidak boleh dikirim bersama `open_time` atau `close_time` (422).
          */
         patch: {
             parameters: {
@@ -554,6 +793,12 @@ export interface paths {
                         capacity?: number;
                         facilities?: string[];
                         is_active?: boolean;
+                        /** @description Jam buka khusus ruang (HH:MM, WIB) */
+                        open_time?: components["schemas"]["ClockTime"];
+                        /** @description Jam tutup khusus ruang (HH:MM, WIB) */
+                        close_time?: components["schemas"]["ClockTime"];
+                        /** @description `true` menghapus jam khusus ruang sehingga mengikuti jam bawaan tipe; tidak boleh dikombinasikan dengan `open_time`/`close_time` */
+                        clear_operating_hours?: boolean;
                     };
                 };
             };
@@ -569,7 +814,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
@@ -585,7 +830,7 @@ export interface paths {
         };
         /**
          * Timeline gabungan jadwal akademik + booking disetujui (overlay)
-         * @description Berisi jadwal (`SCHEDULE`) dan booking berstatus DISETUJUI (`BOOKING`) yang beririsan dengan [from, to), urut waktu mulai. Booking MENUNGGU tidak ditampilkan. Rentang maksimal 31 hari.
+         * @description Berisi jadwal (`SCHEDULE`) dan booking berstatus DISETUJUI atau BERLANGSUNG (`BOOKING`) yang beririsan dengan [from, to), urut waktu mulai. Booking MENUNGGU tidak ditampilkan. Rentang maksimal 31 hari. `operating_hours` memuat jam operasional efektif ruang (jam khusus ruang bila ada, jika tidak jam bawaan tipenya; BR-29) untuk menggambar grid kalender.
          */
         get: {
             parameters: {
@@ -609,10 +854,12 @@ export interface paths {
                     content: {
                         "application/json": {
                             data: components["schemas"]["TimelineItem"][];
+                            operating_hours: components["schemas"]["OperatingHours"];
                         };
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
@@ -635,8 +882,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Buat jadwal manual / akademik, opsional berulang mingguan (TU_KALAB, KAPRODI)
-         * @description Dengan `repeat`, dibuat satu sesi per minggu dari `start_at` sampai `repeat.until` (tanggal WIB, inklusif), maksimal 26 sesi. Semua atau tidak sama sekali: bila satu sesi bentrok, tidak ada yang dibuat dan `details` memuat seluruh bentrokan. Jadwal harus berada pada satu hari WIB. `source` default `MANUAL`.
+         * Buat jadwal manual / akademik, opsional berulang mingguan (TU, KALAB, ADMIN)
+         * @description Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang jadwal (selain itu 403). Dengan `repeat`, dibuat satu sesi per minggu dari `start_at` sampai `repeat.until` (tanggal WIB, inklusif), maksimal 26 sesi. Semua atau tidak sama sekali: bila satu sesi bentrok, tidak ada yang dibuat dan `details` memuat seluruh bentrokan. Jadwal harus berada pada satu hari WIB. `source` default `MANUAL`.
          */
         post: {
             parameters: {
@@ -679,7 +926,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 409: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
@@ -700,7 +947,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Hapus jadwal (TU_KALAB, KAPRODI) */
+        /**
+         * Hapus jadwal (TU, KALAB, ADMIN)
+         * @description Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang jadwal (selain itu 403).
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -720,15 +970,15 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
         options?: never;
         head?: never;
         /**
-         * Ubah jadwal (TU_KALAB, KAPRODI)
-         * @description Ruang tidak dapat dipindah. Pengecekan bentrok mengabaikan jadwal itu sendiri.
+         * Ubah jadwal (TU, KALAB, ADMIN)
+         * @description Ruang tidak dapat dipindah. Pengecekan bentrok mengabaikan jadwal itu sendiri. Pemanggil harus TU, KALAB, atau ADMIN dan memegang kewenangan atas tipe ruang jadwal (selain itu 403).
          */
         patch: {
             parameters: {
@@ -762,7 +1012,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
@@ -779,7 +1029,7 @@ export interface paths {
         };
         /**
          * Status ketersediaan per ruang pada rentang waktu
-         * @description Hanya ruang aktif yang belum dihapus. Prioritas status: DIGUNAKAN (jadwal atau booking DISETUJUI) > DIAJUKAN (booking MENUNGGU) > TERSEDIA. Interval setengah-terbuka [start_at, end_at), jadi 08:00-10:00 dan 10:00-12:00 tidak bentrok. Rentang maksimal 31 hari. Respons tidak dipaginasi.
+         * @description Hanya ruang aktif yang belum dihapus. Prioritas status: DIGUNAKAN (jadwal, atau booking DISETUJUI atau BERLANGSUNG) > DIAJUKAN (booking MENUNGGU) > TERSEDIA. Interval setengah-terbuka [start_at, end_at), jadi 08:00-10:00 dan 10:00-12:00 tidak bentrok. Rentang maksimal 31 hari. Respons tidak dipaginasi. Tiap ruang membawa `operating_hours`, yaitu jam operasional efektifnya (BR-29).
          */
         get: {
             parameters: {
@@ -807,6 +1057,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
@@ -825,12 +1076,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Daftar pengajuan booking */
+        /**
+         * Daftar pengajuan booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
+         * @description MAHASISWA dan ORGANISASI hanya melihat booking miliknya. TU dan KALAB melihat booking tipe ruang yang mereka setujui; ADMIN melihat semua. `mine=true` mempersempit ke booking milik sendiri. OB dijawab 403. Pengajuan multi-tanggal tampil sebagai satu baris per tanggal; `group_id` mengumpulkan tanggal-tanggalnya. Dengan `status=MENUNGGU`, daftar bagi approver (TU, KALAB, ADMIN) diurutkan menurut `expires_at` (yang paling cepat kedaluwarsa lebih dulu, BR-22). `requester_summary` tidak ada pada daftar.
+         */
         get: {
             parameters: {
                 query?: {
+                    /** @description Filter status booking. */
                     status?: components["schemas"]["BookingStatus"];
                     room_id?: string;
+                    /** @description Filter tipe ruang. */
+                    type?: components["schemas"]["RoomType"];
+                    /** @description Filter tanggal-tanggal milik satu pengajuan multi-tanggal. */
+                    group_id?: string;
                     from?: string;
                     to?: string;
                     mine?: boolean;
@@ -856,19 +1115,26 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
         /**
-         * Ajukan booking baru (MAHASISWA)
-         * @description Satu mahasiswa maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` (default 5) pengajuan aktif, yaitu `MENUNGGU` atau `DISETUJUI` yang belum berakhir. Melebihi batas dijawab 422 tanpa `field`.
+         * Ajukan booking baru (MAHASISWA, ORGANISASI)
+         * @description Pengajuan satu tanggal (`start_at` + `end_at`) atau beberapa tanggal sekaligus (`occurrences`, 1 sampai `MAX_OCCURRENCES`, default 14; BR-27), tidak pernah keduanya (422 pada field `occurrences`). Pengajuan multi-tanggal dibuat seluruhnya atau tidak sama sekali: satu tanggal yang gagal menggagalkan semuanya, dan tanggal-tanggalnya tidak boleh saling tumpang tindih. Seluruh tanggal memakai ruang, tujuan, dan lampiran yang sama.
+         *
+         *     **Persetujuan (BR-17).** Sistem menyetujui langsung (status `DISETUJUI`, `approval_mode: AUTO`) bila kebijakan tipe ruang `AUTO_IF_ELIGIBLE`, pemohon berperan MAHASISWA dengan poin pelanggaran aktif di bawah batas yang dikonfigurasi, dan slot kosong. Selain itu pengajuan berstatus `MENUNGGU` (`approval_mode: MANUAL`, `manual_reason` menyebut alasannya) dan menunggu approver tipe ruang sampai `expires_at` (BR-22).
+         *
+         *     **Aturan isi.** Surat (`letter_attachment_id`, hasil `POST /attachments`, harus milik pemohon) wajib untuk ORGANISASI dan untuk tipe ruang yang mensyaratkannya (BR-18). `participants` tidak boleh melebihi kapasitas ruang dan wajib untuk AUDITORIUM (BR-21). Durasi minimal/maksimal, batas hari ke depan, dan jam operasional berasal dari kebijakan tipe ruang dan ruang (BR-20, BR-29; lihat `GET /room-types`); pelanggarannya dijawab 422 `VALIDATION_ERROR` pada `end_at` (durasi) atau `start_at` (hari ke depan). Waktu di luar jam operasional efektif dijawab 422 `OUTSIDE_OPERATING_HOURS` dengan `details` berisi `{field: open_time, message: "HH:MM"}` dan `{field: close_time, message: "HH:MM"}`. Pada pengajuan multi-tanggal, item `details` yang berasal dari satu tanggal membawa `occurrence_no` (mulai dari 1).
+         *
+         *     **Batas dan penolakan.** Pemohon maksimal memiliki `BOOKING_MAX_ACTIVE_PER_USER` pengajuan aktif; satu pengajuan multi-tanggal dihitung satu. Melebihi batas dijawab 409 `QUOTA_EXCEEDED`. Pemohon yang sedang diblokir karena poin pelanggaran dijawab 403 `BOOKING_BLOCKED` dengan `details[0] = {field: blocked_until, message: <date-time>}` (BR-14). Peran selain MAHASISWA dan ORGANISASI dijawab 403 `FORBIDDEN`; bila `requester_roles` tipe ruang tidak memuat peran pemohon, 403 `ROOM_TYPE_NOT_ALLOWED`. Ruang nonaktif dijawab 409 `ROOM_INACTIVE`; bentrok dengan jadwal atau booking lain dijawab 409 `BOOKING_CONFLICT` dengan `details` per bentrokan (membawa `occurrence_no` pada pengajuan multi-tanggal).
          */
         post: {
             parameters: {
                 query?: never;
                 header?: {
+                    /** @description Maksimal 128 karakter. Memakai kunci yang sama untuk permintaan yang berbeda dijawab 422. */
                     "Idempotency-Key"?: string;
                 };
                 path?: never;
@@ -879,18 +1145,41 @@ export interface paths {
                     "application/json": {
                         /** Format: uuid */
                         room_id: string;
-                        /** Format: date-time */
-                        start_at: string;
-                        /** Format: date-time */
-                        end_at: string;
+                        /**
+                         * Format: date-time
+                         * @description Pengajuan satu tanggal. Wajib bersama `end_at` bila `occurrences` tidak dikirim.
+                         */
+                        start_at?: string;
+                        /**
+                         * Format: date-time
+                         * @description Pengajuan satu tanggal. Wajib bersama `start_at` bila `occurrences` tidak dikirim.
+                         */
+                        end_at?: string;
+                        /** @description Pengajuan multi-tanggal, 1 sampai `MAX_OCCURRENCES` (default 14). Tidak boleh dikirim bersama `start_at`/`end_at`. */
+                        occurrences?: {
+                            /** Format: date-time */
+                            start_at: string;
+                            /** Format: date-time */
+                            end_at: string;
+                        }[];
                         purpose: string;
                         participants?: number;
                         notes?: string;
+                        /** @description Isian khusus tipe ruang. Saat ini belum ada kunci yang didukung, sehingga hanya objek kosong yang sah. */
+                        details?: {
+                            [key: string]: unknown;
+                        };
+                        /**
+                         * Format: uuid
+                         * @description Id surat dari `POST /attachments`; harus milik pemohon.
+                         */
+                        letter_attachment_id?: string;
+                        letter_number?: string;
                     };
                 };
             };
             responses: {
-                /** @description Berhasil dibuat. Bila `Idempotency-Key` sama dengan permintaan identik sebelumnya, booking yang sudah ada dikembalikan dengan status yang sama dan header `Idempotency-Replayed: true`. */
+                /** @description Berhasil dibuat. Pengajuan satu tanggal mengembalikan `Booking` (status `DISETUJUI` bila disetujui sistem, `MENUNGGU` bila tidak); pengajuan dengan `occurrences` mengembalikan `BookingGroupResult`. Bila `Idempotency-Key` sama dengan permintaan identik sebelumnya, hasil yang sudah ada dikembalikan dengan header `Idempotency-Replayed: true`. */
                 201: {
                     headers: {
                         /** @description `true` bila respons ini adalah pengulangan dari permintaan sebelumnya */
@@ -898,14 +1187,30 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Booking"];
+                        "application/json": components["schemas"]["Booking"] | components["schemas"]["BookingGroupResult"];
                     };
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
-                409: components["responses"]["ErrorResponse"];
-                422: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                /** @description `BOOKING_CONFLICT` (`details` per bentrokan, dengan `occurrence_no` pada multi-tanggal), `QUOTA_EXCEEDED`, atau `ROOM_INACTIVE` */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description `VALIDATION_ERROR` (`details` dapat membawa `occurrence_no`) atau `OUTSIDE_OPERATING_HOURS` */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -921,7 +1226,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Detail pengajuan booking */
+        /**
+         * Detail pengajuan booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
+         * @description Pemohon hanya dapat membaca booking miliknya; TU dan KALAB hanya booking tipe ruang yang mereka setujui; ADMIN semuanya. Di luar jangkauan dijawab 404. OB dijawab 403. Bagi approver (TU, KALAB, ADMIN) respons memuat `requester_summary`: poin pelanggaran aktif dan mata kuliah pemohon dari impor akun (BR-14, BR-24); pemohon sendiri tidak menerimanya.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -943,7 +1251,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
@@ -952,7 +1260,64 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Ubah pengajuan booking (pemilik: MAHASISWA, ORGANISASI)
+         * @description Hanya pemilik; peran lain 403 dan booking milik orang lain 404. Semua field opsional, tetapi minimal satu harus dikirim (body kosong dijawab 422). Ruang tidak dapat diganti: field tak dikenal seperti `room_id` dijawab 400; batalkan lalu ajukan ulang (BR-26). `notes` dan `letter_number` berisi string kosong untuk menghapusnya.
+         *
+         *     **Aturan (BR-26).** Hanya booking `MENUNGGU` atau `DISETUJUI` yang dapat diubah, sampai `EDIT_CUTOFF_MIN` (default 60) menit sebelum waktu mulai yang berlaku; selain itu 409 `EDIT_WINDOW_CLOSED` atau `INVALID_STATE`. Perubahan melewati pemeriksaan yang sama dengan pengajuan (batas tipe ruang, jam operasional, kapasitas, surat, bentrok dengan jadwal dan booking lain kecuali dirinya sendiri). Pada pengajuan multi-tanggal hanya satu tanggal yang berubah. Akibatnya bergantung pada keadaan booking:
+         *     - `MENUNGGU` tetap `MENUNGGU`; kedaluwarsa tidak diperpanjang (hanya dapat dimajukan bila waktu mulai lebih awal).
+         *     - `DISETUJUI` oleh sistem (`AUTO`): keputusan persetujuan dihitung ulang; bila tidak lagi memenuhi syarat booking kembali `MENUNGGU` dengan `approval_mode: MANUAL`.
+         *     - `DISETUJUI` oleh approver (`MANUAL`): perubahan material (waktu, peserta, tujuan, `details`, surat) mengembalikannya ke `MENUNGGU` dengan `expires_at` baru; perubahan `notes` saja tidak mengubah hal lain.
+         *     Setiap perubahan menambah event `EDITED` pada riwayat (`GET /bookings/{id}/events`) berisi `changes`; permintaan yang tidak mengubah apa pun mengembalikan booking apa adanya tanpa event.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EditRequest"];
+                };
+            };
+            responses: {
+                /** @description Booking setelah diubah (status dapat kembali `MENUNGGU`) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Booking"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+                /** @description `EDIT_WINDOW_CLOSED`, `INVALID_STATE`, atau `BOOKING_CONFLICT` */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description `VALIDATION_ERROR` atau `OUTSIDE_OPERATING_HOURS` */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/bookings/{id}/events": {
@@ -962,7 +1327,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Jejak riwayat audit status booking */
+        /**
+         * Jejak riwayat audit status booking (MAHASISWA, ORGANISASI, TU, KALAB, ADMIN)
+         * @description Aturan akses sama dengan detail booking. `actor_id` bernilai null bila perubahan dilakukan sistem (mis. persetujuan otomatis atau job kedaluwarsa). Event `STATUS` mencatat perpindahan status; event `EDITED` mencatat perubahan isi oleh pemilik dan memuat `changes`.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -986,7 +1354,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
@@ -1007,7 +1375,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Setujui peminjaman ruang (TU_KALAB) */
+        /**
+         * Setujui peminjaman ruang (TU, KALAB, ADMIN)
+         * @description Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang booking (selain itu 403). Booking di luar jangkauan approver dijawab 404. Pada pengajuan multi-tanggal, persetujuan berlaku untuk setiap tanggal `MENUNGGU` dalam grup sekaligus dalam satu transaksi; tidak ada persetujuan sebagian (BR-27). Respons adalah booking yang dialamatkan. 409 `INVALID_STATE` bila booking bukan `MENUNGGU`, bila pengajuan sudah melewati `expires_at` (BR-22), atau bila waktunya sudah lewat; 409 `BOOKING_CONFLICT` bila salah satu tanggal kini bentrok; 409 `ROOM_INACTIVE` bila ruang nonaktif.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1029,7 +1400,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
             };
@@ -1049,7 +1420,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Tolak peminjaman ruang (TU_KALAB) */
+        /**
+         * Tolak peminjaman ruang (TU, KALAB, ADMIN)
+         * @description Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang booking (selain itu 403). Pada pengajuan multi-tanggal, penolakan berlaku untuk setiap tanggal `MENUNGGU` dalam grup sekaligus dalam satu transaksi (BR-27). `reason` wajib 5 sampai 500 karakter (selain itu 422). 409 `INVALID_STATE` bila booking bukan `MENUNGGU` atau pengajuan sudah melewati `expires_at` (BR-22).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1078,7 +1452,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
@@ -1099,7 +1473,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Batalkan booking (Pemilik atau TU_KALAB) */
+        /**
+         * Batalkan booking (pemilik, atau TU/KALAB/ADMIN approver tipe ruang)
+         * @description Pemilik (MAHASISWA atau ORGANISASI) dapat membatalkan tanggal `MENUNGGU` atau `DISETUJUI` miliknya yang belum dimulai; alasan opsional (maksimal 500 karakter). Membatalkan tanggal `DISETUJUI` kurang dari 2 jam sebelum mulai menambah satu poin pelanggaran `BATAL_TERLAMBAT` (BR-14). Pengelola (TU, KALAB, ADMIN dengan kewenangan atas tipe ruang) hanya membatalkan tanggal `DISETUJUI` dan wajib menyertakan `reason` 5 sampai 500 karakter (yang `MENUNGGU` harus ditolak, bukan dibatalkan). `scope` `OCCURRENCE` (default) membatalkan tanggal yang dialamatkan; `GROUP` membatalkan semua tanggal pengajuan multi-tanggal yang masih dapat dibatalkan (BR-27). Respons adalah booking yang dialamatkan. 409 `INVALID_STATE` bila tidak ada tanggal yang dapat dibatalkan; 422 untuk `scope` atau `reason` yang tidak sah.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1112,7 +1489,13 @@ export interface paths {
             requestBody?: {
                 content: {
                     "application/json": {
+                        /** @description Opsional untuk pemilik; wajib 5 sampai 500 karakter untuk pengelola */
                         reason?: string;
+                        /**
+                         * @default OCCURRENCE
+                         * @enum {string}
+                         */
+                        scope?: "OCCURRENCE" | "GROUP";
                     };
                 };
             };
@@ -1128,7 +1511,362 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+                409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{id}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * QR ruang untuk dicetak (pengelola tipe ruang, ADMIN)
+         * @description Mengembalikan `url` yang dikodekan pada QR (`<frontend>/check-in?room=<kode>&t=<token>`), tokennya, dan waktu penggantian terakhir. Token rahasia: hanya TU/KALAB yang mengelola tipe ruang itu dan ADMIN yang boleh melihatnya (403 selain itu), tidak pernah ada di respons ruang lain, dan tidak masuk log atau audit log.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RoomQR"];
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{id}/qr/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ganti token QR ruang (pengelola tipe ruang, ADMIN)
+         * @description Membuat token baru; token lama langsung tidak berlaku (check-in dengan token lama dijawab 422 `QR_INVALID`). Dicatat di audit log (`ROOM_QR_ROTATED`) tanpa token.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RoomQR"];
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/check-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check-in lewat QR ruang (MAHASISWA, ORGANISASI)
+         * @description Mencari booking `DISETUJUI` milik pengguna di ruang itu yang jendela check-in-nya memuat waktu server (`start_at - CHECKIN_EARLY_MIN` sampai `start_at + CHECKIN_LATE_MIN`, batas termasuk). Bila ada lebih dari satu, yang mulai paling awal dipakai. Hasilnya booking `BERLANGSUNG` dan `previous_checkout` (kondisi ruang saat ditinggalkan pengguna sebelumnya, atau null). `room_code` yang tidak dikenal dan token yang salah sama-sama dijawab 422 `QR_INVALID`. Tidak ada booking yang memenuhi syarat (bukan milik pengguna, bukan `DISETUJUI`, di luar jendela, atau sudah check-in) dijawab 409 `NO_ELIGIBLE_BOOKING`; bila pengguna punya booking berikutnya di ruang itu, `details` memuat `next_window.opens_at` dan `next_window.closes_at`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        room_code: string;
+                        qr_token: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CheckInResult"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{id}/check-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check-out dengan foto kondisi ruang (pemilik)
+         * @description `multipart/form-data`: `condition` (`NORMAL` atau `ADA_MASALAH`), `photo` (wajib; JPEG, PNG, atau WebP sampai `MAX_UPLOAD_MB`, didekode lalu disimpan ulang sebagai JPEG tanpa metadata), `note` (wajib bila `ADA_MASALAH`, maksimal 2000 karakter). Waktu check-out dari server. Booking harus `BERLANGSUNG` (409 `INVALID_STATE` selain itu); booking milik orang lain dijawab 404. Check-out sebelum `end_at` melepas sisa slot. Bila `ADA_MASALAH`, dalam transaksi yang sama dibuat laporan kerusakan (status `BARU`, memakai foto yang sama) dan notifikasi `REPORT_CREATED` ke approver tipe ruang; `report_id` berisi id laporan itu.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        condition: components["schemas"]["CheckoutCondition"];
+                        note?: string;
+                        /** Format: binary */
+                        photo: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CheckOutResult"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+                409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/checkouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daftar check-out terbaru (OB, TU, KALAB, ADMIN)
+         * @description Gambaran bagaimana ruang ditinggalkan, terbaru lebih dulu. OB dan ADMIN melihat semua ruang; TU dan KALAB hanya tipe ruang yang mereka setujui. Fotonya dibuka dengan `GET /attachments/{id}`.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    room_id?: string;
+                    /** @description Check-out pada atau setelah waktu ini (RFC 3339) */
+                    from?: string;
+                    /** @description Check-out sebelum waktu ini (RFC 3339) */
+                    to?: string;
+                    page?: components["parameters"]["PageQuery"];
+                    per_page?: components["parameters"]["PerPageQuery"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Checkout"][];
+                            meta: components["schemas"]["PaginationMeta"];
+                        };
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/violations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Riwayat pelanggaran pemohon (TU, KALAB, ADMIN; MAHASISWA dan ORGANISASI untuk dirinya sendiri)
+         * @description Pelanggaran satu pemohon (MAHASISWA atau ORGANISASI), terbaru lebih dulu, beserta total poin aktif (tidak di-annul dan di dalam `VIOLATION_WINDOW_DAYS`) dan `booking_blocked_until` bila masih berlaku. Akun yang bukan pemohon dijawab 404. MAHASISWA dan ORGANISASI hanya boleh membaca catatan milik sendiri; id akun lain dijawab 404. OB dijawab 403.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["PageQuery"];
+                    per_page?: components["parameters"]["PerPageQuery"];
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Violation"][];
+                            meta: components["schemas"]["PaginationMeta"];
+                            active_points: number;
+                            /** Format: date-time */
+                            booking_blocked_until: string | null;
+                        };
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/violations/{id}/annul": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batalkan (annul) satu pelanggaran (ADMIN)
+         * @description Poinnya tidak dihitung lagi. Tidak mencabut blokir yang sudah berjalan; itu dilakukan lewat `PATCH /users/{id}` (`clear_booking_block`). `reason` 5 sampai 500 karakter. Pelanggaran yang sudah di-annul dijawab 409 `INVALID_STATE`. Dicatat di audit log (`VIOLATION_ANNULLED`).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        reason: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Violation"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
@@ -1174,6 +1912,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
@@ -1216,6 +1955,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
@@ -1257,6 +1997,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
             };
         };
         delete?: never;
@@ -1295,7 +2036,156 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 429: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daftar surat milik sendiri (MAHASISWA, ORGANISASI)
+         * @description Surat yang pernah diunggah pemohon, terbaru lebih dulu, agar dapat dipakai ulang. `kind` bila diisi harus `LETTER` (selain itu 422). Peran lain dijawab 403.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    kind?: "LETTER";
+                    page?: components["parameters"]["PageQuery"];
+                    per_page?: components["parameters"]["PerPageQuery"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Attachment"][];
+                            meta: components["schemas"]["PaginationMeta"];
+                        };
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        /**
+         * Unggah surat (MAHASISWA, ORGANISASI; multipart/form-data)
+         * @description Mengunggah surat tugas atau surat kegiatan untuk dilampirkan pada booking (BR-19). `kind` harus `LETTER`. Berkas boleh PDF, JPEG, PNG, atau WebP (dicek dari isi berkas, bukan nama atau Content-Type), maksimal `MAX_LETTER_MB` (default 5 MB). PDF disimpan apa adanya dan tidak pernah dibuka isinya; gambar didekode dan disimpan ulang sebagai JPEG sehingga metadata terbuang. Berkas kosong, terlalu besar, atau bertipe lain dijawab 422 pada field `file`; `kind` selain `LETTER` dijawab 422 pada field `kind`. Peran selain MAHASISWA dan ORGANISASI dijawab 403.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** @enum {string} */
+                        kind: "LETTER";
+                        /**
+                         * Format: binary
+                         * @description PDF, JPEG, PNG, atau WebP
+                         */
+                        file: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Surat tersimpan */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Attachment"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Buka berkas lampiran (semua peran terautentikasi yang berhak)
+         * @description Mengembalikan isi berkas (foto laporan atau surat booking). Yang boleh membuka: pengunggah dan ADMIN selalu; OB setiap foto; TU dan KALAB foto atau surat yang terlampir pada booking atau laporan tipe ruang yang mereka setujui. Selain itu, juga untuk id yang tidak dikenal, dijawab 404 agar keberadaan berkas tidak terungkap. Berkas yang sudah dihapus oleh kebijakan retensi dijawab 410 `GONE`. Tipe isi berasal dari catatan server. PDF selalu `Content-Disposition: attachment`; gambar `inline`. Berkas dibaca dengan header Authorization (mis. lewat `fetch`), bukan tautan langsung.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Isi berkas */
+                200: {
+                    headers: {
+                        /** @description Selalu `private, no-store` */
+                        "Cache-Control"?: "private, no-store";
+                        /** @description Selalu `nosniff` */
+                        "X-Content-Type-Options"?: "nosniff";
+                        /** @description `attachment` untuk PDF, `inline` untuk gambar; nama berkas dibuat server */
+                        "Content-Disposition"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/jpeg": string;
+                        "application/pdf": string;
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+                /** @description Berkas sudah dihapus oleh kebijakan retensi (`GONE`) */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
             };
         };
         put?: never;
@@ -1313,7 +2203,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Daftar laporan kerusakan */
+        /**
+         * Daftar laporan kerusakan
+         * @description Pelapor (peran apa pun, termasuk OB) melihat laporan miliknya. TU dan KALAB juga melihat laporan tipe ruang yang mereka setujui; ADMIN melihat semua.
+         */
         get: {
             parameters: {
                 query?: {
@@ -1341,13 +2234,14 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
         put?: never;
         /**
          * Buat laporan kerusakan baru (multipart/form-data)
-         * @description Foto opsional: JPG, PNG, atau WebP (dicek dari isi berkas, bukan nama atau Content-Type), maksimal `UPLOAD_MAX_BYTES` (default 5 MB). Foto terlalu besar atau bertipe lain dijawab 422 pada field `photo`.
+         * @description Foto opsional: JPG, PNG, atau WebP (dicek dari isi berkas, bukan nama atau Content-Type), maksimal `MAX_UPLOAD_MB` (default 5 MB). Foto terlalu besar atau bertipe lain dijawab 422 pada field `photo`. Foto didekode lalu disimpan ulang sebagai JPEG (sisi terpanjang maksimal 1600 px) dan metadata (EXIF dan sejenisnya) dibuang. Respons membawa `attachment_id`; foto dibuka dengan `GET /attachments/{id}`.
          */
         post: {
             parameters: {
@@ -1379,6 +2273,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 422: components["responses"]["ErrorResponse"];
             };
         };
@@ -1419,51 +2314,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["ErrorResponse"];
-                404: components["responses"]["ErrorResponse"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/reports/{id}/photo": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Foto laporan kerusakan (pelapor, TU_KALAB, KAPRODI)
-         * @description Foto disimpan di luar webroot dan hanya disajikan lewat endpoint ini.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Berkas gambar */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "image/jpeg": string;
-                        "image/png": string;
-                        "image/webp": string;
-                    };
-                };
-                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
             };
         };
@@ -1489,8 +2340,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Perbarui status laporan kerusakan (TU_KALAB)
-         * @description Status hanya maju satu langkah (BARU, DITERIMA, DIPROSES, SELESAI); selain itu 409 `INVALID_STATE`.
+         * Perbarui status laporan kerusakan (TU, KALAB, ADMIN)
+         * @description Status hanya maju satu langkah (BARU, DITERIMA, DIPROSES, SELESAI); selain itu 409 `INVALID_STATE`. Pemanggil harus TU, KALAB, atau ADMIN yang menjadi approver tipe ruang laporan (selain itu 403).
          */
         patch: {
             parameters: {
@@ -1521,7 +2372,7 @@ export interface paths {
                 };
                 400: components["responses"]["ErrorResponse"];
                 401: components["responses"]["ErrorResponse"];
-                403: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
                 404: components["responses"]["ErrorResponse"];
                 409: components["responses"]["ErrorResponse"];
                 422: components["responses"]["ErrorResponse"];
@@ -1529,36 +2380,428 @@ export interface paths {
         };
         trace?: never;
     };
+    "/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daftar audit log (ADMIN)
+         * @description Hanya ADMIN (peran lain 403). Baca-saja, terbaru lebih dulu. Nilai `before` dan `after` sudah disamarkan dari rahasia (password, token).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    actor_id?: string;
+                    /** @description Nama aksi persis, mis. `USER_CREATED` */
+                    action?: string;
+                    entity_type?: string;
+                    entity_id?: string;
+                    /** @description Batas bawah `created_at` (RFC 3339 dengan offset) */
+                    from?: string;
+                    /** @description Batas atas `created_at` (RFC 3339 dengan offset) */
+                    to?: string;
+                    page?: components["parameters"]["PageQuery"];
+                    per_page?: components["parameters"]["PerPageQuery"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["AuditLog"][];
+                            meta: components["schemas"]["PaginationMeta"];
+                        };
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Riwayat impor (TU, ADMIN)
+         * @description Daftar impor terbaru lebih dulu. Peran selain TU dan ADMIN dijawab 403.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    kind?: components["schemas"]["ImportKind"];
+                    page?: components["parameters"]["PageQuery"];
+                    per_page?: components["parameters"]["PerPageQuery"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Import"][];
+                            meta: components["schemas"]["PaginationMeta"];
+                        };
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impor akun mahasiswa dari CSV (TU, ADMIN; multipart/form-data)
+         * @description Dua langkah. Dengan `?dry_run=true` berkas hanya diperiksa dan rencananya dikembalikan beserta `plan_hash` (tidak ada yang disimpan). Tanpa `dry_run`, impor diterapkan dalam satu transaksi dan wajib menyertakan `plan_hash` dari pratinjau untuk berkas dan semester yang sama; bila data berubah sejak pratinjau dijawab 409 `IMPORT_PLAN_CHANGED`, dan berkas yang sama yang sudah pernah diterapkan dijawab 409 `IMPORT_ALREADY_APPLIED`. CSV wajib berkolom `identifier` dan `name`; kolom opsional `email`, `course_code`, `course_name`, `class_name`. Berkas tidak valid dijawab 422 `IMPORT_INVALID` dengan `details` per baris (`line`, `column`); baris 1 adalah header. Respons penerapan memuat password sementara akun baru satu kali dan membawa `Cache-Control: no-store`.
+         */
+        post: {
+            parameters: {
+                query?: {
+                    /** @description `true` untuk pratinjau tanpa menyimpan */
+                    dry_run?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Berkas CSV
+                         */
+                        file: string;
+                        /** @example 2026-GANJIL */
+                        semester: string;
+                        /** @description Wajib saat menerapkan (tanpa `dry_run`); diambil dari respons pratinjau */
+                        plan_hash?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Pratinjau (`dry_run=true`) atau hasil penerapan */
+                200: {
+                    headers: {
+                        /** @description `no-store` pada hasil penerapan (memuat password sementara) */
+                        "Cache-Control"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImportUsersPreview"] | components["schemas"]["ImportUsersResult"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                /** @description `IMPORT_PLAN_CHANGED` atau `IMPORT_ALREADY_APPLIED` */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description `VALIDATION_ERROR` (mis. `semester`, `plan_hash`, `file`) atau `IMPORT_INVALID` (isi berkas bermasalah; `details` memuat `line` dan `column`) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impor jadwal akademik semester dari CSV (TU, ADMIN; multipart/form-data)
+         * @description Dua langkah (BR-23). Dengan `?dry_run=true` berkas hanya diperiksa dan rencananya dikembalikan beserta `plan_hash` (tidak ada yang disimpan). Tanpa `dry_run`, impor diterapkan dalam satu transaksi dan wajib menyertakan `plan_hash` dari pratinjau untuk berkas yang sama; bila data berubah sejak pratinjau dijawab 409 `IMPORT_PLAN_CHANGED`, dan berkas yang sama yang sudah pernah diterapkan dijawab 409 `IMPORT_ALREADY_APPLIED`.
+         *
+         *     **Kolom CSV.** Wajib: `room_code`, `title`, `day_of_week` (1 = Senin sampai 7 = Minggu), `start_time` dan `end_time` (HH:MM, WIB, pada hari yang sama), `semester_start` dan `semester_end` (YYYY-MM-DD). Opsional: `skip_dates` (tanggal ISO dipisah spasi, dilewati). Tiap baris menjadi satu pertemuan per minggu pada hari tersebut dari `semester_start` sampai `semester_end`. Hanya pertemuan yang belum dimulai yang dibuat; yang sudah lewat tidak ditulis ulang. Jumlah pertemuan per baris dibatasi (`IMPORT_MAX_WEEKS`).
+         *
+         *     **Aturan bentrok.** Jadwal akademik menang atas booking: booking MENUNGGU atau DISETUJUI yang bertabrakan dibatalkan otomatis (pemohon diberi notifikasi, tanpa poin pelanggaran) dan daftarnya muncul di `bookings_to_cancel`. Bentrok dengan booking yang sedang BERLANGSUNG, dengan jadwal akademik lain, dengan jadwal manual, atau dengan baris lain pada berkas yang sama menjadi galat per baris. Berkas yang memuat galat tidak dapat diterapkan: dijawab 422 `IMPORT_INVALID` dengan `details` per baris (`line`, `column`); baris 1 adalah header. Kode ruang dicari pada unit organisasi pengunggah.
+         */
+        post: {
+            parameters: {
+                query?: {
+                    /** @description `true` untuk pratinjau tanpa menyimpan */
+                    dry_run?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Berkas CSV
+                         */
+                        file: string;
+                        /** @description Wajib saat menerapkan (tanpa `dry_run`); diambil dari respons pratinjau */
+                        plan_hash?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Pratinjau (`dry_run=true`) atau hasil penerapan */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SchedulePreview"] | components["schemas"]["ScheduleApplyResult"];
+                    };
+                };
+                400: components["responses"]["ErrorResponse"];
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                /** @description `IMPORT_PLAN_CHANGED` atau `IMPORT_ALREADY_APPLIED` */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description `VALIDATION_ERROR` (mis. `plan_hash`, `file`) atau `IMPORT_INVALID` (isi berkas bermasalah; `details` memuat `line` dan `column`) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/{id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback impor jadwal (TU, ADMIN)
+         * @description Tanpa body. Menghapus pertemuan hasil impor jadwal yang belum dimulai dan menandai impor sebagai `ROLLED_BACK`; pertemuan yang sudah dimulai tetap ada sebagai riwayat. Booking yang dibatalkan oleh impor tidak dikembalikan. Untuk mengganti jadwal satu semester: rollback, lalu impor ulang (BR-23). Id tidak dikenal dijawab 404, impor yang sudah di-rollback dijawab 409 `INVALID_STATE`, dan impor selain jadwal (mis. akun) dijawab 422 pada field `id`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Rollback berhasil */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RollbackResult"];
+                    };
+                };
+                401: components["responses"]["ErrorResponse"];
+                403: components["responses"]["ForbiddenResponse"];
+                404: components["responses"]["ErrorResponse"];
+                409: components["responses"]["ErrorResponse"];
+                422: components["responses"]["ErrorResponse"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description Kode error mesin-baca. 400 BAD_REQUEST; 401 UNAUTHENTICATED; 403 FORBIDDEN, PASSWORD_CHANGE_REQUIRED, ROOM_TYPE_NOT_ALLOWED, BOOKING_BLOCKED (pemohon diblokir karena poin pelanggaran; `details[0]` adalah `{field: blocked_until, message: <date-time>}`); 404 NOT_FOUND; 405 METHOD_NOT_ALLOWED; 409 BOOKING_CONFLICT, INVALID_STATE, NO_ELIGIBLE_BOOKING (check-in: tidak ada booking `DISETUJUI` milik pengguna di jendela check-in; `details` dapat memuat `next_window.opens_at` dan `next_window.closes_at`), QUOTA_EXCEEDED (batas pengajuan aktif terlampaui), EDIT_WINDOW_CLOSED (lewat batas pengubahan booking), ROOM_INACTIVE, ROOM_HAS_ACTIVE_BOOKINGS, IMPORT_PLAN_CHANGED, IMPORT_ALREADY_APPLIED; 410 GONE (berkas sudah dihapus oleh kebijakan retensi); 422 VALIDATION_ERROR, IMPORT_INVALID, QR_INVALID (token QR tidak cocok dengan ruang), OUTSIDE_OPERATING_HOURS (booking di luar jam operasional ruang; `details` berisi `open_time` dan `close_time` efektif); 429 RATE_LIMITED; 500 INTERNAL_SERVER_ERROR; 503 SERVICE_BUSY.
+         * @enum {string}
+         */
+        ErrorCode: "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "ROOM_TYPE_NOT_ALLOWED" | "BOOKING_BLOCKED" | "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "BOOKING_CONFLICT" | "INVALID_STATE" | "NO_ELIGIBLE_BOOKING" | "QUOTA_EXCEEDED" | "EDIT_WINDOW_CLOSED" | "GONE" | "ROOM_INACTIVE" | "ROOM_HAS_ACTIVE_BOOKINGS" | "IMPORT_PLAN_CHANGED" | "IMPORT_ALREADY_APPLIED" | "VALIDATION_ERROR" | "IMPORT_INVALID" | "QR_INVALID" | "OUTSIDE_OPERATING_HOURS" | "RATE_LIMITED" | "INTERNAL_SERVER_ERROR" | "SERVICE_BUSY";
+        ErrorDetail: {
+            field?: string;
+            message: string;
+            kind?: string;
+            status?: string;
+            /** Format: date-time */
+            start_at?: string;
+            /** Format: date-time */
+            end_at?: string;
+            /** @description Nomor baris pada berkas CSV yang diunggah (baris 1 adalah header). Hanya pada galat impor. */
+            line?: number;
+            /** @description Nama kolom CSV yang bermasalah. Hanya pada galat impor. */
+            column?: string;
+            /** @description Tanggal ke-berapa (mulai dari 1) dalam pengajuan multi-tanggal yang bermasalah. Hanya pada `POST /bookings` dengan `occurrences`. */
+            occurrence_no?: number;
+        };
         ErrorBody: {
             error: {
-                /** @example BOOKING_CONFLICT */
-                code: string;
+                code: components["schemas"]["ErrorCode"];
                 /** @example Ruang sudah terpakai pada rentang waktu tersebut. */
                 message: string;
-                details: {
-                    field?: string;
-                    message?: string;
-                    kind?: string;
-                    status?: string;
-                    /** Format: date-time */
-                    start_at?: string;
-                    /** Format: date-time */
-                    end_at?: string;
-                }[];
+                details: components["schemas"]["ErrorDetail"][];
                 /** @example req_123456 */
                 request_id: string;
             };
         };
         /** @enum {string} */
-        UserRole: "MAHASISWA" | "TU_KALAB" | "OB" | "KAPRODI";
+        UserRole: "MAHASISWA" | "ORGANISASI" | "TU" | "KALAB" | "OB" | "ADMIN";
         /** @enum {string} */
-        RoomType: "KELAS" | "LAB";
+        RoomType: "KELAS" | "LAB" | "AUDITORIUM" | "RUANG_UJIAN" | "RUANG_SIDANG";
         /** @enum {string} */
-        BookingStatus: "MENUNGGU" | "DISETUJUI" | "DITOLAK" | "DIBATALKAN";
+        CheckoutCondition: "NORMAL" | "ADA_MASALAH";
+        RoomQR: {
+            /** @description Alamat yang dikodekan pada QR: `<frontend>/check-in?room=<kode>&t=<token>` */
+            url: string;
+            qr_token: string;
+            /** Format: date-time */
+            rotated_at: string;
+        };
+        PreviousCheckout: {
+            /** Format: date-time */
+            checked_out_at: string;
+            condition: components["schemas"]["CheckoutCondition"];
+            /**
+             * Format: uuid
+             * @description Foto check-out; dibuka lewat `GET /attachments/{id}` (410 bila sudah dihapus retensi)
+             */
+            attachment_id: string;
+        };
+        CheckInResult: {
+            booking: components["schemas"]["Booking"];
+            previous_checkout: components["schemas"]["PreviousCheckout"] | null;
+        };
+        CheckOutResult: {
+            booking: components["schemas"]["Booking"];
+            /**
+             * Format: uuid
+             * @description Terisi bila `condition` `ADA_MASALAH`
+             */
+            report_id: string | null;
+        };
+        Checkout: {
+            /** Format: uuid */
+            booking_id: string;
+            /** Format: uuid */
+            room_id: string;
+            room_code: string;
+            room_name: string;
+            room_type: components["schemas"]["RoomType"];
+            /** Format: date-time */
+            checked_out_at: string;
+            condition: components["schemas"]["CheckoutCondition"];
+            note: string | null;
+            /** Format: uuid */
+            attachment_id: string;
+        };
+        Violation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            booking_id: string;
+            /** @enum {string} */
+            kind: "TIDAK_HADIR" | "TANPA_CHECKOUT" | "BATAL_TERLAMBAT";
+            points: number;
+            /** @description Poinnya masih dihitung (tidak di-annul dan di dalam jendela waktu) */
+            active: boolean;
+            /** Format: date-time */
+            annulled_at: string | null;
+            /** Format: uuid */
+            annulled_by: string | null;
+            annul_reason: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Hanya pada daftar */
+            room_code?: string;
+            /**
+             * Format: date-time
+             * @description Hanya pada daftar
+             */
+            booking_start_at?: string;
+        };
+        /** @enum {string} */
+        BookingStatus: "MENUNGGU" | "DISETUJUI" | "DITOLAK" | "DIBATALKAN" | "BERLANGSUNG" | "SELESAI" | "TIDAK_HADIR" | "TANPA_CHECKOUT" | "KEDALUWARSA";
         /** @enum {string} */
         ReportStatus: "BARU" | "DITERIMA" | "DIPROSES" | "SELESAI";
         PaginationMeta: {
@@ -1574,11 +2817,182 @@ export interface components {
             identifier: string;
             name: string;
             /** Format: email */
-            email: string;
+            email: string | null;
             role: components["schemas"]["UserRole"];
             is_active: boolean;
+            /**
+             * Format: date-time
+             * @description Akun tidak dapat mengajukan booking sampai waktu ini; null bila tidak diblokir.
+             */
+            booking_blocked_until: string | null;
+            /** @description Nama penanggung jawab; terisi untuk akun ORGANISASI. */
+            pic_name: string | null;
+            /** @description Telepon penanggung jawab; terisi untuk akun ORGANISASI. */
+            pic_phone: string | null;
+            /** @description `true` bila akun masih memakai password sementara dan harus menggantinya. */
+            must_change_password: boolean;
+            /** @description Poin pelanggaran aktif. Hanya ada pada `GET /auth/me` untuk MAHASISWA dan ORGANISASI. */
+            active_points?: number;
+            /** @description Nama unit organisasi (program studi) akun. Hanya ada pada `GET /auth/me`. */
+            org_unit_name?: string;
             /** Format: date-time */
             created_at: string;
+        };
+        AuditLog: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Null bila dilakukan sistem
+             */
+            actor_id: string | null;
+            actor_role: components["schemas"]["UserRole"] | null;
+            actor_identifier: string | null;
+            actor_name: string | null;
+            /** @example USER_CREATED */
+            action: string;
+            /** @example USER */
+            entity_type: string;
+            /** Format: uuid */
+            entity_id: string | null;
+            /** @description Keadaan sebelum perubahan (JSON bebas, rahasia sudah disamarkan); null bila tidak ada. */
+            before: Record<string, never> | unknown[] | string | number | boolean | null;
+            /** @description Keadaan sesudah perubahan (JSON bebas, rahasia sudah disamarkan); null bila tidak ada. */
+            after: Record<string, never> | unknown[] | string | number | boolean | null;
+            ip: string | null;
+            user_agent: string | null;
+            request_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @enum {string} */
+        ImportKind: "SCHEDULES" | "USERS";
+        Import: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ImportKind"];
+            uploaded_by: {
+                /** Format: uuid */
+                id: string;
+                identifier: string;
+                name: string;
+            };
+            file_name: string | null;
+            /** @example 2026-GANJIL */
+            semester: string | null;
+            /** @enum {string} */
+            status: "COMMITTED" | "ROLLED_BACK";
+            /** @description Ringkasan hasil impor (isi bergantung pada `kind`). */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            rolled_back_at: string | null;
+        };
+        ImportRowError: {
+            /** @description Nomor baris CSV (baris 1 adalah header) */
+            line: number;
+            column?: string;
+            message: string;
+        };
+        ImportUsersPreview: {
+            /** @description Jumlah baris data pada berkas */
+            rows: number;
+            to_create: number;
+            to_update: number;
+            errors: components["schemas"]["ImportRowError"][];
+            /** @description Dikirim kembali saat menerapkan impor */
+            plan_hash: string;
+        };
+        ImportUsersResult: {
+            /** Format: uuid */
+            import_id: string;
+            created: number;
+            updated: number;
+            /** @description Password sementara akun baru; hanya tampil pada respons ini. */
+            credentials: {
+                identifier: string;
+                temporary_password: string;
+            }[];
+        };
+        SchedulePreview: {
+            /** @description Jumlah baris data pada berkas */
+            rows: number;
+            /** @description Jumlah pertemuan yang akan dibuat (hanya yang belum dimulai) */
+            occurrences: number;
+            errors: components["schemas"]["ImportRowError"][];
+            /** @description Booking MENUNGGU/DISETUJUI yang akan dibatalkan karena kalah dari jadwal akademik. */
+            bookings_to_cancel: {
+                /** Format: uuid */
+                booking_id: string;
+                room_code: string;
+                /** Format: date-time */
+                start_at: string;
+                /** Format: date-time */
+                end_at: string;
+                /** @description Judul jadwal akademik yang menggantikannya */
+                conflicts_with: string;
+            }[];
+            /** @description Dikirim kembali saat menerapkan impor */
+            plan_hash: string;
+        };
+        ScheduleApplyResult: {
+            /**
+             * Format: uuid
+             * @description Id impor; dipakai untuk `POST /imports/{id}/rollback`
+             */
+            import_id: string;
+            rows: number;
+            /** @description Jumlah pertemuan yang dibuat */
+            occurrences: number;
+            /** @description Jumlah booking yang dibatalkan oleh impor */
+            bookings_cancelled: number;
+        };
+        RollbackResult: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "ROLLED_BACK";
+            /** @description Jumlah pertemuan yang belum dimulai yang dihapus */
+            deleted_occurrences: number;
+        };
+        /**
+         * @description Jam dinding WIB berformat HH:MM. `24:00` hanya sah sebagai jam tutup (tengah malam).
+         * @example 07:00
+         */
+        ClockTime: string;
+        /** @enum {string} */
+        ApprovalPolicy: "AUTO_IF_ELIGIBLE" | "ALWAYS_MANUAL";
+        RoomTypePolicy: {
+            type: components["schemas"]["RoomType"];
+            label: string;
+            /** @description Peran yang boleh menyetujui booking dan mengelola ruang tipe ini. */
+            approver_roles: components["schemas"]["UserRole"][];
+            /** @description Peran yang boleh mengajukan booking tipe ini. */
+            requester_roles: components["schemas"]["UserRole"][];
+            approval_policy: components["schemas"]["ApprovalPolicy"];
+            letter_required: boolean;
+            /** @description Jam buka bawaan tipe (HH:MM, WIB) */
+            open_time: components["schemas"]["ClockTime"];
+            /** @description Jam tutup bawaan tipe (HH:MM, WIB); bisa `24:00` */
+            close_time: components["schemas"]["ClockTime"];
+            /** @description Durasi booking minimal (menit) */
+            min_duration_min: number;
+            /** @description Durasi booking maksimal (menit) */
+            max_duration_min: number;
+            /** @description Batas hari ke depan booking boleh diajukan */
+            max_advance_days: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Jam operasional efektif ruang (BR-29): jam khusus ruang bila ada, jika tidak jam bawaan tipenya. */
+        OperatingHours: {
+            open_time: components["schemas"]["ClockTime"];
+            close_time: components["schemas"]["ClockTime"];
+            /** @description `true` bila ruang menetapkan jam sendiri */
+            custom: boolean;
         };
         Room: {
             /** Format: uuid */
@@ -1591,6 +3005,10 @@ export interface components {
             capacity: number;
             facilities: string[];
             is_active: boolean;
+            /** @description Jam buka khusus ruang (HH:MM, WIB); null bila mengikuti jam bawaan tipe ruang (BR-29). */
+            open_time: string | null;
+            /** @description Jam tutup khusus ruang (HH:MM, WIB); null bila mengikuti jam bawaan tipe ruang (BR-29). */
+            close_time: string | null;
         };
         /** @enum {string} */
         ScheduleSource: "AKADEMIK" | "MANUAL";
@@ -1622,6 +3040,7 @@ export interface components {
         };
         AvailabilityRoom: {
             room: components["schemas"]["Room"];
+            operating_hours: components["schemas"]["OperatingHours"];
             /** @enum {string} */
             status: "TERSEDIA" | "DIGUNAKAN" | "DIAJUKAN";
             conflicts: {
@@ -1632,7 +3051,7 @@ export interface components {
                  * @description Hanya untuk kind BOOKING
                  * @enum {string}
                  */
-                status?: "MENUNGGU" | "DISETUJUI";
+                status?: "MENUNGGU" | "DISETUJUI" | "BERLANGSUNG";
                 /** Format: date-time */
                 start_at: string;
                 /** Format: date-time */
@@ -1646,6 +3065,38 @@ export interface components {
             identifier: string;
             name: string;
         };
+        /**
+         * @description `AUTO` disetujui sistem (BR-17); `MANUAL` diputuskan approver.
+         * @enum {string}
+         */
+        ApprovalMode: "AUTO" | "MANUAL";
+        /**
+         * @description Mengapa pengajuan tidak disetujui otomatis: kebijakan tipe ruang, pemohon ORGANISASI, atau poin pelanggaran aktif mencapai batas.
+         * @enum {string}
+         */
+        ManualReason: "ROOM_POLICY" | "ORGANIZATION" | "VIOLATION_HISTORY";
+        BookingLetter: {
+            /**
+             * Format: uuid
+             * @description Dibuka dengan `GET /attachments/{id}`
+             */
+            attachment_id: string;
+            letter_number: string | null;
+        };
+        RequesterCourse: {
+            /** @example 2026-GANJIL */
+            semester: string;
+            course_code: string | null;
+            course_name: string | null;
+            class_name: string | null;
+        };
+        /** @description Ringkasan pemohon untuk approver (BR-14, BR-24). */
+        RequesterSummary: {
+            /** @description Poin pelanggaran aktif */
+            active_points: number;
+            courses: components["schemas"]["RequesterCourse"][];
+        };
+        /** @description Satu tanggal booking. Pengajuan multi-tanggal (BR-27) menghasilkan satu `Booking` per tanggal dengan `group_id` yang sama. */
         Booking: {
             /** Format: uuid */
             id: string;
@@ -1662,35 +3113,161 @@ export interface components {
             purpose: string;
             participants?: number;
             notes?: string;
+            /** @description Isian khusus tipe ruang; `{}` bila tidak ada. */
+            details: {
+                [key: string]: unknown;
+            };
             status: components["schemas"]["BookingStatus"];
+            approval_mode: components["schemas"]["ApprovalMode"];
+            /** @description Terisi bila `approval_mode` `MANUAL`; null bila disetujui sistem. */
+            manual_reason: components["schemas"]["ManualReason"] | null;
             /** Format: uuid */
             decided_by?: string;
             /** Format: date-time */
             decided_at?: string;
             decision_reason?: string;
+            /**
+             * Format: uuid
+             * @description Id pengajuan multi-tanggal; null bila dibuat dengan satu tanggal.
+             */
+            group_id: string | null;
+            /** @description Urutan tanggal dalam grup (mulai dari 1); null bila bukan bagian grup. */
+            occurrence_no: number | null;
+            /** @description Jumlah tanggal dalam pengajuan; 1 untuk booking yang bukan bagian grup. */
+            occurrence_count: number;
+            /**
+             * Format: date-time
+             * @description Batas waktu approver memutuskan (BR-22); null bila tidak sedang menunggu.
+             */
+            expires_at: string | null;
+            /**
+             * Format: date-time
+             * @description Waktu perubahan terakhir oleh pemilik (BR-26); null bila belum pernah diubah.
+             */
+            edited_at: string | null;
+            letter: components["schemas"]["BookingLetter"] | null;
+            /**
+             * Format: date-time
+             * @description Waktu check-in menurut server (BR-11)
+             */
+            checked_in_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Waktu check-out menurut server (BR-12)
+             */
+            checked_out_at?: string | null;
+            checkout_condition?: components["schemas"]["CheckoutCondition"] | null;
+            checkout_note?: string | null;
+            /**
+             * Format: uuid
+             * @description Foto check-out; dibuka lewat `GET /attachments/{id}`
+             */
+            checkout_attachment_id?: string | null;
             /** Format: date-time */
             created_at: string;
+            /** @description Hanya ada pada `GET /bookings/{id}` untuk approver (TU, KALAB, ADMIN). */
+            requester_summary?: components["schemas"]["RequesterSummary"];
+        };
+        BookingGroupOccurrence: {
+            /** Format: uuid */
+            id: string;
+            occurrence_no: number;
+            /** Format: date-time */
+            start_at: string;
+            /** Format: date-time */
+            end_at: string;
+            status: components["schemas"]["BookingStatus"];
+        };
+        /** @description Hasil `POST /bookings` dengan `occurrences` (BR-27). */
+        BookingGroupResult: {
+            /** Format: uuid */
+            group_id: string;
+            status: components["schemas"]["BookingStatus"];
+            approval_mode: components["schemas"]["ApprovalMode"];
+            manual_reason: components["schemas"]["ManualReason"] | null;
+            /** Format: date-time */
+            expires_at: string | null;
+            bookings: components["schemas"]["BookingGroupOccurrence"][];
+        };
+        /** @description Hanya field yang dikirim yang diubah. `room_id` tidak dapat diubah (field tak dikenal dijawab 400). */
+        EditRequest: {
+            /** Format: date-time */
+            start_at?: string;
+            /** Format: date-time */
+            end_at?: string;
+            purpose?: string;
+            participants?: number;
+            /** @description String kosong menghapus catatan */
+            notes?: string;
+            details?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: uuid
+             * @description Id surat milik pemohon
+             */
+            letter_attachment_id?: string;
+            /** @description String kosong menghapus nomor surat */
+            letter_number?: string;
         };
         BookingEvent: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             booking_id: string;
-            /** Format: uuid */
-            actor_id: string;
+            /**
+             * Format: uuid
+             * @description Null bila perubahan dilakukan sistem
+             */
+            actor_id: string | null;
+            /**
+             * @description `STATUS` perpindahan status; `EDITED` perubahan isi oleh pemilik (BR-26).
+             * @enum {string}
+             */
+            kind: "STATUS" | "EDITED";
             from_status?: components["schemas"]["BookingStatus"];
             to_status: components["schemas"]["BookingStatus"];
             reason?: string;
+            /** @description Hanya pada `EDITED`. Nama field yang berubah menjadi `{from, to}`. */
+            changes?: {
+                [key: string]: {
+                    from: string | number | boolean | Record<string, never> | unknown[] | null;
+                    to: string | number | boolean | Record<string, never> | unknown[] | null;
+                };
+            };
+            /** Format: date-time */
+            created_at: string;
+        };
+        Attachment: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "LETTER" | "PHOTO";
+            /** @enum {string} */
+            content_type: "application/pdf" | "image/jpeg";
+            size_bytes: number;
+            /** @description Nama berkas dari pengunggah (hanya untuk tampilan) */
+            original_name: string | null;
             /** Format: date-time */
             created_at: string;
         };
         Notification: {
             /** Format: uuid */
             id: string;
-            type: string;
+            /**
+             * @description Jenis notifikasi. Penerima: `BOOKING_CREATED` dan `BOOKING_EDITED` ke approver tipe ruang;
+             *     `BOOKING_APPROVED/REJECTED/CANCELLED/NO_SHOW/AUTO_CLOSED/BLOCKED/EXPIRED` dan `REMINDER_*` ke peminjam;
+             *     `REPORT_CREATED` ke approver tipe ruang; `REPORT_STATUS_CHANGED` ke pelapor.
+             * @enum {string}
+             */
+            type: "BOOKING_CREATED" | "BOOKING_APPROVED" | "BOOKING_REJECTED" | "BOOKING_CANCELLED" | "BOOKING_EDITED" | "BOOKING_NO_SHOW" | "BOOKING_AUTO_CLOSED" | "BOOKING_BLOCKED" | "BOOKING_EXPIRED" | "REMINDER_CHECKIN" | "REMINDER_CHECKIN_LAST" | "REMINDER_CHECKOUT" | "REPORT_CREATED" | "REPORT_STATUS_CHANGED";
             title: string;
             body: string;
-            ref_type?: string;
+            /**
+             * @description Jenis objek yang dirujuk `ref_id`
+             * @enum {string}
+             */
+            ref_type?: "BOOKING" | "REPORT";
             /** Format: uuid */
             ref_id?: string;
             /** Format: date-time */
@@ -1715,8 +3292,11 @@ export interface components {
             reporter_id: string;
             reporter: components["schemas"]["Reporter"];
             description: string;
-            /** @description Path URL foto (`/api/v1/reports/{id}/photo`), bukan lokasi berkas di server. Ada hanya bila laporan punya foto; ambil dengan header Authorization. */
-            photo_path?: string;
+            /**
+             * Format: uuid
+             * @description Id foto laporan, null bila tanpa foto. Dibuka dengan `GET /attachments/{id}` (header Authorization). Foto disimpan sebagai JPEG tanpa metadata.
+             */
+            attachment_id: string | null;
             status: components["schemas"]["ReportStatus"];
             /** Format: uuid */
             handled_by?: string;
@@ -1741,6 +3321,26 @@ export interface components {
         /** @description Respons error terstandar ClassLab */
         ErrorResponse: {
             headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorBody"];
+            };
+        };
+        /** @description Akses ditolak (403). `error.code` adalah `FORBIDDEN` (peran atau kewenangan atas tipe ruang tidak cukup), `ROOM_TYPE_NOT_ALLOWED` (hanya `POST /bookings`: peran pemohon tidak termasuk `requester_roles` tipe ruang), `BOOKING_BLOCKED` (hanya `POST /bookings`: pemohon diblokir sampai `details[0].message`, field `blocked_until`), atau `PASSWORD_CHANGE_REQUIRED` (akun masih memakai password sementara; berlaku untuk setiap endpoint terautentikasi kecuali `GET /auth/me`, `POST /auth/logout`, dan `POST /auth/change-password`). */
+        ForbiddenResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorBody"];
+            };
+        };
+        /** @description Terlalu banyak percobaan (`RATE_LIMITED`) */
+        RateLimitedResponse: {
+            headers: {
+                /** @description Detik sampai percobaan berikutnya diizinkan */
+                "Retry-After"?: number;
                 [name: string]: unknown;
             };
             content: {

@@ -129,7 +129,7 @@ function ScheduleFormContent({
   })
 
   return (
-    <DialogContent className='sm:max-w-lg'>
+    <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-lg'>
       <DialogHeader>
         <DialogTitle>{editing ? 'Ubah jadwal' : 'Tambah jadwal'}</DialogTitle>
         <DialogDescription>

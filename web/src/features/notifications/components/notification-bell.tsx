@@ -24,9 +24,9 @@ export function NotificationBell() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant='ghost'
+          variant='secondary'
           size='icon'
-          className='relative rounded-full'
+          className='relative'
           aria-label={
             count > 0 ? `Notifikasi, ${count} belum dibaca` : 'Notifikasi'
           }
@@ -34,15 +34,17 @@ export function NotificationBell() {
           <Bell className='size-[1.2rem]' />
           {count > 0 && (
             <span
-              className='absolute -end-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-none font-semibold text-white'
+              className='absolute end-2 top-2 size-2 rounded-full bg-indicator'
               aria-hidden
-            >
-              {count > 99 ? '99+' : count}
-            </span>
+            />
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align='end' className='w-[22rem] p-0'>
+      <PopoverContent
+        align='end'
+        collisionPadding={16}
+        className='w-[min(22rem,calc(100vw-2rem))] p-0'
+      >
         {open && <BellContent count={count} close={() => setOpen(false)} />}
       </PopoverContent>
     </Popover>

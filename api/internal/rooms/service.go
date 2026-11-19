@@ -8,10 +8,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"classlab/api/internal/audit"
 	"classlab/api/internal/httpx"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
+	"classlab/api/internal/roomtypes"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -34,10 +36,13 @@ type Service struct {
 	pool  *db.Pool
 	q     *dbgen.Queries
 	clock clock.Clock
+	types *roomtypes.Store
+	// publicBaseURL is the frontend address the QR links to (the first CORS origin; see app.NewRouter).
+	publicBaseURL string
 }
 
-func NewService(pool *db.Pool, clk clock.Clock) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk}
+func NewService(pool *db.Pool, clk clock.Clock, types *roomtypes.Store, publicBaseURL string) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, types: types, publicBaseURL: strings.TrimRight(publicBaseURL, "/")}
 }
 
 type ListFilter struct {
@@ -56,6 +61,8 @@ type CreateInput struct {
 	Type       string
 	Capacity   int
 	Facilities []string
+	OpenTime   string // optional room-specific hours "HH:MM" (BR-29); both or neither
+	CloseTime  string
 }
 
 // UpdateInput holds only the fields the caller sent; nil means "leave unchanged".
@@ -66,15 +73,16 @@ type UpdateInput struct {
 	Capacity   *int
 	Facilities *[]string
 	IsActive   *bool
+	// OpenTime and CloseTime change the room's own hours; ClearOperatingHours puts it back on the type's
+	// default hours (BR-29).
+	OpenTime            *string
+	CloseTime           *string
+	ClearOperatingHours bool
 }
 
 func (in UpdateInput) empty() bool {
-	return in.Name == nil && in.Type == nil && in.Capacity == nil && in.Facilities == nil && in.IsActive == nil
-}
-
-// canManage reports whether the actor may change room data (brief section 3).
-func canManage(actor httpx.Principal) bool {
-	return actor.HasRole(httpx.RoleTUKalab, httpx.RoleKaprodi)
+	return in.Name == nil && in.Type == nil && in.Capacity == nil && in.Facilities == nil && in.IsActive == nil &&
+		in.OpenTime == nil && in.CloseTime == nil && !in.ClearOperatingHours
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (Room, error) {
@@ -85,7 +93,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (Room, error) {
 	if err != nil {
 		return Room{}, fmt.Errorf("getting room: %w", err)
 	}
-	return FromRow(row), nil
+	return FromRow(Row(row)), nil
 }
 
 func (s *Service) List(ctx context.Context, f ListFilter) ([]Room, int64, error) {
@@ -121,16 +129,13 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Room, int64, error)
 
 	out := make([]Room, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, FromRow(r))
+		out = append(out, FromRow(Row(r)))
 	}
 	return out, total, nil
 }
 
+// Create adds a room. Who may do so depends on the room's type: its approvers and administrators (BR-10).
 func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateInput) (Room, error) {
-	if !canManage(actor) {
-		return Room{}, httpx.ErrForbidden
-	}
-
 	in.Code = strings.ToUpper(strings.TrimSpace(in.Code))
 	in.Name = strings.TrimSpace(in.Name)
 
@@ -144,18 +149,43 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	problems = append(problems, validateCapacity(in.Capacity)...)
 	facilities, facilityProblems := normalizeFacilities(in.Facilities)
 	problems = append(problems, facilityProblems...)
+	open, closing, hoursProblems := parseOwnHours(in.OpenTime, in.CloseTime)
+	problems = append(problems, hoursProblems...)
 	if len(problems) > 0 {
 		return Room{}, httpx.ValidationError(problems...)
 	}
+	if err := s.types.RequireRoomManager(ctx, actor, in.Type); err != nil {
+		return Room{}, err
+	}
 
-	row, err := s.q.CreateRoom(ctx, dbgen.CreateRoomParams{
-		OrgUnitID:  in.OrgUnitID,
-		Code:       in.Code,
-		Name:       in.Name,
-		Type:       dbgen.RoomType(in.Type),
-		Capacity:   int32(in.Capacity),
-		Facilities: facilities,
-		CreatedAt:  s.clock.Now(),
+	token, err := NewQRToken()
+	if err != nil {
+		return Room{}, err
+	}
+
+	var created Room
+	err = s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+		now := s.clock.Now()
+		row, err := s.q.WithTx(tx).CreateRoom(ctx, dbgen.CreateRoomParams{
+			OrgUnitID:   in.OrgUnitID,
+			Code:        in.Code,
+			Name:        in.Name,
+			Type:        dbgen.RoomType(in.Type),
+			Capacity:    int32(in.Capacity),
+			Facilities:  facilities,
+			QrToken:     token,
+			QrRotatedAt: now,
+			OpenTime:    open,
+			CloseTime:   closing,
+		})
+		if err != nil {
+			return err
+		}
+		created = FromRow(Row(row))
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionRoomCreated, EntityType: audit.EntityRoom,
+			EntityID: created.ID, After: created, At: now,
+		})
 	})
 	if err != nil {
 		if d, ok := constraintDetail(err); ok {
@@ -163,13 +193,10 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		}
 		return Room{}, fmt.Errorf("creating room: %w", err)
 	}
-	return FromRow(row), nil
+	return created, nil
 }
 
 func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUID, in UpdateInput) (Room, error) {
-	if !canManage(actor) {
-		return Room{}, httpx.ErrForbidden
-	}
 	if in.empty() {
 		return Room{}, httpx.ValidationError(httpx.ErrorDetail{Message: "Tidak ada field yang diubah."})
 	}
@@ -198,6 +225,10 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	if in.IsActive != nil {
 		params.IsActive = pgtype.Bool{Bool: *in.IsActive, Valid: true}
 	}
+	params.ClearOperatingHours = in.ClearOperatingHours
+	if in.ClearOperatingHours && (in.OpenTime != nil || in.CloseTime != nil) {
+		problems = append(problems, httpx.ErrorDetail{Field: "open_time", Message: "clear_operating_hours tidak dapat dikirim bersama open_time atau close_time."})
+	}
 	if len(problems) > 0 {
 		return Room{}, httpx.ValidationError(problems...)
 	}
@@ -206,20 +237,52 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 	var updated Room
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if _, err := q.LockRoom(ctx, id); err != nil {
+		locked, err := q.LockRoom(ctx, id)
+		if err != nil {
 			return err
 		}
+		before := FromRow(Row(locked))
+
+		// Hours are judged as they will be after the change, so sending only one of the two is fine when
+		// the room already has the other.
+		if in.OpenTime != nil || in.CloseTime != nil {
+			open, closing, problems := mergeOwnHours(locked.OpenTime, locked.CloseTime, in.OpenTime, in.CloseTime)
+			if len(problems) > 0 {
+				return httpx.ValidationError(problems...)
+			}
+			params.OpenTime, params.CloseTime = open, closing
+		}
+
+		// The actor must manage the type the room has now, and the type it is moving to.
+		if err := s.types.RequireRoomManager(ctx, actor, before.Type); err != nil {
+			return err
+		}
+		if in.Type != nil && *in.Type != before.Type {
+			if err := s.types.RequireRoomManager(ctx, actor, *in.Type); err != nil {
+				return err
+			}
+		}
+
 		row, err := q.UpdateRoom(ctx, params)
 		if err != nil {
 			return err
 		}
-		updated = FromRow(row)
-		return nil
+		updated = FromRow(Row(row))
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionRoomUpdated, EntityType: audit.EntityRoom,
+			EntityID: id, Before: before, After: updated, At: params.UpdatedAt,
+		})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Room{}, httpx.ErrNotFound
 	}
 	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			return Room{}, err
+		}
+		if d, ok := constraintDetail(err); ok {
+			return Room{}, httpx.ValidationError(d)
+		}
 		return Room{}, fmt.Errorf("updating room: %w", err)
 	}
 	return updated, nil
@@ -227,18 +290,20 @@ func (s *Service) Update(ctx context.Context, actor httpx.Principal, id uuid.UUI
 
 // Delete soft-deletes a room (BR-07). Schedules and past bookings stay as history.
 func (s *Service) Delete(ctx context.Context, actor httpx.Principal, id uuid.UUID) error {
-	if !canManage(actor) {
-		return httpx.ErrForbidden
-	}
-
 	now := s.clock.Now()
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		// Locking first means a booking being created right now either commits before this check
 		// (and blocks the delete) or waits for the delete and is refused as ROOM_INACTIVE/not found.
-		if _, err := q.LockRoom(ctx, id); err != nil {
+		locked, err := q.LockRoom(ctx, id)
+		if err != nil {
 			return err
 		}
+		before := FromRow(Row(locked))
+		if err := s.types.RequireRoomManager(ctx, actor, before.Type); err != nil {
+			return err
+		}
+
 		live, err := q.CountLiveBookingsForRoom(ctx, dbgen.CountLiveBookingsForRoomParams{RoomID: id, EndAt: now})
 		if err != nil {
 			return fmt.Errorf("counting live bookings: %w", err)
@@ -246,12 +311,21 @@ func (s *Service) Delete(ctx context.Context, actor httpx.Principal, id uuid.UUI
 		if live > 0 {
 			return httpx.ErrRoomHasActiveBookings
 		}
-		return q.SoftDeleteRoom(ctx, dbgen.SoftDeleteRoomParams{ID: id, DeletedAt: pgtype.Timestamptz{Time: now, Valid: true}})
+		if err := q.SoftDeleteRoom(ctx, dbgen.SoftDeleteRoomParams{ID: id, DeletedAt: pgtype.Timestamptz{Time: now, Valid: true}}); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{
+			Actor: &actor, Action: audit.ActionRoomDeleted, EntityType: audit.EntityRoom,
+			EntityID: id, Before: before, At: now,
+		})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return httpx.ErrNotFound
 	}
 	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) || errors.Is(err, httpx.ErrRoomHasActiveBookings) {
+			return err
+		}
 		return fmt.Errorf("deleting room: %w", err)
 	}
 	return nil
@@ -271,9 +345,11 @@ func validateName(v string) []httpx.ErrorDetail {
 	return nil
 }
 
+// validateType accepts any type the database knows. Which types exist is data (room_type_policies),
+// not something this package lists by hand.
 func validateType(v string) []httpx.ErrorDetail {
-	if v != string(dbgen.RoomTypeKELAS) && v != string(dbgen.RoomTypeLAB) {
-		return []httpx.ErrorDetail{{Field: "type", Message: "Tipe ruang harus KELAS atau LAB."}}
+	if !dbgen.RoomType(v).Valid() {
+		return []httpx.ErrorDetail{{Field: "type", Message: "Tipe ruang tidak dikenal."}}
 	}
 	return nil
 }
@@ -324,4 +400,45 @@ func constraintDetail(err error) (httpx.ErrorDetail, bool) {
 // escapeLike neutralises LIKE wildcards so user input is matched literally.
 func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// parseOwnHours reads the optional room-specific hours of a new room (BR-29): both or neither.
+func parseOwnHours(open, closing string) (pgtype.Time, pgtype.Time, []httpx.ErrorDetail) {
+	if open == "" && closing == "" {
+		return pgtype.Time{}, pgtype.Time{}, nil
+	}
+	return mergeOwnHours(pgtype.Time{}, pgtype.Time{}, &open, &closing)
+}
+
+// mergeOwnHours applies a requested change to a room's current hours and checks the result: both set or
+// both empty, "HH:MM", on the 30-minute grid, open before close. Room hours are not bounded by the type's
+// default window; a room may open longer than its type's default (BR-29).
+func mergeOwnHours(curOpen, curClose pgtype.Time, newOpen, newClose *string) (pgtype.Time, pgtype.Time, []httpx.ErrorDetail) {
+	open, hasOpen := roomtypes.MinutesOf(curOpen)
+	closing, hasClose := roomtypes.MinutesOf(curClose)
+	var problems []httpx.ErrorDetail
+	if newOpen != nil {
+		m, ok := roomtypes.ParseClock(*newOpen)
+		if !ok {
+			problems = append(problems, httpx.ErrorDetail{Field: "open_time", Message: "open_time harus berformat HH:MM."})
+		}
+		open, hasOpen = m, ok
+	}
+	if newClose != nil {
+		m, ok := roomtypes.ParseClock(*newClose)
+		if !ok {
+			problems = append(problems, httpx.ErrorDetail{Field: "close_time", Message: "close_time harus berformat HH:MM."})
+		}
+		closing, hasClose = m, ok
+	}
+	if len(problems) > 0 {
+		return pgtype.Time{}, pgtype.Time{}, problems
+	}
+	if hasOpen != hasClose {
+		return pgtype.Time{}, pgtype.Time{}, []httpx.ErrorDetail{{Field: "open_time", Message: "open_time dan close_time harus diisi bersamaan."}}
+	}
+	if !roomtypes.ValidHours(open, closing) {
+		return pgtype.Time{}, pgtype.Time{}, []httpx.ErrorDetail{{Field: "open_time", Message: fmt.Sprintf("Jam buka harus sebelum jam tutup dan berkelipatan %d menit.", roomtypes.MinutesPerSlot)}}
+	}
+	return roomtypes.PGTime(open), roomtypes.PGTime(closing), nil
 }

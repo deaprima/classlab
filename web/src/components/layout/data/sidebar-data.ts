@@ -1,90 +1,88 @@
 import {
   Bell,
   CalendarClock,
-  CalendarPlus,
+  CalendarDays,
   ClipboardCheck,
   DoorOpen,
+  FileClock,
   History,
   LayoutGrid,
-  Palette,
+  ScrollText,
+  ShieldCheck,
+  SlidersHorizontal,
   TriangleAlert,
   Users,
 } from 'lucide-react'
 import { type UserRole } from '@/lib/api-types'
-import { ACCESS, hasRole } from '@/lib/rbac'
-import { type NavGroup } from '../types'
+import { type NavItem } from '../types'
 
-const navGroups: NavGroup[] = [
-  {
-    title: 'Peminjaman',
-    items: [
-      { title: 'Ketersediaan Ruang', url: '/', icon: LayoutGrid },
-      {
-        title: 'Ajukan Peminjaman',
-        url: '/bookings/new',
-        icon: CalendarPlus,
-        roles: ACCESS.createBooking,
-      },
-      {
-        title: 'Riwayat Peminjaman',
-        url: '/bookings',
-        icon: History,
-        roles: ACCESS.viewBookings,
-      },
-      {
-        title: 'Persetujuan',
-        url: '/approvals',
-        icon: ClipboardCheck,
-        roles: ACCESS.approveBookings,
-      },
-    ],
-  },
-  {
-    title: 'Umum',
-    items: [
-      { title: 'Notifikasi', url: '/notifications', icon: Bell },
-      { title: 'Laporan Kerusakan', url: '/reports', icon: TriangleAlert },
-    ],
-  },
-  {
-    title: 'Administrasi',
-    items: [
-      {
-        title: 'Kelola Ruang',
-        url: '/admin/rooms',
-        icon: DoorOpen,
-        roles: ACCESS.manageRooms,
-      },
-      {
-        title: 'Kelola Jadwal',
-        url: '/admin/schedules',
-        icon: CalendarClock,
-        roles: ACCESS.manageSchedules,
-      },
-      {
-        title: 'Kelola Pengguna',
-        url: '/admin/users',
-        icon: Users,
-        roles: ACCESS.manageUsers,
-      },
-    ],
-  },
-  {
-    title: 'Lainnya',
-    items: [{ title: 'Tampilan', url: '/settings/appearance', icon: Palette }],
-  },
+// The sidebar menu of each role, in order (docs/DESIGN.md section 5; at most 7 items). An item
+// whose page does not exist yet has no `url`: it is part of the design but stays out of the UI
+// until its route lands (Phase 6.2/6.3), so no link ever leads nowhere.
+type MenuItem = Omit<NavItem, 'items' | 'roles'> & { url?: string }
+
+const REQUESTER_MENU: MenuItem[] = [
+  { title: 'Dashboard', url: '/', icon: LayoutGrid },
+  { title: 'Jadwal Ruang', url: '/schedule', icon: CalendarDays },
+  { title: 'Pengajuan Saya', url: '/bookings', icon: FileClock },
+  { title: 'Riwayat', url: '/history', icon: History },
+  { title: 'Lapor Kerusakan', url: '/reports', icon: TriangleAlert },
 ]
 
-/** Navigation for one role; groups left without items are dropped. */
-export function navGroupsForRole(role: UserRole | undefined): NavGroup[] {
+const MENUS: Record<UserRole, MenuItem[]> = {
+  MAHASISWA: REQUESTER_MENU,
+  ORGANISASI: REQUESTER_MENU,
+  TU: [
+    { title: 'Beranda', url: '/', icon: LayoutGrid },
+    { title: 'Approval', url: '/approvals', icon: ClipboardCheck },
+    { title: 'Ruang', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
+    { title: 'Verifikasi', url: '/verify', icon: ShieldCheck },
+    { title: 'Laporan', url: '/reports', icon: TriangleAlert },
+    { title: 'Mahasiswa', url: '/manage/students', icon: Users },
+  ],
+  KALAB: [
+    { title: 'Beranda', url: '/', icon: LayoutGrid },
+    { title: 'Approval Lab', url: '/approvals', icon: ClipboardCheck },
+    { title: 'Ruang', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
+    { title: 'Papan Ruang', url: '/today', icon: CalendarClock },
+    { title: 'Laporan', url: '/reports', icon: TriangleAlert },
+  ],
+  OB: [
+    { title: 'Beranda', url: '/', icon: LayoutGrid },
+    { title: 'Papan Ruang', url: '/today', icon: CalendarClock },
+    { title: 'Verifikasi', url: '/verify', icon: ShieldCheck },
+    { title: 'Laporan', url: '/reports', icon: TriangleAlert },
+    { title: 'Notifikasi', url: '/notifications', icon: Bell },
+  ],
+  ADMIN: [
+    { title: 'Beranda', url: '/', icon: LayoutGrid },
+    { title: 'Approval', url: '/approvals', icon: ClipboardCheck },
+    { title: 'Ruang', url: '/admin/rooms', icon: DoorOpen },
+    { title: 'Jadwal', url: '/admin/schedules', icon: CalendarDays },
+    { title: 'Pengguna', url: '/admin/users', icon: Users },
+    {
+      title: 'Kebijakan Ruang',
+      url: '/admin/room-types',
+      icon: SlidersHorizontal,
+    },
+    { title: 'Audit Log', url: '/admin/audit', icon: ScrollText },
+  ],
+}
+
+/** The full menu of a role as designed, including items whose page is not built yet. */
+export function plannedMenuForRole(role: UserRole): readonly MenuItem[] {
+  return MENUS[role]
+}
+
+/** Navigation for one role: only items that already have a page. */
+export function navGroupsForRole(
+  role: UserRole | undefined
+): { title: string; items: NavItem[] }[] {
   if (!role) return []
-  const user = { role }
-  return navGroups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter(
-        (item) => !item.roles || hasRole(user, item.roles)
-      ),
-    }))
-    .filter((group) => group.items.length > 0)
+  const items = MENUS[role].filter(
+    (item): item is MenuItem & { url: string } => !!item.url
+  )
+  return [{ title: 'Menu', items }]
 }

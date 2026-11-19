@@ -3,12 +3,12 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { AlertCircle, Loader2, LogIn } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api-client'
 import { applyFieldErrors, getApiError, getErrorMessage } from '@/lib/api-error'
 import { type LoginRequest, type LoginResponse } from '@/lib/api-types'
-import { safeRedirectPath } from '@/lib/session'
+import { CHANGE_PASSWORD_PATH, safeRedirectPath } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -51,7 +51,13 @@ export function UserAuthForm({
       (await api.post<LoginResponse>('/auth/login', body)).data,
     onSuccess: (data) => {
       useAuthStore.getState().auth.setSession(data.access_token, data.user)
-      router.history.replace(safeRedirectPath(redirectTo))
+      const target = safeRedirectPath(redirectTo)
+      // A temporary password must be replaced before anything else; the change page returns to `target`.
+      router.history.replace(
+        data.user.must_change_password
+          ? `${CHANGE_PASSWORD_PATH}?redirect=${encodeURIComponent(target)}`
+          : target
+      )
     },
     onError: (error) => {
       const details = getApiError(error)?.details ?? []
@@ -83,7 +89,7 @@ export function UserAuthForm({
         {...props}
       >
         {rootError && (
-          <Alert variant='destructive'>
+          <Alert variant='error'>
             <AlertCircle />
             <AlertDescription>{rootError}</AlertDescription>
           </Alert>
@@ -96,7 +102,7 @@ export function UserAuthForm({
               <FormLabel>NIM / NIP</FormLabel>
               <FormControl>
                 <Input
-                  placeholder='Contoh: 220101001'
+                  placeholder='Masukkan NIM / NIP'
                   autoComplete='username'
                   autoFocus
                   {...field}
@@ -111,10 +117,10 @@ export function UserAuthForm({
           name='password'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Kata Sandi</FormLabel>
+              <FormLabel>Password</FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder='Masukkan kata sandi'
+                  placeholder='Masukkan password'
                   autoComplete='current-password'
                   {...field}
                 />
@@ -123,8 +129,8 @@ export function UserAuthForm({
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={login.isPending}>
-          {login.isPending ? <Loader2 className='animate-spin' /> : <LogIn />}
+        <Button variant='accent' className='h-10' disabled={login.isPending}>
+          {login.isPending && <Loader2 className='animate-spin' />}
           Masuk
         </Button>
       </form>

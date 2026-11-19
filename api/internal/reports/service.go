@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"classlab/api/internal/attachments"
 	"classlab/api/internal/httpx"
+	"classlab/api/internal/notifications"
 	"classlab/api/internal/platform/clock"
 	"classlab/api/internal/platform/db"
 	"classlab/api/internal/platform/db/dbgen"
+	"classlab/api/internal/roomtypes"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,16 +34,18 @@ var statusOrder = []dbgen.ReportStatus{
 }
 
 type Service struct {
-	pool          *db.Pool
-	q             *dbgen.Queries
-	clock         clock.Clock
-	store         *Storage
-	maxPhotoBytes int64
-	log           *slog.Logger
+	pool  *db.Pool
+	q     *dbgen.Queries
+	clock clock.Clock
+	files *attachments.Service
+	log   *slog.Logger
+	types *roomtypes.Store
+
+	notifier *notifications.Notifier
 }
 
-func NewService(pool *db.Pool, clk clock.Clock, store *Storage, maxPhotoBytes int64, log *slog.Logger) *Service {
-	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, store: store, maxPhotoBytes: maxPhotoBytes, log: log}
+func NewService(pool *db.Pool, clk clock.Clock, files *attachments.Service, log *slog.Logger, types *roomtypes.Store, notifier *notifications.Notifier) *Service {
+	return &Service{pool: pool, q: dbgen.New(pool), clock: clk, files: files, log: log, types: types, notifier: notifier}
 }
 
 type CreateInput struct {
@@ -57,15 +61,20 @@ type ListFilter struct {
 	PerPage int
 }
 
-// canViewAll covers the roles that see every report (brief section 6.2).
-func canViewAll(actor httpx.Principal) bool {
-	return actor.HasRole(httpx.RoleTUKalab, httpx.RoleKaprodi)
-}
-
-// visibleTo: handlers see everything, a reporter sees their own, and anyone else gets 404 so that
-// another person's report is indistinguishable from a missing one.
-func visibleTo(actor httpx.Principal, reporterID uuid.UUID) error {
-	if canViewAll(actor) || actor.UserID == reporterID {
+// visibleTo: a reporter sees their own report, TU and KALAB see the room types they approve, ADMIN
+// reads all, and anyone else (OB included) gets 404 so that another person's report is
+// indistinguishable from a missing one (brief section 3, BR-10).
+func (s *Service) visibleTo(ctx context.Context, actor httpx.Principal, reporterID uuid.UUID, roomType string) error {
+	if actor.UserID == reporterID || actor.Role == httpx.RoleAdmin {
+		return nil
+	}
+	if actor.HasRole(httpx.RoleTU, httpx.RoleKalab) {
+		if err := s.types.RequireApprover(ctx, actor, roomType); err != nil {
+			if errors.Is(err, httpx.ErrForbidden) {
+				return httpx.ErrNotFound
+			}
+			return err
+		}
 		return nil
 	}
 	return httpx.ErrNotFound
@@ -84,22 +93,21 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 		problems = append(problems, httpx.ErrorDetail{Field: "description", Message: fmt.Sprintf("Deskripsi wajib diisi (maksimal %d karakter).", maxDescriptionRunes)})
 	}
 
-	var photoName string
-	if in.Photo != nil {
-		switch kind, ok := sniffImage(in.Photo); {
-		case int64(len(in.Photo)) > s.maxPhotoBytes:
-			problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: fmt.Sprintf("Ukuran foto maksimal %d MB.", s.maxPhotoBytes>>20)})
-		case !ok:
-			problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: "Foto harus berformat JPG, PNG, atau WebP."})
-		default:
-			// Metadata (notably the GPS position in EXIF) is removed before anything is stored.
-			clean, err := stripMetadata(kind, in.Photo)
-			if err != nil {
-				problems = append(problems, httpx.ErrorDetail{Field: "photo", Message: "Foto rusak atau tidak dapat dibaca."})
-				break
+	// The photo is checked and re-encoded before the transaction opens (BR-16): CPU work stays out of it,
+	// and a bad photo is refused before anything is stored.
+	var prepared attachments.Prepared
+	hasPhoto := in.Photo != nil
+	if hasPhoto {
+		p, err := s.files.PreparePhoto(in.Photo, "photo")
+		if err != nil {
+			var domain *httpx.CustomDomainError
+			if errors.As(err, &domain) {
+				problems = append(problems, domain.Details...)
+			} else {
+				return Report{}, err
 			}
-			in.Photo = clean
-			photoName = uuid.NewString() + kind.ext
+		} else {
+			prepared = p
 		}
 	}
 	if len(problems) > 0 {
@@ -107,6 +115,7 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 	}
 
 	var created Report
+	var stored attachments.Stored
 	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		now := s.clock.Now()
@@ -118,54 +127,80 @@ func (s *Service) Create(ctx context.Context, actor httpx.Principal, in CreateIn
 			return fmt.Errorf("reading room: %w", err)
 		}
 
-		row, err := q.CreateReport(ctx, dbgen.CreateReportParams{
-			RoomID: in.RoomID, ReporterID: actor.UserID, Description: in.Description, CreatedAt: now,
-			PhotoPath: pgtype.Text{String: photoName, Valid: photoName != ""},
-		})
+		var attachment pgtype.UUID
+		if hasPhoto {
+			st, err := s.files.Insert(ctx, q, prepared, actor.UserID, "", now)
+			if err != nil {
+				return err
+			}
+			stored = st
+			attachment = pgtype.UUID{Bytes: st.ID, Valid: true}
+		}
+		report, err := s.FileIn(ctx, q, actor.UserID, in.RoomID, in.Description, attachment, now)
 		if err != nil {
-			return fmt.Errorf("creating report: %w", err)
-		}
-		if err := q.CreateReportEvent(ctx, dbgen.CreateReportEventParams{
-			ReportID: row.ID, ActorID: actor.UserID, ToStatus: dbgen.ReportStatusBARU, CreatedAt: now,
-		}); err != nil {
-			return fmt.Errorf("recording report event: %w", err)
-		}
-
-		view, err := q.GetReport(ctx, row.ID)
-		if err != nil {
-			return fmt.Errorf("reading created report: %w", err)
-		}
-		created = fromRow(view)
-		if err := notifyCreated(ctx, q, created, now); err != nil {
 			return err
 		}
+		created = report
 
-		if photoName != "" {
-			return s.store.Save(photoName, in.Photo)
+		// The file is written last, so a failed write rolls the report back with it.
+		if hasPhoto {
+			return stored.Write()
 		}
 		return nil
 	})
 	if err != nil {
-		s.discardPhoto(ctx, photoName)
+		if hasPhoto && stored.ID != uuid.Nil {
+			stored.Remove(ctx) // the commit may be what failed
+		}
 		return Report{}, mapError(err)
 	}
 	return created, nil
 }
 
-// discardPhoto removes a stored file after a failed create. A leftover file is a leak, not a
-// correctness problem, so a failure to remove it is logged rather than returned.
-func (s *Service) discardPhoto(ctx context.Context, name string) {
-	if name == "" {
-		return
+// FileIn records a new report, its first history event and the notification to the room type's approvers,
+// through the caller's transaction. Create uses it for POST /reports, and check-out uses it when the room
+// is left with a problem (BR-12), so the booking and its report commit or roll back together. The photo, if
+// any, is already inserted by the caller.
+func (s *Service) FileIn(ctx context.Context, q *dbgen.Queries, reporterID, roomID uuid.UUID, description string, attachment pgtype.UUID, now time.Time) (Report, error) {
+	row, err := q.CreateReport(ctx, dbgen.CreateReportParams{
+		RoomID: roomID, ReporterID: reporterID, Description: description, AttachmentID: attachment, CreatedAt: now,
+	})
+	if err != nil {
+		return Report{}, fmt.Errorf("creating report: %w", err)
 	}
-	if err := s.store.Remove(name); err != nil {
-		s.log.ErrorContext(ctx, "removing photo of a failed report", slog.String("file", name), slog.String("error", err.Error()))
+	if err := q.CreateReportEvent(ctx, dbgen.CreateReportEventParams{
+		ReportID: row.ID, ActorID: reporterID, ToStatus: dbgen.ReportStatusBARU, CreatedAt: now,
+	}); err != nil {
+		return Report{}, fmt.Errorf("recording report event: %w", err)
 	}
+
+	view, err := q.GetReport(ctx, row.ID)
+	if err != nil {
+		return Report{}, fmt.Errorf("reading created report: %w", err)
+	}
+	created := fromRow(view)
+	if err := s.notifyCreated(ctx, q, created, now); err != nil {
+		return Report{}, err
+	}
+	return created, nil
 }
 
 func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter) ([]Report, int64, error) {
-	var reporter pgtype.UUID
-	if !canViewAll(actor) {
+	// Reporters without a managing role see only their own reports. TU and KALAB see the room types they
+	// approve plus their own; ADMIN sees all.
+	var reporter, viewer pgtype.UUID
+	var roomTypes []string
+	switch {
+	case actor.Role == httpx.RoleAdmin:
+	case actor.HasRole(httpx.RoleTU, httpx.RoleKalab):
+		types, err := s.types.ApprovableTypes(ctx, actor.Role)
+		if err != nil {
+			return nil, 0, err
+		}
+		// types is non-nil even when empty: an empty array matches no room type, NULL would match all of them.
+		roomTypes = types
+		viewer = pgtype.UUID{Bytes: actor.UserID, Valid: true}
+	default:
 		reporter = pgtype.UUID{Bytes: actor.UserID, Valid: true}
 	}
 	var status dbgen.NullReportStatus
@@ -178,13 +213,15 @@ func (s *Service) List(ctx context.Context, actor httpx.Principal, f ListFilter)
 	}
 
 	rows, err := s.q.ListReports(ctx, dbgen.ListReportsParams{
-		ReporterID: reporter, Status: status, RoomID: room,
+		ReporterID: reporter, Status: status, RoomID: room, RoomTypes: roomTypes, ViewerID: viewer,
 		PageLimit: int32(f.PerPage), PageOffset: int32((f.Page - 1) * f.PerPage),
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing reports: %w", err)
 	}
-	total, err := s.q.CountReports(ctx, dbgen.CountReportsParams{ReporterID: reporter, Status: status, RoomID: room})
+	total, err := s.q.CountReports(ctx, dbgen.CountReportsParams{
+		ReporterID: reporter, Status: status, RoomID: room, RoomTypes: roomTypes, ViewerID: viewer,
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting reports: %w", err)
 	}
@@ -220,47 +257,17 @@ func (s *Service) load(ctx context.Context, actor httpx.Principal, id uuid.UUID)
 	if err != nil {
 		return dbgen.GetReportRow{}, fmt.Errorf("reading report: %w", err)
 	}
-	if err := visibleTo(actor, row.ReporterID); err != nil {
+	if err := s.visibleTo(ctx, actor, row.ReporterID, string(row.RoomType)); err != nil {
 		return dbgen.GetReportRow{}, err
 	}
 	return row, nil
-}
-
-// Photo is an open stored photo and what is needed to serve it. The caller closes File.
-type Photo struct {
-	File        *os.File
-	ContentType string
-	ModTime     time.Time
-}
-
-func (s *Service) Photo(ctx context.Context, actor httpx.Principal, id uuid.UUID) (Photo, error) {
-	row, err := s.load(ctx, actor, id)
-	if err != nil {
-		return Photo{}, err
-	}
-	if !row.PhotoPath.Valid {
-		return Photo{}, httpx.ErrNotFound
-	}
-	f, err := s.store.Open(row.PhotoPath.String)
-	if err != nil {
-		// A missing or malformed file is an operational problem, but the client only needs to know
-		// there is nothing to show; the details go to the log.
-		s.log.ErrorContext(ctx, "opening report photo", slog.String("report_id", id.String()), slog.String("error", err.Error()))
-		return Photo{}, httpx.ErrNotFound
-	}
-	info, err := f.Stat()
-	if err != nil {
-		closeErr := f.Close()
-		return Photo{}, errors.Join(fmt.Errorf("reading photo file info: %w", err), closeErr)
-	}
-	return Photo{File: f, ContentType: imageForName(row.PhotoPath.String).contentType, ModTime: info.ModTime()}, nil
 }
 
 // UpdateStatus moves a report exactly one step forward (BR-08), records the event and tells the
 // reporter, all in one transaction. The report row is locked first so that two concurrent updates
 // cannot both pass the one-step check.
 func (s *Service) UpdateStatus(ctx context.Context, actor httpx.Principal, id uuid.UUID, to, note string) (Report, error) {
-	if actor.Role != httpx.RoleTUKalab {
+	if !actor.HasRole(httpx.RoleTU, httpx.RoleKalab, httpx.RoleAdmin) {
 		return Report{}, httpx.ErrForbidden
 	}
 
@@ -273,8 +280,21 @@ func (s *Service) UpdateStatus(ctx context.Context, actor httpx.Principal, id uu
 		return Report{}, httpx.ValidationError(httpx.ErrorDetail{Field: "note", Message: fmt.Sprintf("Catatan maksimal %d karakter.", maxNoteRunes)})
 	}
 
+	// Only an approver of the room's type may move its reports along (BR-10). A report never changes room,
+	// so the type read here is the one the check needs.
+	peek, err := s.q.GetReport(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Report{}, httpx.ErrNotFound
+	}
+	if err != nil {
+		return Report{}, fmt.Errorf("reading report: %w", err)
+	}
+	if err := s.types.RequireApprover(ctx, actor, string(peek.RoomType)); err != nil {
+		return Report{}, err
+	}
+
 	var updated Report
-	err := s.pool.WithTx(ctx, func(tx pgx.Tx) error {
+	err = s.pool.WithTx(ctx, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		now := s.clock.Now()
 
@@ -304,7 +324,7 @@ func (s *Service) UpdateStatus(ctx context.Context, actor httpx.Principal, id uu
 			return fmt.Errorf("reading updated report: %w", err)
 		}
 		updated = fromRow(view)
-		return notifyStatusChanged(ctx, q, updated, actor, note, now)
+		return s.notifyStatusChanged(ctx, q, updated, actor, note, now)
 	})
 	if err != nil {
 		return Report{}, mapError(err)

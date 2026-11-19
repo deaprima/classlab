@@ -13,20 +13,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveBookingsForRequester = `-- name: CountActiveBookingsForRequester :one
-SELECT count(*)
+const countActiveRequests = `-- name: CountActiveRequests :one
+SELECT count(DISTINCT COALESCE(group_id, id))
 FROM bookings
-WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI') AND end_at > $2
+WHERE requester_id = $1 AND status IN ('MENUNGGU', 'DISETUJUI', 'BERLANGSUNG') AND end_at > $2
 `
 
-type CountActiveBookingsForRequesterParams struct {
+type CountActiveRequestsParams struct {
 	RequesterID uuid.UUID `json:"requester_id"`
 	EndAt       time.Time `json:"end_at"`
 }
 
-// Live bookings: still pending or approved and not yet over.
-func (q *Queries) CountActiveBookingsForRequester(ctx context.Context, arg CountActiveBookingsForRequesterParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveBookingsForRequester, arg.RequesterID, arg.EndAt)
+// What counts against the quota: live requests that are not over yet. A multi-date group counts once
+// (BR-15, BR-27).
+func (q *Queries) CountActiveRequests(ctx context.Context, arg CountActiveRequestsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveRequests, arg.RequesterID, arg.EndAt)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -35,19 +36,26 @@ func (q *Queries) CountActiveBookingsForRequester(ctx context.Context, arg Count
 const countBookings = `-- name: CountBookings :one
 SELECT count(*)
 FROM bookings b
+JOIN rooms r ON r.id = b.room_id
 WHERE ($1::uuid IS NULL OR b.requester_id = $1::uuid)
   AND ($2::booking_status IS NULL OR b.status = $2::booking_status)
   AND ($3::uuid IS NULL OR b.room_id = $3::uuid)
-  AND ($4::timestamptz IS NULL OR b.end_at > $4::timestamptz)
-  AND ($5::timestamptz IS NULL OR b.start_at < $5::timestamptz)
+  AND ($4::uuid IS NULL OR b.group_id = $4::uuid)
+  AND ($5::timestamptz IS NULL OR b.end_at > $5::timestamptz)
+  AND ($6::timestamptz IS NULL OR b.start_at < $6::timestamptz)
+  AND ($7::text[] IS NULL OR r.type::text = ANY($7::text[]))
+  AND ($8::text IS NULL OR r.type::text = $8::text)
 `
 
 type CountBookingsParams struct {
 	RequesterID pgtype.UUID        `json:"requester_id"`
 	Status      NullBookingStatus  `json:"status"`
 	RoomID      pgtype.UUID        `json:"room_id"`
+	GroupID     pgtype.UUID        `json:"group_id"`
 	RangeStart  pgtype.Timestamptz `json:"range_start"`
 	RangeEnd    pgtype.Timestamptz `json:"range_end"`
+	RoomTypes   []string           `json:"room_types"`
+	RoomType    pgtype.Text        `json:"room_type"`
 }
 
 func (q *Queries) CountBookings(ctx context.Context, arg CountBookingsParams) (int64, error) {
@@ -55,8 +63,11 @@ func (q *Queries) CountBookings(ctx context.Context, arg CountBookingsParams) (i
 		arg.RequesterID,
 		arg.Status,
 		arg.RoomID,
+		arg.GroupID,
 		arg.RangeStart,
 		arg.RangeEnd,
+		arg.RoomTypes,
+		arg.RoomType,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -64,22 +75,39 @@ func (q *Queries) CountBookings(ctx context.Context, arg CountBookingsParams) (i
 }
 
 const createBooking = `-- name: CreateBooking :one
-INSERT INTO bookings (room_id, requester_id, start_at, end_at, purpose, participants, notes, idempotency_key, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-          decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
+INSERT INTO bookings (
+  room_id, requester_id, start_at, end_at, purpose, participants, notes, details,
+  group_id, occurrence_no, expires_at, status, decided_at,
+  approval_mode, manual_reason, letter_attachment_id, letter_number, idempotency_key, created_at, updated_at)
+VALUES (
+  $1, $2, $3, $4, $5,
+  $6, $7, $8::jsonb,
+  $9, $10, $11, $12::booking_status, $13,
+  $14::approval_mode, $15::manual_reason,
+  $16, $17, $18, $19, $19)
+RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number
 `
 
 type CreateBookingParams struct {
-	RoomID         uuid.UUID   `json:"room_id"`
-	RequesterID    uuid.UUID   `json:"requester_id"`
-	StartAt        time.Time   `json:"start_at"`
-	EndAt          time.Time   `json:"end_at"`
-	Purpose        string      `json:"purpose"`
-	Participants   pgtype.Int4 `json:"participants"`
-	Notes          pgtype.Text `json:"notes"`
-	IdempotencyKey pgtype.Text `json:"idempotency_key"`
-	CreatedAt      time.Time   `json:"created_at"`
+	RoomID             uuid.UUID          `json:"room_id"`
+	RequesterID        uuid.UUID          `json:"requester_id"`
+	StartAt            time.Time          `json:"start_at"`
+	EndAt              time.Time          `json:"end_at"`
+	Purpose            string             `json:"purpose"`
+	Participants       pgtype.Int4        `json:"participants"`
+	Notes              pgtype.Text        `json:"notes"`
+	Details            []byte             `json:"details"`
+	GroupID            pgtype.UUID        `json:"group_id"`
+	OccurrenceNo       pgtype.Int4        `json:"occurrence_no"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	Status             BookingStatus      `json:"status"`
+	DecidedAt          pgtype.Timestamptz `json:"decided_at"`
+	ApprovalMode       ApprovalMode       `json:"approval_mode"`
+	ManualReason       NullManualReason   `json:"manual_reason"`
+	LetterAttachmentID pgtype.UUID        `json:"letter_attachment_id"`
+	LetterNumber       pgtype.Text        `json:"letter_number"`
+	IdempotencyKey     pgtype.Text        `json:"idempotency_key"`
+	CreatedAt          time.Time          `json:"created_at"`
 }
 
 func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) (Booking, error) {
@@ -91,6 +119,16 @@ func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) (B
 		arg.Purpose,
 		arg.Participants,
 		arg.Notes,
+		arg.Details,
+		arg.GroupID,
+		arg.OccurrenceNo,
+		arg.ExpiresAt,
+		arg.Status,
+		arg.DecidedAt,
+		arg.ApprovalMode,
+		arg.ManualReason,
+		arg.LetterAttachmentID,
+		arg.LetterNumber,
 		arg.IdempotencyKey,
 		arg.CreatedAt,
 	)
@@ -111,32 +149,52 @@ func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) (B
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
 }
 
 const createBookingEvent = `-- name: CreateBookingEvent :exec
-INSERT INTO booking_events (booking_id, actor_id, from_status, to_status, reason, created_at)
-VALUES ($1, $2, $5::booking_status, $3, $6, $4)
+INSERT INTO booking_events (booking_id, actor_id, from_status, to_status, reason, kind, changes, created_at)
+VALUES ($1, $4::uuid, $5::booking_status, $2, $6, $7::text, $8::jsonb, $3)
 `
 
 type CreateBookingEventParams struct {
 	BookingID  uuid.UUID         `json:"booking_id"`
-	ActorID    uuid.UUID         `json:"actor_id"`
 	ToStatus   BookingStatus     `json:"to_status"`
 	CreatedAt  time.Time         `json:"created_at"`
+	ActorID    pgtype.UUID       `json:"actor_id"`
 	FromStatus NullBookingStatus `json:"from_status"`
 	Reason     pgtype.Text       `json:"reason"`
+	Kind       string            `json:"kind"`
+	Changes    []byte            `json:"changes"`
 }
 
+// actor_id is NULL when the system acts (auto-approval, jobs); kind is STATUS or EDITED, and changes
+// holds { field: { from, to } } for an edit (BR-26).
 func (q *Queries) CreateBookingEvent(ctx context.Context, arg CreateBookingEventParams) error {
 	_, err := q.db.Exec(ctx, createBookingEvent,
 		arg.BookingID,
-		arg.ActorID,
 		arg.ToStatus,
 		arg.CreatedAt,
+		arg.ActorID,
 		arg.FromStatus,
 		arg.Reason,
+		arg.Kind,
+		arg.Changes,
 	)
 	return err
 }
@@ -149,8 +207,7 @@ UPDATE bookings SET
   decision_reason = $4,
   updated_at      = $3
 WHERE id = $5
-RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-          decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
+RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number
 `
 
 type DecideBookingParams struct {
@@ -186,6 +243,20 @@ func (q *Queries) DecideBooking(ctx context.Context, arg DecideBookingParams) (B
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
 }
@@ -193,8 +264,14 @@ func (q *Queries) DecideBooking(ctx context.Context, arg DecideBookingParams) (B
 const getBooking = `-- name: GetBooking :one
 SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.participants, b.notes,
        b.status, b.decided_by, b.decided_at, b.decision_reason, b.created_at,
+       b.group_id, b.occurrence_no,
+       (SELECT count(*) FROM bookings g WHERE g.group_id = b.group_id)::int AS occurrence_count,
+       b.expires_at, b.edited_at, b.details, b.approval_mode, b.manual_reason,
+       b.letter_attachment_id, b.letter_number,
+       b.checked_in_at, b.checked_out_at, b.checkout_condition, b.checkout_note, b.checkout_attachment_id,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS requester_identifier, u.name AS requester_name
 FROM bookings b
 JOIN rooms r ON r.id = b.room_id
@@ -203,31 +280,49 @@ WHERE b.id = $1
 `
 
 type GetBookingRow struct {
-	ID                  uuid.UUID          `json:"id"`
-	RoomID              uuid.UUID          `json:"room_id"`
-	RequesterID         uuid.UUID          `json:"requester_id"`
-	StartAt             time.Time          `json:"start_at"`
-	EndAt               time.Time          `json:"end_at"`
-	Purpose             string             `json:"purpose"`
-	Participants        pgtype.Int4        `json:"participants"`
-	Notes               pgtype.Text        `json:"notes"`
-	Status              BookingStatus      `json:"status"`
-	DecidedBy           pgtype.UUID        `json:"decided_by"`
-	DecidedAt           pgtype.Timestamptz `json:"decided_at"`
-	DecisionReason      pgtype.Text        `json:"decision_reason"`
-	CreatedAt           time.Time          `json:"created_at"`
-	RoomOrgUnitID       uuid.UUID          `json:"room_org_unit_id"`
-	RoomCode            string             `json:"room_code"`
-	RoomName            string             `json:"room_name"`
-	RoomType            RoomType           `json:"room_type"`
-	RoomCapacity        int32              `json:"room_capacity"`
-	RoomFacilities      []string           `json:"room_facilities"`
-	RoomIsActive        bool               `json:"room_is_active"`
-	RequesterIdentifier string             `json:"requester_identifier"`
-	RequesterName       string             `json:"requester_name"`
+	ID                   uuid.UUID             `json:"id"`
+	RoomID               uuid.UUID             `json:"room_id"`
+	RequesterID          uuid.UUID             `json:"requester_id"`
+	StartAt              time.Time             `json:"start_at"`
+	EndAt                time.Time             `json:"end_at"`
+	Purpose              string                `json:"purpose"`
+	Participants         pgtype.Int4           `json:"participants"`
+	Notes                pgtype.Text           `json:"notes"`
+	Status               BookingStatus         `json:"status"`
+	DecidedBy            pgtype.UUID           `json:"decided_by"`
+	DecidedAt            pgtype.Timestamptz    `json:"decided_at"`
+	DecisionReason       pgtype.Text           `json:"decision_reason"`
+	CreatedAt            time.Time             `json:"created_at"`
+	GroupID              pgtype.UUID           `json:"group_id"`
+	OccurrenceNo         pgtype.Int4           `json:"occurrence_no"`
+	OccurrenceCount      int32                 `json:"occurrence_count"`
+	ExpiresAt            pgtype.Timestamptz    `json:"expires_at"`
+	EditedAt             pgtype.Timestamptz    `json:"edited_at"`
+	Details              []byte                `json:"details"`
+	ApprovalMode         ApprovalMode          `json:"approval_mode"`
+	ManualReason         NullManualReason      `json:"manual_reason"`
+	LetterAttachmentID   pgtype.UUID           `json:"letter_attachment_id"`
+	LetterNumber         pgtype.Text           `json:"letter_number"`
+	CheckedInAt          pgtype.Timestamptz    `json:"checked_in_at"`
+	CheckedOutAt         pgtype.Timestamptz    `json:"checked_out_at"`
+	CheckoutCondition    NullCheckoutCondition `json:"checkout_condition"`
+	CheckoutNote         pgtype.Text           `json:"checkout_note"`
+	CheckoutAttachmentID pgtype.UUID           `json:"checkout_attachment_id"`
+	RoomOrgUnitID        uuid.UUID             `json:"room_org_unit_id"`
+	RoomCode             string                `json:"room_code"`
+	RoomName             string                `json:"room_name"`
+	RoomType             RoomType              `json:"room_type"`
+	RoomCapacity         int32                 `json:"room_capacity"`
+	RoomFacilities       []string              `json:"room_facilities"`
+	RoomIsActive         bool                  `json:"room_is_active"`
+	RoomOpenTime         pgtype.Time           `json:"room_open_time"`
+	RoomCloseTime        pgtype.Time           `json:"room_close_time"`
+	RequesterIdentifier  string                `json:"requester_identifier"`
+	RequesterName        string                `json:"requester_name"`
 }
 
 // Reads that serve the API join the room and requester in one query, so list pages never go N+1.
+// occurrence_count is how many rows share the booking's group (0 for a booking that is not in one).
 func (q *Queries) GetBooking(ctx context.Context, id uuid.UUID) (GetBookingRow, error) {
 	row := q.db.QueryRow(ctx, getBooking, id)
 	var i GetBookingRow
@@ -245,6 +340,21 @@ func (q *Queries) GetBooking(ctx context.Context, id uuid.UUID) (GetBookingRow, 
 		&i.DecidedAt,
 		&i.DecisionReason,
 		&i.CreatedAt,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.OccurrenceCount,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.Details,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
 		&i.RoomOrgUnitID,
 		&i.RoomCode,
 		&i.RoomName,
@@ -252,6 +362,8 @@ func (q *Queries) GetBooking(ctx context.Context, id uuid.UUID) (GetBookingRow, 
 		&i.RoomCapacity,
 		&i.RoomFacilities,
 		&i.RoomIsActive,
+		&i.RoomOpenTime,
+		&i.RoomCloseTime,
 		&i.RequesterIdentifier,
 		&i.RequesterName,
 	)
@@ -259,10 +371,7 @@ func (q *Queries) GetBooking(ctx context.Context, id uuid.UUID) (GetBookingRow, 
 }
 
 const getBookingByIdempotencyKey = `-- name: GetBookingByIdempotencyKey :one
-SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-       decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
-FROM bookings
-WHERE requester_id = $1 AND idempotency_key = $2
+SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number FROM bookings WHERE requester_id = $1 AND idempotency_key = $2
 `
 
 type GetBookingByIdempotencyKeyParams struct {
@@ -289,13 +398,26 @@ func (q *Queries) GetBookingByIdempotencyKey(ctx context.Context, arg GetBooking
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
 }
 
 const listBookingEvents = `-- name: ListBookingEvents :many
-SELECT id, booking_id, actor_id, from_status, to_status, reason, created_at
-FROM booking_events
+SELECT id, booking_id, actor_id, from_status, to_status, reason, created_at, kind, changes FROM booking_events
 WHERE booking_id = $1
 ORDER BY created_at,
          CASE from_status WHEN 'MENUNGGU' THEN 1 WHEN 'DISETUJUI' THEN 2 ELSE 0 END,
@@ -321,6 +443,8 @@ func (q *Queries) ListBookingEvents(ctx context.Context, bookingID uuid.UUID) ([
 			&i.ToStatus,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.Kind,
+			&i.Changes,
 		); err != nil {
 			return nil, err
 		}
@@ -335,8 +459,14 @@ func (q *Queries) ListBookingEvents(ctx context.Context, bookingID uuid.UUID) ([
 const listBookings = `-- name: ListBookings :many
 SELECT b.id, b.room_id, b.requester_id, b.start_at, b.end_at, b.purpose, b.participants, b.notes,
        b.status, b.decided_by, b.decided_at, b.decision_reason, b.created_at,
+       b.group_id, b.occurrence_no,
+       (SELECT count(*) FROM bookings g WHERE g.group_id = b.group_id)::int AS occurrence_count,
+       b.expires_at, b.edited_at, b.details, b.approval_mode, b.manual_reason,
+       b.letter_attachment_id, b.letter_number,
+       b.checked_in_at, b.checked_out_at, b.checkout_condition, b.checkout_note, b.checkout_attachment_id,
        r.org_unit_id AS room_org_unit_id, r.code AS room_code, r.name AS room_name, r.type AS room_type,
        r.capacity AS room_capacity, r.facilities AS room_facilities, r.is_active AS room_is_active,
+       r.open_time AS room_open_time, r.close_time AS room_close_time,
        u.identifier AS requester_identifier, u.name AS requester_name
 FROM bookings b
 JOIN rooms r ON r.id = b.room_id
@@ -344,54 +474,84 @@ JOIN users u ON u.id = b.requester_id
 WHERE ($1::uuid IS NULL OR b.requester_id = $1::uuid)
   AND ($2::booking_status IS NULL OR b.status = $2::booking_status)
   AND ($3::uuid IS NULL OR b.room_id = $3::uuid)
-  AND ($4::timestamptz IS NULL OR b.end_at > $4::timestamptz)
-  AND ($5::timestamptz IS NULL OR b.start_at < $5::timestamptz)
-ORDER BY b.created_at DESC, b.id
-LIMIT $7 OFFSET $6
+  AND ($4::uuid IS NULL OR b.group_id = $4::uuid)
+  AND ($5::timestamptz IS NULL OR b.end_at > $5::timestamptz)
+  AND ($6::timestamptz IS NULL OR b.start_at < $6::timestamptz)
+  AND ($7::text[] IS NULL OR r.type::text = ANY($7::text[]))
+  AND ($8::text IS NULL OR r.type::text = $8::text)
+ORDER BY CASE WHEN $9::boolean THEN b.expires_at END ASC NULLS LAST,
+         b.created_at DESC, b.occurrence_no NULLS FIRST, b.id
+LIMIT $11 OFFSET $10
 `
 
 type ListBookingsParams struct {
 	RequesterID pgtype.UUID        `json:"requester_id"`
 	Status      NullBookingStatus  `json:"status"`
 	RoomID      pgtype.UUID        `json:"room_id"`
+	GroupID     pgtype.UUID        `json:"group_id"`
 	RangeStart  pgtype.Timestamptz `json:"range_start"`
 	RangeEnd    pgtype.Timestamptz `json:"range_end"`
+	RoomTypes   []string           `json:"room_types"`
+	RoomType    pgtype.Text        `json:"room_type"`
+	QueueOrder  bool               `json:"queue_order"`
 	PageOffset  int32              `json:"page_offset"`
 	PageLimit   int32              `json:"page_limit"`
 }
 
 type ListBookingsRow struct {
-	ID                  uuid.UUID          `json:"id"`
-	RoomID              uuid.UUID          `json:"room_id"`
-	RequesterID         uuid.UUID          `json:"requester_id"`
-	StartAt             time.Time          `json:"start_at"`
-	EndAt               time.Time          `json:"end_at"`
-	Purpose             string             `json:"purpose"`
-	Participants        pgtype.Int4        `json:"participants"`
-	Notes               pgtype.Text        `json:"notes"`
-	Status              BookingStatus      `json:"status"`
-	DecidedBy           pgtype.UUID        `json:"decided_by"`
-	DecidedAt           pgtype.Timestamptz `json:"decided_at"`
-	DecisionReason      pgtype.Text        `json:"decision_reason"`
-	CreatedAt           time.Time          `json:"created_at"`
-	RoomOrgUnitID       uuid.UUID          `json:"room_org_unit_id"`
-	RoomCode            string             `json:"room_code"`
-	RoomName            string             `json:"room_name"`
-	RoomType            RoomType           `json:"room_type"`
-	RoomCapacity        int32              `json:"room_capacity"`
-	RoomFacilities      []string           `json:"room_facilities"`
-	RoomIsActive        bool               `json:"room_is_active"`
-	RequesterIdentifier string             `json:"requester_identifier"`
-	RequesterName       string             `json:"requester_name"`
+	ID                   uuid.UUID             `json:"id"`
+	RoomID               uuid.UUID             `json:"room_id"`
+	RequesterID          uuid.UUID             `json:"requester_id"`
+	StartAt              time.Time             `json:"start_at"`
+	EndAt                time.Time             `json:"end_at"`
+	Purpose              string                `json:"purpose"`
+	Participants         pgtype.Int4           `json:"participants"`
+	Notes                pgtype.Text           `json:"notes"`
+	Status               BookingStatus         `json:"status"`
+	DecidedBy            pgtype.UUID           `json:"decided_by"`
+	DecidedAt            pgtype.Timestamptz    `json:"decided_at"`
+	DecisionReason       pgtype.Text           `json:"decision_reason"`
+	CreatedAt            time.Time             `json:"created_at"`
+	GroupID              pgtype.UUID           `json:"group_id"`
+	OccurrenceNo         pgtype.Int4           `json:"occurrence_no"`
+	OccurrenceCount      int32                 `json:"occurrence_count"`
+	ExpiresAt            pgtype.Timestamptz    `json:"expires_at"`
+	EditedAt             pgtype.Timestamptz    `json:"edited_at"`
+	Details              []byte                `json:"details"`
+	ApprovalMode         ApprovalMode          `json:"approval_mode"`
+	ManualReason         NullManualReason      `json:"manual_reason"`
+	LetterAttachmentID   pgtype.UUID           `json:"letter_attachment_id"`
+	LetterNumber         pgtype.Text           `json:"letter_number"`
+	CheckedInAt          pgtype.Timestamptz    `json:"checked_in_at"`
+	CheckedOutAt         pgtype.Timestamptz    `json:"checked_out_at"`
+	CheckoutCondition    NullCheckoutCondition `json:"checkout_condition"`
+	CheckoutNote         pgtype.Text           `json:"checkout_note"`
+	CheckoutAttachmentID pgtype.UUID           `json:"checkout_attachment_id"`
+	RoomOrgUnitID        uuid.UUID             `json:"room_org_unit_id"`
+	RoomCode             string                `json:"room_code"`
+	RoomName             string                `json:"room_name"`
+	RoomType             RoomType              `json:"room_type"`
+	RoomCapacity         int32                 `json:"room_capacity"`
+	RoomFacilities       []string              `json:"room_facilities"`
+	RoomIsActive         bool                  `json:"room_is_active"`
+	RoomOpenTime         pgtype.Time           `json:"room_open_time"`
+	RoomCloseTime        pgtype.Time           `json:"room_close_time"`
+	RequesterIdentifier  string                `json:"requester_identifier"`
+	RequesterName        string                `json:"requester_name"`
 }
 
+// queue_order sorts the approvers' queue: the request that expires soonest first (BR-22).
 func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]ListBookingsRow, error) {
 	rows, err := q.db.Query(ctx, listBookings,
 		arg.RequesterID,
 		arg.Status,
 		arg.RoomID,
+		arg.GroupID,
 		arg.RangeStart,
 		arg.RangeEnd,
+		arg.RoomTypes,
+		arg.RoomType,
+		arg.QueueOrder,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -416,6 +576,21 @@ func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]L
 			&i.DecidedAt,
 			&i.DecisionReason,
 			&i.CreatedAt,
+			&i.GroupID,
+			&i.OccurrenceNo,
+			&i.OccurrenceCount,
+			&i.ExpiresAt,
+			&i.EditedAt,
+			&i.Details,
+			&i.ApprovalMode,
+			&i.ManualReason,
+			&i.LetterAttachmentID,
+			&i.LetterNumber,
+			&i.CheckedInAt,
+			&i.CheckedOutAt,
+			&i.CheckoutCondition,
+			&i.CheckoutNote,
+			&i.CheckoutAttachmentID,
 			&i.RoomOrgUnitID,
 			&i.RoomCode,
 			&i.RoomName,
@@ -423,6 +598,8 @@ func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]L
 			&i.RoomCapacity,
 			&i.RoomFacilities,
 			&i.RoomIsActive,
+			&i.RoomOpenTime,
+			&i.RoomCloseTime,
 			&i.RequesterIdentifier,
 			&i.RequesterName,
 		); err != nil {
@@ -436,11 +613,104 @@ func (q *Queries) ListBookings(ctx context.Context, arg ListBookingsParams) ([]L
 	return items, nil
 }
 
+const listGroupBookings = `-- name: ListGroupBookings :many
+SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number FROM bookings WHERE group_id = $1 ORDER BY occurrence_no
+`
+
+// Plain rows of one group, for comparing a replayed request with what was stored.
+func (q *Queries) ListGroupBookings(ctx context.Context, groupID pgtype.UUID) ([]Booking, error) {
+	rows, err := q.db.Query(ctx, listGroupBookings, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Booking{}
+	for rows.Next() {
+		var i Booking
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoomID,
+			&i.RequesterID,
+			&i.StartAt,
+			&i.EndAt,
+			&i.Purpose,
+			&i.Participants,
+			&i.Notes,
+			&i.Status,
+			&i.DecidedBy,
+			&i.DecidedAt,
+			&i.DecisionReason,
+			&i.IdempotencyKey,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Details,
+			&i.GroupID,
+			&i.OccurrenceNo,
+			&i.ExpiresAt,
+			&i.EditedAt,
+			&i.CheckedInAt,
+			&i.CheckedOutAt,
+			&i.CheckoutCondition,
+			&i.CheckoutNote,
+			&i.CheckoutAttachmentID,
+			&i.ApprovalMode,
+			&i.ManualReason,
+			&i.LetterAttachmentID,
+			&i.LetterNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserCourses = `-- name: ListUserCourses :many
+SELECT semester, course_code, course_name, class_name
+FROM user_courses
+WHERE user_id = $1
+ORDER BY semester DESC, course_code NULLS LAST, id
+LIMIT 20
+`
+
+type ListUserCoursesRow struct {
+	Semester   string      `json:"semester"`
+	CourseCode pgtype.Text `json:"course_code"`
+	CourseName pgtype.Text `json:"course_name"`
+	ClassName  pgtype.Text `json:"class_name"`
+}
+
+// The requester's course context for an approver looking at a booking (BR-24); latest semester first.
+func (q *Queries) ListUserCourses(ctx context.Context, userID uuid.UUID) ([]ListUserCoursesRow, error) {
+	rows, err := q.db.Query(ctx, listUserCourses, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserCoursesRow{}
+	for rows.Next() {
+		var i ListUserCoursesRow
+		if err := rows.Scan(
+			&i.Semester,
+			&i.CourseCode,
+			&i.CourseName,
+			&i.ClassName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const loadBooking = `-- name: LoadBooking :one
-SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status,
-       decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at
-FROM bookings
-WHERE id = $1
+SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number FROM bookings WHERE id = $1
 `
 
 // Plain row, for the transition checks done after the room lock is held.
@@ -463,17 +733,187 @@ func (q *Queries) LoadBooking(ctx context.Context, id uuid.UUID) (Booking, error
 		&i.IdempotencyKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
 	)
 	return i, err
+}
+
+const lockGroupBookings = `-- name: LockGroupBookings :many
+SELECT id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number FROM bookings WHERE group_id = $1 ORDER BY occurrence_no FOR UPDATE
+`
+
+// Every row of a multi-date request, locked, in date order (BR-27). Approving, rejecting and cancelling a
+// group read it first so two such actions cannot interleave.
+func (q *Queries) LockGroupBookings(ctx context.Context, groupID pgtype.UUID) ([]Booking, error) {
+	rows, err := q.db.Query(ctx, lockGroupBookings, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Booking{}
+	for rows.Next() {
+		var i Booking
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoomID,
+			&i.RequesterID,
+			&i.StartAt,
+			&i.EndAt,
+			&i.Purpose,
+			&i.Participants,
+			&i.Notes,
+			&i.Status,
+			&i.DecidedBy,
+			&i.DecidedAt,
+			&i.DecisionReason,
+			&i.IdempotencyKey,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Details,
+			&i.GroupID,
+			&i.OccurrenceNo,
+			&i.ExpiresAt,
+			&i.EditedAt,
+			&i.CheckedInAt,
+			&i.CheckedOutAt,
+			&i.CheckoutCondition,
+			&i.CheckoutNote,
+			&i.CheckoutAttachmentID,
+			&i.ApprovalMode,
+			&i.ManualReason,
+			&i.LetterAttachmentID,
+			&i.LetterNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockRequesterQuota = `-- name: LockRequesterQuota :exec
 SELECT pg_advisory_xact_lock(hashtextextended('booking-quota:' || $1::text, 0))
 `
 
-// Serialises one student's booking creations so the quota check below cannot be raced by two
+// Serialises one requester's booking creations so the quota check below cannot be raced by two
 // requests for different rooms. An advisory lock leaves the users row itself free for other writers.
 func (q *Queries) LockRequesterQuota(ctx context.Context, dollar_1 string) error {
 	_, err := q.db.Exec(ctx, lockRequesterQuota, dollar_1)
 	return err
+}
+
+const updateBookingEdit = `-- name: UpdateBookingEdit :one
+UPDATE bookings SET
+  start_at             = $1,
+  end_at               = $2,
+  purpose              = $3,
+  participants         = $4,
+  notes                = $5,
+  details              = $6::jsonb,
+  letter_attachment_id = $7,
+  letter_number        = $8,
+  status               = $9::booking_status,
+  approval_mode        = $10::approval_mode,
+  manual_reason        = $11::manual_reason,
+  expires_at           = $12,
+  decided_by           = $13,
+  decided_at           = $14,
+  decision_reason      = $15,
+  edited_at            = $16,
+  updated_at           = $16
+WHERE id = $17
+RETURNING id, room_id, requester_id, start_at, end_at, purpose, participants, notes, status, decided_by, decided_at, decision_reason, idempotency_key, created_at, updated_at, details, group_id, occurrence_no, expires_at, edited_at, checked_in_at, checked_out_at, checkout_condition, checkout_note, checkout_attachment_id, approval_mode, manual_reason, letter_attachment_id, letter_number
+`
+
+type UpdateBookingEditParams struct {
+	StartAt            time.Time          `json:"start_at"`
+	EndAt              time.Time          `json:"end_at"`
+	Purpose            string             `json:"purpose"`
+	Participants       pgtype.Int4        `json:"participants"`
+	Notes              pgtype.Text        `json:"notes"`
+	Details            []byte             `json:"details"`
+	LetterAttachmentID pgtype.UUID        `json:"letter_attachment_id"`
+	LetterNumber       pgtype.Text        `json:"letter_number"`
+	Status             BookingStatus      `json:"status"`
+	ApprovalMode       ApprovalMode       `json:"approval_mode"`
+	ManualReason       NullManualReason   `json:"manual_reason"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	DecidedBy          pgtype.UUID        `json:"decided_by"`
+	DecidedAt          pgtype.Timestamptz `json:"decided_at"`
+	DecisionReason     pgtype.Text        `json:"decision_reason"`
+	Now                pgtype.Timestamptz `json:"now"`
+	ID                 uuid.UUID          `json:"id"`
+}
+
+// An edit rewrites everything an owner may change together with the state it leads to (BR-26), so the
+// row is never half-edited. A booking sent back to MENUNGGU loses its earlier decision.
+func (q *Queries) UpdateBookingEdit(ctx context.Context, arg UpdateBookingEditParams) (Booking, error) {
+	row := q.db.QueryRow(ctx, updateBookingEdit,
+		arg.StartAt,
+		arg.EndAt,
+		arg.Purpose,
+		arg.Participants,
+		arg.Notes,
+		arg.Details,
+		arg.LetterAttachmentID,
+		arg.LetterNumber,
+		arg.Status,
+		arg.ApprovalMode,
+		arg.ManualReason,
+		arg.ExpiresAt,
+		arg.DecidedBy,
+		arg.DecidedAt,
+		arg.DecisionReason,
+		arg.Now,
+		arg.ID,
+	)
+	var i Booking
+	err := row.Scan(
+		&i.ID,
+		&i.RoomID,
+		&i.RequesterID,
+		&i.StartAt,
+		&i.EndAt,
+		&i.Purpose,
+		&i.Participants,
+		&i.Notes,
+		&i.Status,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionReason,
+		&i.IdempotencyKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Details,
+		&i.GroupID,
+		&i.OccurrenceNo,
+		&i.ExpiresAt,
+		&i.EditedAt,
+		&i.CheckedInAt,
+		&i.CheckedOutAt,
+		&i.CheckoutCondition,
+		&i.CheckoutNote,
+		&i.CheckoutAttachmentID,
+		&i.ApprovalMode,
+		&i.ManualReason,
+		&i.LetterAttachmentID,
+		&i.LetterNumber,
+	)
+	return i, err
 }

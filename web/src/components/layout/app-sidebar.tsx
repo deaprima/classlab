@@ -1,55 +1,68 @@
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
+import { LogOut, SlidersHorizontal } from 'lucide-react'
 import { Logo } from '@/assets/logo'
 import { useAuthStore } from '@/stores/auth-store'
-import { useLayout } from '@/context/layout-provider'
+import { ACCESS, hasRole } from '@/lib/rbac'
+import useDialogState from '@/hooks/use-dialog-state'
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { SignOutDialog } from '@/components/sign-out-dialog'
+import { ThemeToggle } from '@/components/theme-toggle'
+import { useBookings } from '@/features/bookings/api'
 import { useUnreadCount } from '@/features/notifications/api'
 import { navGroupsForRole } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
-import { NavUser } from './nav-user'
 
+/** DESIGN.md 3.1: a fixed 240 px sidebar with MENU and AKUN sections; a drawer on mobile. */
 export function AppSidebar() {
-  const { collapsible, variant } = useLayout()
   const role = useAuthStore((state) => state.auth.user?.role)
   const unread = useUnreadCount().data ?? 0
-  const groups = useMemo(
-    () =>
-      navGroupsForRole(role).map((group) => ({
-        ...group,
-        items: group.items.map((item) =>
-          item.url === '/notifications' && unread > 0
-            ? { ...item, badge: unread > 99 ? '99+' : String(unread) }
-            : item
-        ),
-      })),
-    [role, unread]
+  // Requests waiting for this approver's decision, shown as the orange badge of "Approval".
+  const isApprover = hasRole(role ? { role } : null, ACCESS.approveBookings)
+  const waiting =
+    useBookings({ status: 'MENUNGGU', per_page: 1 }, isApprover).data?.meta
+      .total ?? 0
+  const menu = useMemo(
+    () => ({
+      title: 'Menu',
+      items: navGroupsForRole(role)
+        .flatMap((group) => group.items)
+        .map((item) => {
+          if (item.url === '/notifications' && unread > 0) {
+            return { ...item, badge: unread > 99 ? '99+' : String(unread) }
+          }
+          if (item.url === '/approvals' && waiting > 0) {
+            return { ...item, badge: waiting > 99 ? '99+' : String(waiting) }
+          }
+          return item
+        }),
+    }),
+    [role, unread, waiting]
   )
 
   return (
-    <Sidebar collapsible={collapsible} variant={variant}>
-      <SidebarHeader>
+    <Sidebar collapsible='offcanvas' variant='sidebar'>
+      <SidebarHeader className='px-4 pt-6 pb-2'>
         <AppBrand />
       </SidebarHeader>
-      <SidebarContent>
-        {groups.map((props) => (
-          <NavGroup key={props.title} {...props} />
-        ))}
+      <SidebarContent className='gap-4 px-2'>
+        <NavGroup {...menu} />
+        <AccountGroup />
       </SidebarContent>
-      <SidebarFooter>
-        <NavUser />
+      <SidebarFooter className='px-4 pb-6'>
+        <ThemeToggle />
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }
@@ -57,20 +70,44 @@ export function AppSidebar() {
 function AppBrand() {
   const { setOpenMobile } = useSidebar()
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton size='lg' asChild>
-          <Link to='/' onClick={() => setOpenMobile(false)}>
-            <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground'>
-              <Logo className='size-5' />
-            </div>
-            <div className='grid flex-1 text-start text-sm leading-tight'>
-              <span className='truncate font-semibold'>ClassLab.io</span>
-              <span className='truncate text-xs'>Rumpun TI</span>
-            </div>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+    <Link
+      to='/'
+      onClick={() => setOpenMobile(false)}
+      className='flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring'
+    >
+      <Logo className='size-9' />
+      <span className='type-section text-sidebar-foreground'>ClassLab</span>
+    </Link>
+  )
+}
+
+function AccountGroup() {
+  const { setOpenMobile } = useSidebar()
+  const [open, setOpen] = useDialogState()
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Akun</SidebarGroupLabel>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild>
+            <Link
+              to='/account'
+              activeProps={{ 'data-active': true }}
+              onClick={() => setOpenMobile(false)}
+            >
+              <SlidersHorizontal />
+              <span>Akun Saya</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={() => setOpen(true)}>
+            <LogOut />
+            <span>Keluar</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <SignOutDialog open={!!open} onOpenChange={setOpen} />
+    </SidebarGroup>
   )
 }
