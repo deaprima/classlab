@@ -1,0 +1,44 @@
+name: Usulan fitur
+description: Usulkan fitur atau perbaikan baru
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cek dulu bahwa usulan Anda belum ada di daftar issue. Di luar lingkup proyek: aplikasi mobile native,
+        CCTV, SSO, notifikasi email atau WhatsApp, pembayaran, dan inventaris alat.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Masalah yang ingin diselesaikan
+      description: Siapa yang kesulitan, dan dalam situasi apa?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Usulan solusi
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatif yang sudah dipertimbangkan
+  - type: dropdown
+    id: roles
+    attributes:
+      label: Peran yang terdampak
+      multiple: true
+      options:
+        - Mahasiswa
+        - Organisasi
+        - TU
+        - Kalab
+        - OB
+        - Admin
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Kontribusi
+      options:
+        - label: Saya bersedia mengerjakan ini lewat pull request
