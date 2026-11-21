@@ -23,7 +23,7 @@ Dipakai sebelum go-live pertama dan sebelum setiap rilis. Pemasangan ada di [REA
 - [ ] `./restore-test.sh` berhasil; satu kali pemulihan penuh pernah dicoba di server cadangan.
 
 **Pemantauan**
-- [ ] Pemantau uptime (UptimeRobot, Better Stack, dll.) pada `https://<domain>/api/v1/health`, dengan notifikasi ke ponsel.
+- [ ] Pemantau uptime (UptimeRobot, Better Stack, dll.) dengan notifikasi ke ponsel. **Alamat health belum tersedia dari luar** (diuji 2026-11-21): `/health` hanya ada di dalam jaringan Docker; lewat Caddy `/health` menjawab halaman web (200 walau API mati) dan `/api/v1/health` menjawab 404. Putuskan dulu cara memaparkannya (lihat catatan di bawah) sebelum memasang pemantau.
 - [ ] Peringatan disk hampir penuh (unggahan dan volume Docker tumbuh).
 
 **Uji di perangkat nyata**
@@ -44,7 +44,7 @@ Dipakai sebelum go-live pertama dan sebelum setiap rilis. Pemasangan ada di [REA
    cd /opt/classlab && git fetch --tags && git checkout v0.1.0
    cd deploy && VERSION=v0.1.0 docker compose -f docker-compose.prod.yml up -d --build
    ```
-5. Periksa: `dc ps` (semua `healthy`, `migrate` `exited (0)`), `dc logs --since 5m api` tanpa `"level":"ERROR"`, dan `GET /api/v1/health` menampilkan versi yang baru.
+5. Periksa: `dc ps` (semua `healthy`, `migrate` `exited (0)`), `dc logs --since 5m api` tanpa `"level":"ERROR"`, dan `/health` di dalam jaringan menampilkan versi yang baru: `dc exec -T api wget -q -O - http://127.0.0.1:8080/health`.
 6. Cadangan manual **sebelum** rilis yang menyertakan migrasi: `./backup.sh`.
 
 **Rollback:** kembalikan tag sebelumnya dan jalankan perintah langkah 4. Migrasi punya `down`; urutannya ada di RUNBOOK.
@@ -55,3 +55,14 @@ Dipakai sebelum go-live pertama dan sebelum setiap rilis. Pemasangan ada di [REA
 - Satu unit organisasi (rumpun TI); belum multi-fakultas.
 - Satu server tanpa failover; pemulihan bergantung pada backup di atas.
 - Belum ada uji beban; pantau `docker stats` pada pemakaian nyata pertama lalu sesuaikan ukuran server.
+
+## D. Hasil uji stack production di lokal (2026-11-21)
+
+Stack `docker-compose.prod.yml` dijalankan di laptop dengan `SITE_ADDRESS=localhost`, lalu dibersihkan.
+
+Lolos: build image API dan web; migrasi berjalan (versi 9, `migrate` exit 0); API `healthy`; HTTPS dan redirect 80 ke 443; header keamanan (CSP, HSTS, `X-Frame-Options`, dll.); `Cache-Control: no-store` di API; `createadmin` dan login (cookie refresh `HttpOnly`, `Secure`, `Path=/api/v1/auth`); `GET /users` ditolak 403 sebelum password sementara diganti; versi rilis terbaca dari `/health`; `backup.sh` (dump dan arsip unggahan) dan `restore-test.sh`; `BACKUP_REMOTE` tanpa rclone gagal dengan pesan jelas.
+
+Perlu keputusan sebelum rilis:
+- **Alamat health dari luar.** Pilihan: Caddy meneruskan `/health` ke API (paling sederhana, tapi respons memuat versi dan status database secara publik), atau rute terpisah yang hanya menjawab `{"status":"ok"}` tanpa versi.
+
+Tidak teruji di lokal: sertifikat Let's Encrypt asli (lokal memakai CA internal Caddy), `rclone` ke Google Drive, dan beban nyata.
