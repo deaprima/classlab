@@ -90,7 +90,7 @@ jobs:
           SMOKE_SHOTS: ${{ runner.temp }}/smoke-shots
       - name: Keep the screenshot of a failing step
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-screenshots
           path: ${{ runner.temp }}/smoke-shots
