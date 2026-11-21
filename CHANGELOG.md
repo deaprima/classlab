@@ -6,10 +6,14 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/), ve
 
 ### Ditambahkan
 - Pemindai QR di dalam aplikasi untuk check-in (tombol Check-in di beranda). Memindai dengan kamera ponsel tetap didukung.
-- `/health` menampilkan versi rilis yang diberikan saat build (`VERSION`).
+- `/health` (internal, untuk healthcheck kontainer) menampilkan versi rilis yang diberikan saat build (`VERSION`).
+- `GET /api/v1/health`: alamat publik untuk pemantau uptime; hanya `status`, 503 bila database tidak terjangkau.
 - Dependabot mingguan untuk Go, npm, GitHub Actions, dan image Docker.
 - Opsi `backup.sh`: salinan keluar server (`BACKUP_REMOTE`, rclone) dan ping pemantau (`BACKUP_PING_URL`).
 - [deploy/CHECKLIST.md](deploy/CHECKLIST.md): checklist go-live dan rilis.
+
+### Diperbaiki
+- Skrip `backup.sh`, `restore.sh`, dan `restore-test.sh` kini executable; sebelumnya `./backup.sh` dan cron gagal dengan `permission denied` setelah `git clone`.
 
 ### Diubah
 - Test integrasi backend dipindah dari `api/internal/app` ke `api/test/integration`.

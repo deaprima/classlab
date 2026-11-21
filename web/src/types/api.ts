@@ -11,7 +11,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liveness & Database Health Check */
+        /**
+         * Liveness & Database Health Check
+         * @description Alamat untuk pemantau uptime dari luar. Tanpa autentikasi dan sengaja minim: hanya `status`, tanpa versi dan tanpa rincian komponen. Menjawab 503 bila database tidak terjangkau. (Pemeriksaan internal kontainer ada di `/health` tanpa awalan `/api/v1`, tidak diteruskan oleh Caddy, dan memuat versi rilis.)
+         */
         get: {
             parameters: {
                 query?: never;
@@ -21,21 +24,33 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Service sehat */
+                /** @description API dan database berfungsi */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            /** @example healthy */
-                            status?: string;
-                            /** @example ok */
-                            database?: string;
-                            /** @example 0.1.0 */
-                            version?: string;
-                            /** Format: date-time */
-                            time?: string;
+                            /**
+                             * @example healthy
+                             * @enum {string}
+                             */
+                            status: "healthy";
+                        };
+                    };
+                };
+                /** @description Database tidak terjangkau */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @example unhealthy
+                             * @enum {string}
+                             */
+                            status: "unhealthy";
                         };
                     };
                 };

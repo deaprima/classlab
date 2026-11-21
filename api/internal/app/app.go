@@ -126,6 +126,8 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(httpx.NoStore)
+		// The address an outside uptime monitor watches: Caddy forwards /api/*, but not /health.
+		r.Get("/health", publicHealth(pool))
 		r.Mount("/auth", auth.NewHandler(authSvc, cfg.CookieSecure).Routes(authenticate))
 		r.With(authenticate, httpx.RequirePasswordChanged).Mount("/users", users.NewHandler(usersSvc).Routes())
 		r.With(authenticate, httpx.RequirePasswordChanged, importLimit).Mount("/imports", importsHandler.Routes())
@@ -155,6 +157,23 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 // -ldflags "-X classlab/api/internal/app.Version=v0.1.0" (see the Dockerfile VERSION argument).
 var Version = "dev"
 
+// publicHealth answers the outside world: whether the API and its database work, and nothing else.
+// Unlike /health it names no version and no component, so it tells a stranger nothing to aim at.
+func publicHealth(pool *db.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := pool.Ping(pingCtx); err != nil {
+			slog.ErrorContext(r.Context(), "public health check: database ping failed", slog.String("error", err.Error()))
+			httpx.JSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unhealthy"})
+			return
+		}
+		httpx.JSON(w, http.StatusOK, map[string]any{"status": "healthy"})
+	}
+}
+
+// health is for the container healthcheck and for operators inside the Docker network; Caddy does
+// not forward it.
 func health(pool *db.Pool, clk clock.Clock) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
