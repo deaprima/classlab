@@ -28,18 +28,30 @@ paths:
   /health:
     get:
       summary: Liveness & Database Health Check
+      description: >
+        Alamat untuk pemantau uptime dari luar. Tanpa autentikasi dan sengaja minim: hanya `status`, tanpa
+        versi dan tanpa rincian komponen. Menjawab 503 bila database tidak terjangkau. (Pemeriksaan internal
+        kontainer ada di `/health` tanpa awalan `/api/v1`, tidak diteruskan oleh Caddy, dan memuat versi rilis.)
+      security: []
       responses:
         '200':
-          description: Service sehat
+          description: API dan database berfungsi
           content:
             application/json:
               schema:
                 type: object
+                required: [status]
                 properties:
-                  status: { type: string, example: healthy }
-                  database: { type: string, example: ok }
-                  version: { type: string, example: 0.1.0 }
-                  time: { type: string, format: date-time }
+                  status: { type: string, enum: [healthy], example: healthy }
+        '503':
+          description: Database tidak terjangkau
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [unhealthy], example: unhealthy }
 
   /auth/login:
     post:

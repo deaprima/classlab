@@ -45,6 +45,27 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+// The address an outside uptime monitor watches: public, minimal, and never uncacheable by accident.
+func TestPublicHealthSaysOnlyThatTheServiceWorks(t *testing.T) {
+	e := newEnv(t)
+	res := e.do("GET", "/api/v1/health", nil) // no token: a monitor has none
+	if res.Code != http.StatusOK {
+		t.Fatalf("public health: %d %s", res.Code, res.Body.String())
+	}
+	body := res.json()
+	if body["status"] != "healthy" {
+		t.Errorf("status = %v", body["status"])
+	}
+	for _, leaked := range []string{"version", "database", "time"} {
+		if _, ok := body[leaked]; ok {
+			t.Errorf("public health must not expose %q: %s", leaked, res.Body.String())
+		}
+	}
+	if got := res.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q", got)
+	}
+}
+
 func TestSeedIsIdempotentAndGuardsProduction(t *testing.T) {
 	e := newEnv(t) // newEnv already seeded once
 	hasher := password.NewHasher(8, 1, 1)
