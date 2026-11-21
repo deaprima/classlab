@@ -23,7 +23,7 @@
     "smoke:e2e": "node e2e/flow-smoke.mjs"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.2",
+    "@hookform/resolvers": "^7.0.7",
     "@radix-ui/react-alert-dialog": "^1.2.1",
     "@radix-ui/react-avatar": "^1.3.1",
     "@radix-ui/react-checkbox": "^1.4.1",
