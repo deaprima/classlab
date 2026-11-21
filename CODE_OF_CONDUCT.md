@@ -1,50 +1,52 @@
-# Kode Etik Kontributor
+# Contributor Code of Conduct
 
 ## Komitmen kami
 
-Kami, sebagai anggota, kontributor, dan pengelola, berkomitmen menjadikan keikutsertaan di proyek ini pengalaman yang bebas dari pelecehan bagi semua orang, apa pun usia, ukuran tubuh, disabilitas, etnis, identitas dan ekspresi gender, tingkat pengalaman, pendidikan, status sosial ekonomi, kewarganegaraan, penampilan, ras, agama, atau identitas dan orientasi seksual.
+Kami, sebagai anggota, kontributor, dan maintainer, berkomitmen menjadikan partisipasi dalam proyek ini pengalaman yang bebas dari pelecehan bagi semua orang, tanpa memandang usia, ukuran tubuh, disabilitas, etnis, identitas dan ekspresi gender, tingkat pengalaman, pendidikan, status sosial ekonomi, kewarganegaraan, penampilan, ras, agama, maupun identitas dan orientasi seksual.
 
-Kami berjanji bertindak dan berinteraksi dengan cara yang membangun komunitas yang terbuka, ramah, beragam, inklusif, dan sehat.
+Kami berjanji untuk bertindak dan berinteraksi dengan cara yang membangun komunitas yang terbuka, ramah, beragam, inklusif, dan sehat.
 
 ## Standar perilaku
 
-Contoh perilaku yang membantu terciptanya lingkungan yang positif:
+Contoh perilaku yang mendukung lingkungan yang positif:
 
 - bersikap empatik dan ramah kepada orang lain,
 - menghargai perbedaan pendapat, sudut pandang, dan pengalaman,
 - memberi dan menerima umpan balik yang membangun dengan lapang dada,
-- bertanggung jawab atas kesalahan, meminta maaf kepada yang terdampak, dan belajar darinya,
-- mengutamakan kebaikan komunitas secara keseluruhan, bukan hanya kepentingan pribadi.
+- bertanggung jawab atas kesalahan, meminta maaf kepada pihak yang terdampak, dan belajar dari kesalahan tersebut,
+- mengutamakan kepentingan komunitas secara keseluruhan di atas kepentingan pribadi.
 
 Contoh perilaku yang tidak dapat diterima:
 
 - bahasa atau gambar bernuansa seksual, serta perhatian atau ajakan seksual yang tidak diinginkan,
-- trolling, komentar yang menghina atau merendahkan, serta serangan pribadi atau politis,
-- pelecehan di ruang publik maupun privat,
+- *trolling*, komentar yang menghina atau merendahkan, serta serangan pribadi atau politis,
+- pelecehan, baik di ruang publik maupun privat,
 - membagikan informasi pribadi orang lain, seperti alamat atau kontak, tanpa izin eksplisit,
-- perilaku lain yang secara wajar dianggap tidak pantas di lingkungan profesional.
+- perilaku lain yang secara wajar dianggap tidak pantas dalam lingkungan profesional.
 
 ## Tanggung jawab penegakan
 
-Pengelola proyek bertanggung jawab menjelaskan dan menegakkan standar ini, serta berhak menghapus, menyunting, atau menolak komentar, commit, kode, suntingan wiki, issue, dan kontribusi lain yang tidak sesuai dengan Kode Etik ini. Pengelola akan menyampaikan alasan atas keputusan moderasi bila diperlukan.
+Maintainer bertanggung jawab menjelaskan dan menegakkan standar ini. Maintainer berhak menghapus, menyunting, atau menolak komentar, commit, kode, suntingan wiki, issue, dan kontribusi lain yang tidak sesuai dengan Code of Conduct ini, serta akan menyampaikan alasan atas keputusan moderasi bila diperlukan.
 
 ## Cakupan
 
-Kode Etik ini berlaku di semua ruang proyek (repositori, issue, pull request, dan diskusi), dan juga saat seseorang mewakili proyek di ruang publik.
+Code of Conduct ini berlaku di seluruh ruang proyek (repositori, issue, pull request, dan diskusi), serta ketika seseorang mewakili proyek di ruang publik.
 
 ## Pelaporan
 
-Perilaku yang melanggar dapat dilaporkan kepada pengelola lewat fitur laporan privat GitHub: buka tab **Security** pada repositori, lalu pilih **Report a vulnerability**, atau hubungi pemilik repositori lewat profil GitHub-nya. Cantumkan di judul bahwa ini laporan Kode Etik. Semua laporan akan ditinjau dan diselidiki dengan cepat dan adil, dan identitas pelapor akan dijaga kerahasiaannya.
+Perilaku yang melanggar dapat dilaporkan kepada maintainer melalui fitur private reporting GitHub: buka tab **Security** pada repositori, lalu pilih **Report a vulnerability**, atau hubungi pemilik repositori melalui profil GitHub-nya. Cantumkan pada judul bahwa laporan tersebut terkait Code of Conduct.
+
+Seluruh laporan akan ditinjau dan diselidiki secara cepat dan adil. Identitas pelapor dijaga kerahasiaannya.
 
 ## Penegakan
 
-Pengelola akan mengikuti urutan berikut saat menentukan akibat dari pelanggaran:
+Maintainer akan mengikuti tahapan berikut dalam menentukan konsekuensi atas suatu pelanggaran:
 
-1. **Koreksi.** Pelanggaran ringan atau tidak disengaja: peringatan pribadi tertulis, dengan penjelasan pelanggarannya.
-2. **Peringatan.** Pelanggaran yang berulang atau lebih serius: peringatan dengan akibat yang berlanjut, termasuk larangan berinteraksi dengan pihak terkait untuk jangka waktu tertentu.
-3. **Pemblokiran sementara.** Pelanggaran berat atau pola perilaku yang terus berlanjut: larangan berinteraksi dan berpartisipasi di proyek untuk jangka waktu tertentu.
-4. **Pemblokiran permanen.** Pola pelanggaran berulang, pelecehan terhadap seseorang, atau agresi terhadap kelompok orang.
+1. **Koreksi.** Pelanggaran ringan atau tidak disengaja: peringatan tertulis secara privat, disertai penjelasan mengenai pelanggaran yang terjadi.
+2. **Peringatan.** Pelanggaran yang berulang atau lebih serius: peringatan dengan konsekuensi berkelanjutan, termasuk larangan berinteraksi dengan pihak terkait untuk jangka waktu tertentu.
+3. **Pemblokiran sementara.** Pelanggaran berat atau pola perilaku yang terus berlanjut: larangan berinteraksi dan berpartisipasi dalam proyek untuk jangka waktu tertentu.
+4. **Pemblokiran permanen.** Pola pelanggaran berulang, pelecehan terhadap individu, atau agresi terhadap kelompok orang.
 
 ## Atribusi
 
-Kode Etik ini diadaptasi dari [Contributor Covenant](https://www.contributor-covenant.org), versi 2.1, tersedia di <https://www.contributor-covenant.org/version/2/1/code_of_conduct.html>.
+Code of Conduct ini diadaptasi dari [Contributor Covenant](https://www.contributor-covenant.org) versi 2.1, tersedia di <https://www.contributor-covenant.org/version/2/1/code_of_conduct.html>.

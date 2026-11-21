@@ -1,113 +1,113 @@
-# Panduan Kontribusi
+# Contributing Guide
 
-Terima kasih sudah tertarik berkontribusi ke ClassLab. Dokumen ini menjelaskan cara menyiapkan lingkungan, aturan yang kami pegang, dan apa yang diharapkan dari sebuah pull request.
+Terima kasih atas minat Anda untuk berkontribusi ke ClassLab. Dokumen ini menjelaskan cara menyiapkan environment, aturan yang kami pegang, dan hal yang diharapkan dari sebuah pull request.
 
-Dengan ikut serta, Anda setuju mengikuti [Kode Etik](CODE_OF_CONDUCT.md). Untuk celah keamanan, jangan buka issue; lihat [SECURITY.md](SECURITY.md).
+Dengan berpartisipasi, Anda setuju untuk mematuhi [Code of Conduct](CODE_OF_CONDUCT.md). Untuk vulnerability, jangan membuka issue; ikuti panduan di [SECURITY.md](SECURITY.md).
 
 ## Memulai
 
-1. Fork repo ini, lalu clone fork Anda.
-2. Ikuti bagian [Mulai cepat](README.md#mulai-cepat) di README sampai API dan web berjalan di lokal.
-3. Unduh browser untuk tes frontend, sekali saja:
+1. Fork repositori ini, lalu clone fork Anda.
+2. Ikuti bagian [Quick start](README.md#quick-start) pada README hingga API dan web berjalan di lokal.
+3. Unduh browser untuk frontend test (cukup sekali):
    ```sh
    cd web && pnpm exec playwright install chromium chromium-headless-shell
    ```
-4. Buat cabang dari `main`.
+4. Buat branch dari `main`.
 
 ## Sebelum mulai mengerjakan
 
-- **Perubahan besar:** buka issue dulu supaya arahnya disepakati sebelum Anda menulis kode.
-- **Bug atau perbaikan kecil:** langsung kirim pull request.
-- **Fitur baru:** cek dulu bahwa fiturnya tidak termasuk di luar lingkup proyek: aplikasi mobile native, CCTV, SSO, notifikasi email/WhatsApp, pembayaran, dan inventaris alat.
+- **Perubahan besar:** buka issue terlebih dahulu agar arah pengerjaan disepakati sebelum kode ditulis.
+- **Bug fix atau perbaikan kecil:** langsung kirim pull request.
+- **Fitur baru:** pastikan fitur tersebut tidak termasuk di luar lingkup proyek, yaitu aplikasi mobile native, CCTV, SSO, notifikasi email/WhatsApp, pembayaran, dan inventaris alat.
 
 ## Alur kerja
 
-- Jangan commit langsung ke `main`. Nama cabang: `feat/<modul>-<ringkas>`, `fix/<ringkas>`, `chore/<ringkas>`, `docs/<ringkas>`.
-- Satu pull request punya satu tujuan. Pisahkan refactor, pembersihan, dan fitur ke commit atau PR berbeda.
-- Pesan commit memakai [Conventional Commits](https://www.conventionalcommits.org/) dalam bahasa Inggris, misalnya `feat(bookings): reject requires a reason`.
-- Jalankan ini sebelum mengirim, dan pastikan semuanya hijau:
+- Jangan commit langsung ke `main`. Format nama branch: `feat/<modul>-<ringkas>`, `fix/<ringkas>`, `chore/<ringkas>`, `docs/<ringkas>`.
+- Satu pull request memiliki satu tujuan. Pisahkan refactor, cleanup, dan fitur ke commit atau PR yang berbeda.
+- Pesan commit mengikuti [Conventional Commits](https://www.conventionalcommits.org/) dalam bahasa Inggris, contoh: `feat(bookings): reject requires a reason`.
+- Jalankan perintah berikut sebelum mengirim, dan pastikan semuanya lulus:
   ```sh
   make lint
   make test
   cd web && pnpm run build
   ```
-  Bila perubahan menyentuh alur pengajuan, check-in, atau check-out, jalankan juga `cd web && pnpm run smoke:e2e`.
+  Jika perubahan menyentuh alur pengajuan, check-in, atau check-out, jalankan juga `cd web && pnpm run smoke:e2e`.
 
 ## Standar kode
 
 **Umum**
 
 - Identifier, komentar kode, nama field API, dan pesan commit: **bahasa Inggris**.
-- Teks antarmuka, pesan error ke pengguna, dan dokumentasi: **bahasa Indonesia**. Kode error (`error.code`) tetap konstanta bahasa Inggris.
-- Komentar menjelaskan *kenapa*, bukan *apa*.
-- Jangan membuat abstraksi baru hanya karena ada dua pemakaian.
+- Teks antarmuka, pesan error untuk pengguna, dan dokumentasi: **bahasa Indonesia**. Kode error (`error.code`) tetap berupa konstanta bahasa Inggris.
+- Komentar menjelaskan *mengapa*, bukan *apa*.
+- Jangan membuat abstraksi baru hanya karena ada dua tempat pemakaian.
 
 **Backend (Go)**
 
-- Utamakan library standar. Jangan menambah framework web, ORM, atau DI container.
-- `context.Context` menjadi argumen pertama fungsi yang melakukan I/O.
-- Bungkus error dengan `fmt.Errorf("...: %w", err)`. Pemetaan error ke status HTTP ada di satu tempat (`internal/httpx`), dan pesan internal atau SQL tidak boleh bocor ke klien.
-- Tulis dan hitung waktu dalam UTC, dan jangan memanggil `time.Now()` langsung di service; pakai clock yang bisa disuntik supaya bisa dites.
-- Jangan mencatat password, token, hash, atau isi cookie ke log.
+- Utamakan standard library. Jangan menambahkan web framework, ORM, atau DI container.
+- `context.Context` menjadi argumen pertama pada fungsi yang melakukan I/O.
+- Bungkus error dengan `fmt.Errorf("...: %w", err)`. Pemetaan error ke HTTP status terpusat di `internal/httpx`, dan pesan internal maupun SQL tidak boleh bocor ke klien.
+- Simpan dan hitung waktu dalam UTC. Jangan memanggil `time.Now()` langsung di service; gunakan clock yang dapat di-inject agar mudah diuji.
+- Jangan menulis password, token, hash, atau isi cookie ke log.
 
 **Database**
 
-- Skema hanya berubah lewat **migrasi baru**. Jangan mengedit migrasi yang sudah ter-merge. Setiap `up` punya `down`, dan keduanya dicoba maju-mundur.
+- Skema hanya berubah melalui **migrasi baru**. Jangan mengedit migrasi yang sudah di-merge. Setiap `up` harus memiliki `down`, dan keduanya diuji maju-mundur.
 - Query ditulis di `api/db/queries` dan di-generate dengan `sqlc` (`make gen`). Dilarang menyusun SQL dari string input pengguna.
-- Operasi yang menyentuh beberapa tabel berjalan dalam satu transaksi (`WithTx`).
-- Constraint exclusion untuk bentrok tetap dipertahankan. Cek di kode saja tidak cukup.
-- Tabel riwayat (`booking_events`, `report_events`, `audit_logs`) hanya boleh ditambah, tidak boleh di-UPDATE atau DELETE.
+- Operasi yang menyentuh beberapa tabel dijalankan dalam satu transaksi (`WithTx`).
+- Exclusion constraint untuk mencegah bentrok harus dipertahankan. Pengecekan di level kode saja tidak cukup.
+- Tabel riwayat (`booking_events`, `report_events`, `audit_logs`) bersifat append-only: tidak boleh di-`UPDATE` atau `DELETE`.
 
 **Kontrak API**
 
-- [api/openapi.yaml](api/openapi.yaml) adalah sumber kebenaran. Jalankan `make gen` setiap kali kontrak berubah dan sertakan hasilnya. CI gagal bila tipe frontend tidak sinkron.
-- Mengubah path, nama field, kode error, atau status code yang sudah dipakai merusak klien lain. Jelaskan alasannya di deskripsi PR.
+- [api/openapi.yaml](api/openapi.yaml) adalah *single source of truth*. Jalankan `make gen` setiap kali kontrak berubah dan sertakan hasilnya. CI akan gagal jika tipe frontend tidak sinkron.
+- Mengubah path, nama field, kode error, atau status code yang sudah digunakan akan merusak klien lain (*breaking change*). Jelaskan alasannya pada deskripsi PR.
 
 **Frontend (TypeScript)**
 
-- Mode `strict`. Jangan memakai `any` atau `@ts-ignore` tanpa komentar alasan.
-- Tipe respons API di-generate; jangan menulis ulang secara manual. Jangan edit `routeTree.gen.ts` dan `src/types/api.ts` dengan tangan.
-- Data server lewat TanStack Query. Jangan menyalinnya ke store lokal.
+- Gunakan mode `strict`. Jangan memakai `any` atau `@ts-ignore` tanpa komentar yang menjelaskan alasannya.
+- Tipe response API di-generate; jangan menulis ulang secara manual. Jangan mengedit `routeTree.gen.ts` dan `src/types/api.ts` secara langsung.
+- Server state dikelola melalui TanStack Query. Jangan menyalinnya ke store lokal.
 - Access token disimpan di memori, bukan di `localStorage`.
-- Pakai modul waktu bersama dengan zona `Asia/Jakarta`; jangan memformat tanggal sendiri di komponen.
-- Antarmuka harus nyaman di ponsel: area sentuh minimal 44 px dan tidak ada scroll horizontal.
+- Gunakan modul waktu bersama dengan zona `Asia/Jakarta`; jangan memformat tanggal sendiri di dalam komponen.
+- Antarmuka harus nyaman di perangkat mobile: touch target minimal 44 px dan tanpa horizontal scroll.
 
-## Pengujian
+## Testing
 
-Tes bukan pelengkap. Bagian berikut wajib punya tes bila Anda mengubahnya:
+Test bukan pelengkap. Bagian berikut **wajib** memiliki test apabila diubah:
 
-- Bentrok dan konkurensi: 20 permintaan paralel pada slot yang sama menghasilkan tepat satu yang berhasil, dan batas `[mulai, selesai)` dihormati.
-- Transisi status booking dan laporan, baik yang sah maupun yang tidak.
+- Bentrok dan konkurensi: 20 request paralel pada slot yang sama menghasilkan tepat satu yang berhasil, dan batas `[mulai, selesai)` dihormati.
+- Transisi status booking dan laporan, baik yang valid maupun yang tidak.
 - Matriks hak akses: setiap endpoint untuk setiap peran.
-- Autentikasi: kredensial salah, token kedaluwarsa, rotasi dan penggunaan ulang refresh token.
-- Notifikasi dibuat atomik bersama perubahan statusnya.
+- Autentikasi: kredensial salah, token kedaluwarsa, serta rotasi dan penggunaan ulang refresh token.
+- Notifikasi dibuat secara atomik bersama perubahan statusnya.
 
 Aturan umum:
 
-- Tes backend memakai PostgreSQL asli (testcontainers), bukan database palsu, untuk apa pun yang menyangkut constraint dan transaksi.
-- Tes harus deterministik: tanpa `sleep` dan tanpa bergantung pada urutan.
-- Menemukan bug? Tulis tes yang gagal dulu, lalu perbaiki.
-- Jangan menghapus atau melemahkan tes agar build hijau. Bila sebuah tes memang salah, jelaskan alasannya di PR.
+- Backend test menggunakan PostgreSQL asli (testcontainers), bukan database tiruan, untuk semua hal yang menyangkut constraint dan transaksi. Integration test berada di [api/test/integration/](api/test/integration/).
+- Test harus deterministik: tanpa `sleep` dan tidak bergantung pada urutan eksekusi.
+- Menemukan bug? Tulis test yang gagal terlebih dahulu, lalu perbaiki.
+- Jangan menghapus atau melemahkan test hanya agar build lulus. Jika sebuah test memang keliru, jelaskan alasannya pada PR.
 
 ## Pull request
 
 Deskripsi PR sebaiknya memuat:
 
-- apa yang berubah dan kenapa,
-- cara menjalankan atau mengujinya,
+- apa yang berubah dan alasannya,
+- cara menjalankan atau menguji perubahan,
 - bagian yang belum dikerjakan,
-- keputusan desain yang diambil, terutama bila mengubah kontrak API atau skema.
+- keputusan desain yang diambil, terutama jika mengubah kontrak API atau skema.
 
-Untuk perubahan tampilan, sertakan tangkapan layar pada lebar 360 px dan 1280 px.
+Untuk perubahan tampilan, sertakan screenshot pada lebar 360 px dan 1280 px.
 
 Checklist yang akan kami periksa:
 
-- [ ] `make lint`, `make test`, dan `pnpm run build` hijau
-- [ ] Tes baru untuk perilaku baru, termasuk kasus gagal dan hak akses
-- [ ] `openapi.yaml` dan tipe hasil generate diperbarui bila kontrak berubah
-- [ ] Migrasi baru (bila ada) punya `up` dan `down`
-- [ ] Tidak ada rahasia, data pribadi, atau log sensitif yang ikut masuk
+- [ ] `make lint`, `make test`, dan `pnpm run build` lulus
+- [ ] Test baru untuk perilaku baru, termasuk skenario gagal dan hak akses
+- [ ] `openapi.yaml` dan tipe hasil generate diperbarui jika kontrak berubah
+- [ ] Migrasi baru (jika ada) memiliki `up` dan `down`
+- [ ] Tidak ada secret, data pribadi, atau log sensitif yang ikut ter-commit
 
 ## Melaporkan bug
 
-Gunakan template issue **Laporan bug** dan sertakan langkah untuk mengulanginya, hasil yang diharapkan, hasil yang terjadi, serta versi browser dan sistem operasi. Jangan menempelkan token, password, atau data pengguna asli.
+Gunakan template issue **Laporan bug** dan sertakan langkah reproduksi, expected result, actual result, serta versi browser dan sistem operasi. Jangan menempelkan token, password, atau data pengguna yang sebenarnya.
