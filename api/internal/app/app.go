@@ -151,6 +151,10 @@ func NewRouter(ctx context.Context, cfg *config.Config, pool *db.Pool, log *slog
 	return r, nil
 }
 
+// Version is reported by /health. A release build sets it with
+// -ldflags "-X classlab/api/internal/app.Version=v0.1.0" (see the Dockerfile VERSION argument).
+var Version = "dev"
+
 func health(pool *db.Pool, clk clock.Clock) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -166,7 +170,7 @@ func health(pool *db.Pool, clk clock.Clock) http.HandlerFunc {
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{
-			"status": "healthy", "database": "ok", "version": "0.1.0", "time": now,
+			"status": "healthy", "database": "ok", "version": Version, "time": now,
 		})
 	}
 }

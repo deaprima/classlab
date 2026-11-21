@@ -4,12 +4,14 @@
 
 # ---- build: static binaries, no CGO, so the runtime image needs nothing but CA certificates ----
 FROM golang:1.26.11-alpine AS build
+# The release version shown by /health; the deploy passes it with `--build-arg VERSION=v0.1.0`.
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X classlab/api/internal/app.Version=${VERSION}" -o /out/server ./cmd/server \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/createadmin ./cmd/createadmin
 
 # ---- runtime ----

@@ -43,6 +43,9 @@ services:
     <<: *restart
     build:
       context: ../api
+      args:
+        # Shown by /health; set VERSION=v0.1.0 when deploying a release (CHECKLIST.md).
+        VERSION: ${VERSION:-dev}
     environment:
       APP_ENV: production
       PORT: "8080"
