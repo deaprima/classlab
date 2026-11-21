@@ -1,20 +1,14 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { attendanceRules } from '@/config/attendance-rules'
 import { Check, LogOut } from 'lucide-react'
 import { type Booking } from '@/lib/api-types'
 import { formatDateShort, formatTimeRange } from '@/lib/datetime'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { BentoCard } from '@/components/bento-card'
+import { QrScanner } from '@/components/qr-scanner'
 import { BookingStatusBadge } from '@/components/status-badge'
+import { parseCheckInQr } from '@/features/attendance/rules'
 import { roomTypeConfig } from '@/features/room-types/config'
 import { attendanceState, startsInLabel } from './selectors'
 
@@ -25,7 +19,8 @@ type NextBookingCardProps = {
 
 /** "Booking Berikutnya": the room in use (to check out of) or the next approved one (to check in to). */
 export function NextBookingCard({ booking, now }: NextBookingCardProps) {
-  const [qrOpen, setQrOpen] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const navigate = useNavigate()
   const state = attendanceState(booking, now)
   const label = startsInLabel(booking, now)
   const { label: typeLabel } = roomTypeConfig(booking.room.type)
@@ -52,7 +47,7 @@ export function NextBookingCard({ booking, now }: NextBookingCardProps) {
       </div>
 
       <div className='flex flex-wrap items-center gap-3 border-t pt-4'>
-        <Button disabled={!state.canCheckIn} onClick={() => setQrOpen(true)}>
+        <Button disabled={!state.canCheckIn} onClick={() => setScanning(true)}>
           <Check />
           Check-in
         </Button>
@@ -75,22 +70,22 @@ export function NextBookingCard({ booking, now }: NextBookingCardProps) {
         </p>
       </div>
 
-      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Check-in lewat QR</DialogTitle>
-            <DialogDescription>
-              Pindai QR yang menempel di pintu {booking.room.code} dengan kamera
-              ponsel. Check-in sah dari {attendanceRules.checkInEarlyMinutes}{' '}
-              menit sebelum sampai {attendanceRules.checkInLateMinutes} menit
-              setelah jam mulai.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button onClick={() => setQrOpen(false)}>Mengerti</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {scanning && (
+        <QrScanner
+          roomCode={booking.room.code}
+          onClose={() => setScanning(false)}
+          onDetect={(text) => {
+            const qr = parseCheckInQr(text)
+            if (!qr)
+              return 'Itu bukan QR check-in ClassLab. Arahkan ke QR yang menempel di pintu ruang.'
+            setScanning(false)
+            void navigate({
+              to: '/check-in',
+              search: { room: qr.room, t: qr.token },
+            })
+          }}
+        />
+      )}
     </BentoCard>
   )
 }

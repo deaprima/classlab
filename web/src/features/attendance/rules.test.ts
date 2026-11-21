@@ -1,7 +1,7 @@
 import { AxiosError, AxiosHeaders } from 'axios'
 import { apiErrorBody } from '@/test-utils/mock-adapter'
 import { describe, expect, it } from 'vitest'
-import { classifyCheckInError, validateCheckout } from './rules'
+import { classifyCheckInError, parseCheckInQr, validateCheckout } from './rules'
 
 function failure(
   status: number,
@@ -93,5 +93,34 @@ describe('validateCheckout', () => {
       validateCheckout({ condition: 'NORMAL', note: 'a'.repeat(2001), photo })
         .note
     ).toBeDefined()
+  })
+})
+
+describe('parseCheckInQr', () => {
+  it('reads the room and token from the door QR address', () => {
+    expect(
+      parseCheckInQr('https://classlab.example/check-in?room=KLS-101&t=abc123')
+    ).toEqual({ room: 'KLS-101', token: 'abc123' })
+  })
+
+  it('accepts a different origin and a trailing slash', () => {
+    expect(
+      parseCheckInQr('http://localhost:5173/check-in/?room=LAB-1&t=tok')
+    ).toEqual({ room: 'LAB-1', token: 'tok' })
+  })
+
+  it('rejects anything that is not a check-in address', () => {
+    for (const text of [
+      'hello',
+      '',
+      'https://classlab.example/login?room=A&t=b',
+      'https://classlab.example/check-in?room=A',
+      'https://classlab.example/check-in?t=b',
+      'javascript:alert(1)',
+      'https://classlab.example/check-in?room=&t=b',
+      `https://classlab.example/check-in?room=A&t=${'x'.repeat(200)}`,
+    ]) {
+      expect(parseCheckInQr(text), text).toBeNull()
+    }
   })
 })

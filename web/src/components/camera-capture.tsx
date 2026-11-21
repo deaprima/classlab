@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, Loader2, RefreshCw, SwitchCamera, X } from 'lucide-react'
+import {
+  type CameraFailure,
+  type Facing,
+  failureOf,
+  hasLiveCamera,
+  openStream,
+  stopStream,
+} from '@/lib/camera'
 import { cn } from '@/lib/utils'
 import { useDataUrl } from '@/hooks/use-data-url'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -9,10 +17,7 @@ import { Button } from '@/components/ui/button'
 const MAX_SIDE = 1280
 const JPEG_QUALITY = 0.8
 
-type Facing = 'environment' | 'user'
-
-type Failure =
-  'denied' | 'no-camera' | 'busy' | 'interrupted' | 'capture' | 'other'
+type Failure = CameraFailure
 
 type Status =
   | { kind: 'idle' }
@@ -46,51 +51,6 @@ const FAILURE_COPY: Record<Failure, { title: string; body: string }> = {
     title: 'Kamera tidak bisa dibuka',
     body: 'Muat ulang halaman dan coba lagi. Bila tetap gagal, pastikan alamat situs memakai HTTPS.',
   },
-}
-
-/** getUserMedia needs a secure context; without it only the file-input fallback works. */
-function hasLiveCamera(): boolean {
-  return (
-    typeof navigator !== 'undefined' &&
-    typeof window !== 'undefined' &&
-    window.isSecureContext !== false &&
-    typeof navigator.mediaDevices?.getUserMedia === 'function'
-  )
-}
-
-function failureOf(error: unknown): Failure {
-  const name = error instanceof DOMException ? error.name : ''
-  if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied'
-  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-    return 'no-camera'
-  }
-  if (name === 'NotReadableError' || name === 'TrackStartError') return 'busy'
-  return 'other'
-}
-
-async function openStream(facing: Facing): Promise<MediaStream> {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: facing },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-      },
-      audio: false,
-    })
-  } catch (error) {
-    if (
-      error instanceof DOMException &&
-      error.name === 'OverconstrainedError'
-    ) {
-      return navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-    }
-    throw error
-  }
-}
-
-function stopStream(stream: MediaStream | null) {
-  stream?.getTracks().forEach((track) => track.stop())
 }
 
 function scaledSize(width: number, height: number) {

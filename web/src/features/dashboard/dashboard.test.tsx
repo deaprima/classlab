@@ -8,10 +8,13 @@ import { api } from '@/lib/api-client'
 import { type Booking } from '@/lib/api-types'
 import { Dashboard } from '.'
 
+const navigate = vi.hoisted(() => vi.fn())
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
+    useNavigate: () => navigate,
     Link: ({
       to,
       children,
@@ -169,13 +172,22 @@ describe('Dashboard', () => {
       .toBeDisabled()
   })
 
-  it('explains that check-in happens by scanning the room QR', async () => {
+  it('opens the in-app QR scanner from the check-in button', async () => {
+    const getUserMedia = vi
+      .spyOn(navigator.mediaDevices, 'getUserMedia')
+      .mockRejectedValue(new DOMException('x', 'NotFoundError'))
     serve([booking({})])
     const screen = await renderDashboard()
     await userEvent.click(screen.getByRole('button', { name: 'Check-in' }))
     await expect
-      .element(screen.getByRole('dialog'))
-      .toHaveTextContent(/Pindai QR yang menempel di pintu R-401/)
+      .element(screen.getByRole('dialog', { name: 'Pindai QR check-in' }))
+      .toBeVisible()
+    expect(getUserMedia).toHaveBeenCalled()
+    // Without a camera the person is pointed to the phone's own camera app, which opens the same link.
+    await expect
+      .element(screen.getByRole('alert'))
+      .toHaveTextContent(/aplikasi kamera bawaan ponsel/)
+    getUserMedia.mockRestore()
   })
 
   it('offers check-out while the booking is running', async () => {
