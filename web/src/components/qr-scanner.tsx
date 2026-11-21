@@ -54,6 +54,8 @@ type QrScannerProps = {
   onClose: () => void
   /** Names the room being checked in to, so the person knows which door QR to aim at. */
   roomCode?: string
+  /** Reads a QR out of pixels; jsQR unless a test supplies its own. */
+  decode?: typeof jsQR
 }
 
 /**
@@ -63,7 +65,12 @@ type QrScannerProps = {
  * cannot open (plain HTTP, no permission) the person is pointed to the phone's own camera app,
  * which opens the same `/check-in` link.
  */
-export function QrScanner({ onDetect, onClose, roomCode }: QrScannerProps) {
+export function QrScanner({
+  onDetect,
+  onClose,
+  roomCode,
+  decode = jsQR,
+}: QrScannerProps) {
   const [failure, setFailure] = useState<CameraFailure | null>(
     hasLiveCamera() ? null : 'other'
   )
@@ -76,9 +83,11 @@ export function QrScanner({ onDetect, onClose, roomCode }: QrScannerProps) {
   // Bumped on every start/stop, so a getUserMedia that resolves late can tell it was abandoned.
   const attempt = useRef(0)
   const onDetectRef = useRef(onDetect)
+  const decodeRef = useRef(decode)
   useEffect(() => {
     onDetectRef.current = onDetect
-  }, [onDetect])
+    decodeRef.current = decode
+  }, [onDetect, decode])
 
   const stop = useCallback(() => {
     attempt.current += 1
@@ -125,7 +134,7 @@ export function QrScanner({ onDetect, onClose, roomCode }: QrScannerProps) {
         canvas.height = Math.round(video.videoHeight * scale)
         context.drawImage(video, 0, 0, canvas.width, canvas.height)
         const image = context.getImageData(0, 0, canvas.width, canvas.height)
-        const code = jsQR(image.data, image.width, image.height, {
+        const code = decodeRef.current(image.data, image.width, image.height, {
           inversionAttempts: 'dontInvert',
         })
         if (!code?.data) return
@@ -199,7 +208,7 @@ export function QrScanner({ onDetect, onClose, roomCode }: QrScannerProps) {
           </div>
         )}
         {(failure || rejected) && (
-          <div className='absolute inset-x-4 top-4' role='alert'>
+          <div className='absolute inset-x-4 top-4'>
             <Alert variant='error'>
               <QrCode />
               <AlertTitle>

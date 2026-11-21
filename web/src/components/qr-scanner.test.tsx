@@ -1,10 +1,8 @@
-import jsQR from 'jsqr'
+import type jsQR from 'jsqr'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { QrScanner } from './qr-scanner'
-
-vi.mock('jsqr', () => ({ default: vi.fn() }))
 
 /** A real MediaStream (a canvas feed) so <video> can play it; `stop` is spied to check cleanup. */
 function fakeStream() {
@@ -24,7 +22,7 @@ function fakeStream() {
 }
 
 const getUserMedia = vi.spyOn(navigator.mediaDevices, 'getUserMedia')
-const decode = vi.mocked(jsQR)
+const decode = vi.fn<typeof jsQR>()
 
 afterEach(() => {
   getUserMedia.mockReset()
@@ -37,7 +35,12 @@ describe('QrScanner', () => {
     getUserMedia.mockResolvedValue(fake.stream)
     decode.mockReturnValue(null)
     const screen = await render(
-      <QrScanner onDetect={vi.fn()} onClose={vi.fn()} roomCode='KLS-101' />
+      <QrScanner
+        decode={decode}
+        onDetect={vi.fn()}
+        onClose={vi.fn()}
+        roomCode='KLS-101'
+      />
     )
     await expect
       .element(screen.getByText('Arahkan ke QR di pintu KLS-101'))
@@ -59,7 +62,9 @@ describe('QrScanner', () => {
       data: 'https://x.test/check-in?room=A&t=b',
     } as never)
     const onDetect = vi.fn()
-    await render(<QrScanner onDetect={onDetect} onClose={vi.fn()} />)
+    await render(
+      <QrScanner decode={decode} onDetect={onDetect} onClose={vi.fn()} />
+    )
     await vi.waitFor(() =>
       expect(onDetect).toHaveBeenCalledWith(
         'https://x.test/check-in?room=A&t=b'
@@ -77,7 +82,7 @@ describe('QrScanner', () => {
     decode.mockReturnValue({ data: 'not ours' } as never)
     const onDetect = vi.fn(() => 'Itu bukan QR check-in ClassLab.')
     const screen = await render(
-      <QrScanner onDetect={onDetect} onClose={vi.fn()} />
+      <QrScanner decode={decode} onDetect={onDetect} onClose={vi.fn()} />
     )
     await expect
       .element(screen.getByRole('alert'))
@@ -93,7 +98,7 @@ describe('QrScanner', () => {
     decode.mockReturnValue(null)
     const onClose = vi.fn()
     const screen = await render(
-      <QrScanner onDetect={vi.fn()} onClose={onClose} />
+      <QrScanner decode={decode} onDetect={vi.fn()} onClose={onClose} />
     )
     await expect
       .element(screen.getByRole('button', { name: 'Tutup' }))
@@ -107,7 +112,7 @@ describe('QrScanner', () => {
   it('explains a denied permission and points to the phone camera app', async () => {
     getUserMedia.mockRejectedValue(new DOMException('x', 'NotAllowedError'))
     const screen = await render(
-      <QrScanner onDetect={vi.fn()} onClose={vi.fn()} />
+      <QrScanner decode={decode} onDetect={vi.fn()} onClose={vi.fn()} />
     )
     await expect
       .element(screen.getByRole('alert'))
