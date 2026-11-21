@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build the static app ----
-FROM node:22.23.4-alpine AS build
+FROM node:26.13.1-alpine AS build
 ARG PNPM_VERSION=10.33.2
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
