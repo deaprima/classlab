@@ -10,6 +10,7 @@ Satu server Linux dengan Docker (Compose v2), satu domain, dan satu perintah. Is
 | `backup.sh` | Cadangan database dan berkas unggahan |
 | `restore-test.sh` | Membuktikan cadangan bisa dipulihkan (tanpa menyentuh aplikasi) |
 | `restore.sh` | Memulihkan cadangan ke server |
+| `CHECKLIST.md` | Checklist go-live dan langkah tiap rilis |
 
 Nama proyek Compose-nya `classlab-prod`, terpisah dari `docker compose` di root repo (dev), jadi keduanya
 tidak saling menimpa. Volume: `classlab-prod_postgres_data`, `classlab-prod_uploads`, `classlab-prod_caddy_data`.
@@ -68,8 +69,42 @@ Jadwalkan tiap hari, mis. `crontab -e`:
 0 2 * * * /opt/classlab/deploy/backup.sh >> /var/log/classlab-backup.log 2>&1
 ```
 
-**Salin cadangan keluar dari server** (rsync/rclone ke penyimpanan lain). Cadangan yang hanya ada di
-disk yang sama ikut hilang bersama disknya.
+**Salin cadangan keluar dari server.** Cadangan yang hanya ada di disk yang sama ikut hilang bersama
+disknya. `backup.sh` bisa melakukannya sendiri lewat [rclone](https://rclone.org/) (S3, Cloudflare R2,
+Google Drive, SFTP, dan lainnya). Setelah `rclone config` membuat sebuah remote:
+
+```cron
+0 2 * * * BACKUP_REMOTE=r2:classlab-backups BACKUP_PING_URL=https://hc-ping.com/<uuid> /opt/classlab/deploy/backup.sh >> /var/log/classlab-backup.log 2>&1
+```
+
+- `BACKUP_REMOTE`: tujuan rclone. Berkas lama di tujuan **tidak** dihapus oleh skrip; atur aturan lifecycle
+  di bucket, atau jalankan `rclone delete --min-age 30d <remote>` secara berkala.
+- `BACKUP_PING_URL`: alamat pemantau bergaya healthchecks.io. Skrip memanggilnya saat berhasil dan
+  `<alamat>/fail` saat gagal; kalau tidak ada ping masuk, pemantau memberi tahu Anda. Keduanya opsional.
+- `deploy/.env` tidak termasuk cadangan. Simpan salinannya sendiri (password manager).
+
+#### Contoh: Google Drive (sementara)
+
+Server biasanya tidak punya browser, jadi login Google dilakukan di laptop Anda, lalu tokennya dipindahkan.
+
+1. **Di server**: `curl https://rclone.org/install.sh | sudo bash` (atau `apt install rclone`), lalu `rclone config`.
+2. Pilih `n` (new remote), beri nama `gdrive`, storage `drive`.
+3. `client_id` dan `client_secret`: buat sendiri di Google Cloud Console (OAuth client jenis *Desktop app*). Kalau dikosongkan, rclone memakai kredensial bersama yang sering kena batas laju. Rinciannya: <https://rclone.org/drive/#making-your-own-client-id>.
+4. `scope`: pilih **`drive.file`** (rclone hanya bisa melihat berkas yang dibuatnya sendiri, tidak seluruh isi Drive Anda).
+5. Pada pertanyaan *Use web browser to automatically authenticate?* jawab **`n`**. Rclone menampilkan perintah `rclone authorize "drive" "<kode>"`. Jalankan perintah itu di **laptop** (rclone terpasang di sana juga), login Google, lalu tempel token yang dihasilkan ke server.
+6. Uji: `rclone mkdir gdrive:classlab-backups && rclone lsd gdrive:`
+
+**Enkripsi (sangat disarankan).** Cadangan berisi data pengguna dan foto ruang, dan Google Drive adalah pihak ketiga. Tambahkan remote `crypt` di atas Drive supaya isinya terenkripsi sebelum diunggah: di `rclone config` buat remote baru bertipe `crypt` dengan tujuan `gdrive:classlab-backups`, nama `gdrive-crypt`, dan buat dua password (password dan salt). **Simpan password itu di password manager**: tanpa itu cadangan tidak bisa dibuka lagi. Lalu pakai `BACKUP_REMOTE=gdrive-crypt:`.
+
+**Pembersihan.** Skrip tidak menghapus berkas lama di Drive, dan setiap hari satu arsip unggahan penuh ikut terkirim, jadi kuota Drive (15 GB gratis) cepat terpakai. Tambahkan cron mingguan:
+
+```cron
+0 3 * * 0 rclone delete --min-age 30d gdrive-crypt: >> /var/log/classlab-backup.log 2>&1
+```
+
+**Pulihkan dari Drive:** `rclone copy gdrive-crypt: deploy/backups/ --include "db-<stempel>.dump" --include "uploads-<stempel>.tar.gz"`, lalu ikuti langkah "Memulihkan".
+
+Token Drive tersimpan di `~/.config/rclone/rclone.conf` di server (`chmod 600`). Siapa pun yang memegangnya bisa mengakses cadangan; karena itu enkripsi di atas penting.
 
 ### Menguji pemulihan
 

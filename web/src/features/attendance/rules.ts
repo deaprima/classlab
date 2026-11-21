@@ -3,6 +3,34 @@ import { type CheckoutCondition } from '@/lib/api-types'
 
 export const CHECKOUT_NOTE_MAX = 2000
 
+const CHECK_IN_PATH = '/check-in'
+const QR_FIELD_MAX = 128
+
+/**
+ * Reads the room code and token out of what a door QR encodes (`<frontend>/check-in?room=&t=`).
+ * Only those two values are taken: the in-app scanner never follows the scanned address, so a QR
+ * from anywhere else cannot send the person away from the app. The origin is not compared because
+ * the QR is printed with the server's configured frontend address, which may differ from the one
+ * the person is on (a tunnel, a LAN name).
+ */
+export function parseCheckInQr(
+  text: string
+): { room: string; token: string } | null {
+  let url: URL
+  try {
+    url = new URL(text.trim())
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+  if (url.pathname.replace(/\/+$/, '') !== CHECK_IN_PATH) return null
+  const room = url.searchParams.get('room')?.trim()
+  const token = url.searchParams.get('t')?.trim()
+  if (!room || !token) return null
+  if (room.length > QR_FIELD_MAX || token.length > QR_FIELD_MAX) return null
+  return { room, token }
+}
+
 export const CONDITION_LABELS: Record<CheckoutCondition, string> = {
   NORMAL: 'Bersih dan kondisi baik',
   ADA_MASALAH: 'Ada kerusakan',
