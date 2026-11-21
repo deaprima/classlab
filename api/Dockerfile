@@ -3,7 +3,7 @@
 # bump them on purpose, see "Memperbarui versi image" in deploy/RUNBOOK.md.
 
 # ---- build: static binaries, no CGO, so the runtime image needs nothing but CA certificates ----
-FROM golang:1.26.11-alpine AS build
+FROM golang:1.27.4-alpine AS build
 # The release version shown by /health; the deploy passes it with `--build-arg VERSION=v0.1.0`.
 ARG VERSION=dev
 WORKDIR /src
