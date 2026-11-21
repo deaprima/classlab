@@ -11,5 +11,5 @@ COPY . .
 RUN pnpm build
 
 # ---- serve it: Caddy with the built files; deploy/Caddyfile is mounted over the default ----
-FROM caddy:2.11.7-alpine
+FROM caddy:2.11.9-alpine
 COPY --from=build /app/dist /srv
