@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/createadmin ./cmd/createadmin
 
 # ---- runtime ----
-FROM alpine:3.21.9
+FROM alpine:3.24.4
 RUN apk add --no-cache ca-certificates \
  && addgroup -S app && adduser -S -G app -u 10001 app \
  && mkdir -p /data/uploads && chown -R app:app /data
