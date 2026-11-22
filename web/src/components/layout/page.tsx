@@ -60,7 +60,7 @@ export function Page({
               <p className='type-body text-fg-secondary'>{description}</p>
             )}
           </div>
-          {aside && <div className='shrink-0'>{aside}</div>}
+          {aside && <div className='max-w-full shrink-0'>{aside}</div>}
           {actions && (
             <div
               data-slot='page-actions'

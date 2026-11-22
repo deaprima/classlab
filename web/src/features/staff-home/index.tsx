@@ -86,7 +86,7 @@ export function Home() {
 function LiveClock() {
   const now = useNow(1000)
   return (
-    <div className='flex items-center gap-3 sm:flex-col sm:items-end sm:gap-0'>
+    <div className='flex flex-wrap items-center gap-x-3 sm:flex-col sm:items-end sm:gap-0'>
       <time
         dateTime={now.toISOString()}
         aria-label='Waktu sekarang'
