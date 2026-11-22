@@ -1,33 +1,58 @@
-# Weekly update PRs. CI (tests, govulncheck, pnpm audit) judges each one; nothing merges by itself.
+# Monthly update PRs for minor and patch versions only. CI (tests, govulncheck, pnpm audit) judges each
+# one; nothing merges by itself. Major versions are ignored on purpose: they can change behaviour in ways
+# the tests do not see (and CI does not build the Docker images), so upgrade them by hand when ready.
+# Security fixes are a separate GitHub feature (Settings > Advanced Security > Dependabot security
+# updates) and are not held back by the "ignore" rules below.
 version: 2
 updates:
   - package-ecosystem: gomod
     directory: /api
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       go-minor-and-patch:
         update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /web
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       web-minor-and-patch:
         update-types: [minor, patch]
 
+  # GitHub Actions are versioned by major tag (v4, v7), so ignoring majors means they are not bumped
+  # here; review them by hand now and then.
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # Base images pinned in the Dockerfiles and the production compose file.
+  # Base images pinned in the Dockerfiles and the production compose file. Test a bump with a real
+  # `docker compose build` first: CI does not build images (a Node 26 bump once broke `corepack`).
   - package-ecosystem: docker
     directory: /api
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /web
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /deploy
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
