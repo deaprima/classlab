@@ -1,2 +1,4 @@
 allowBuilds:
-  esbuild: set this to true or false
+  # esbuild only runs an install script that checks and speeds up its binary; the binary itself comes
+  # from an optional dependency, so nothing needs it. CI builds and tests with the script ignored.
+  esbuild: false
